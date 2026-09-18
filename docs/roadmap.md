@@ -105,9 +105,10 @@ tools. Checkpoint infrastructure does not replace operation-level receipts.
 
 ## M4 — Lean proof boundary
 
-Formalise one reusable property from the first fixture, such as uniqueness
-preservation under an injective identifier mapping. Keep empirical premises
-and the independent task evaluator outside the theorem.
+Formalise one reusable property from the first fixture: uniqueness preservation
+under an injective identifier mapping. Reuse it for the incomplete-target case;
+defer timestamp formalisation to M5. Keep empirical premises and the independent
+task evaluator outside the theorem.
 
 - [ ] Pin Lean, the allowed library/axioms, and a reviewed target declaration.
 - [ ] Isolate proof generation; independently check the resulting artifact and
@@ -116,16 +117,19 @@ and the independent task evaluator outside the theorem.
   `sorryAx`, unapproved axioms, and forged success labels.
 - [ ] Keep a checked theorem valid when a premise becomes unsupported, while
   blocking its application to the changed input.
-- [ ] Demonstrate valid proofs of the mistranslated and incomplete targets in the
-  pilot while independent behavioral checks keep task acceptance blocked. Preserve
-  proof success and task failure separately, alongside a successful control.
+- [ ] Reuse the uniqueness theorem for the pilot's incomplete-target case: a
+  candidate drops records while its output remains provably unique. The independent
+  record-preservation check blocks task acceptance. Preserve proof success and
+  task failure separately, alongside a successful control using the same theorem.
 - [ ] Bound and account for proof work; record timeout/failure as unproved.
 
-**Completion evidence:** one accepted conditional theorem, one currently supported
-application, and negative tests for every acceptance boundary. Demonstrate the
-premise change without claiming a Lean proof verifies a separate Python program.
-The specification cases must fail because their targets are inadequate, not
-because the proof is invalid or the implementation differs from its model.
+**Completion evidence:** one accepted conditional theorem with supported
+applications to the incomplete-target case and its successful control, plus
+negative tests for every acceptance boundary. Only the control passes task
+acceptance. The negative case fails because uniqueness permits record loss, not
+because its proof is invalid, its premises are unsupported, or its implementation
+differs from its model. Separately demonstrate the premise change without claiming
+a Lean proof verifies a separate Python program.
 
 **Decision:** compare the additional cost with the executable-check baseline.
 Formalisation should target useful obligations rather than all exploratory claims.
@@ -139,6 +143,9 @@ or production writes are required.
 - [ ] Complete the same restart/changed-premise exercise in this second task family.
 - [ ] Exercise the pilot's migration regression outside the proved properties,
   retaining the declared compatibility obligations and a successful control.
+- [ ] In condition E, add valid proofs for the timestamp-mistranslation and
+  migration-regression cases, retaining M4's incomplete-target case and successful
+  controls for all three.
 - [ ] Derive the smallest shared adapter boundary from both working fixtures.
 - [ ] Run the A–E conditions in [pilot.md](pilot.md) with fixed scheduling and
   equal worker capabilities, including frontier and small-model trials.

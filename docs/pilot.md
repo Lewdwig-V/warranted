@@ -72,12 +72,20 @@ Include three distinct negative cases:
    consumer. A predeclared compatibility case fails even though the new formal
    obligations remain satisfied.
 
-Use valid proofs of the inadequate targets in M4 and the later Lean
-condition. Do not substitute proof forgery, unsupported premises, or a mismatch
-between model and implementation for these specification failures. Establish the
-fixtures first with executable checks in M2 and the second family in M5. Include
-successful controls satisfying all obligations so that rejecting every candidate
-cannot count as success. Keep final task acceptance identical across A–E.
+Establish the two data-transformation cases with executable checks in M2. In M4,
+formalise only uniqueness preservation and reuse that theorem for the incomplete
+target case and its successful control. For example, applying the theorem to an
+empty selected input can establish output uniqueness while the independent check
+rejects losing records from the nonempty source. This requires no proof of record
+preservation or timestamp semantics. Introduce the migration fixture across all
+conditions in M5; add the timestamp-mistranslation and migration proofs in its
+Lean condition, retaining M4's case.
+
+Use valid proofs of these inadequate targets. Do not substitute proof forgery,
+unsupported premises, or a mismatch between model and implementation for these
+specification failures. Include successful controls satisfying all obligations
+so that rejecting every candidate cannot count as success. Keep final task
+acceptance identical across A–E.
 
 Record the narrow check or proof as successful and the task as rejected by the
 failed independent obligation. Preserve the conflicting evidence across restart;
