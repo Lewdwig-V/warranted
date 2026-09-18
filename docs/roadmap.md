@@ -144,6 +144,11 @@ dependency or assumed speed, cost, calibration, or accuracy benefit.
   budget. For a judgment gate, abstention or failure leaves the transition blocked
   until qualifying evidence arrives under its contract or approved escalation path.
   High confidence never overrides a separately required failed or missing check.
+- [ ] Route on diagnostic usefulness as well as certainty. Expose criterion-level
+  feedback and supplied evidence references; allow bounded System 2 investigation
+  for confident rejections without a repair direction, conflicting criteria,
+  novel failures, and repeated unsuccessful repairs. Preserve the rejected gate
+  while the worker diagnoses or revises the candidate.
 - [ ] Have the host invoke the designated judge independently of the candidate
   worker and issue a receipt bound to the exact target, evidence, model/version,
   rubric, and calibrated decision rule. A qualifying judgment can satisfy that

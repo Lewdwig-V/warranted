@@ -222,6 +222,21 @@ failed checks. Treat candidate evidence as untrusted input, including attempts t
 instruct the judge. Confidence
 alone cannot detect every unfamiliar case or confidently wrong answer.
 
+Certainty and diagnostic usefulness are separate routing inputs. A confident
+rejection can be correct while leaving the worker unable to repair the candidate.
+Return criterion-level outcomes and references selected
+from supplied evidence, with a known failure category or an explicit unknown;
+do not assume a scalar score provides a repair direction. These diagnostic hints
+remain hypotheses even when the gate verdict is authoritative.
+
+Under a bounded host policy, request System 2 investigation for missing diagnosis,
+conflicting criteria, novel failure modes, or repeated unsuccessful repairs, even
+when Jev is confident. Run a known missing check directly when that supplies the
+needed evidence. System 2 can gather evidence, explain interactions, and propose
+repairs; its explanation does not waive the rejected gate. Re-evaluate changed
+candidates under the pinned contract. This adds a route for useful deliberation
+without requiring a heavyweight model to explain every routine verdict.
+
 TypeSafe's [confidence documentation](https://docs.typesafe.ai/confidence) describes
 Choice/Score confidence as a statistic of the returned distribution. Do not read it
 as a verified probability that the selected answer is correct. Measure calibration

@@ -341,6 +341,16 @@ judgments, provider failures, and budget exhaustion, with successful controls.
 Development fixtures must show that even a
 maximally favourable judgment cannot override another failed required obligation.
 
+Compare confidence-only escalation with escalation that also considers diagnostic
+usefulness, under equal total budgets. Include confidently rejected candidates
+with unclear causes, interacting failures, and repeated repairs that leave the
+same defect. Measure successful repairs, repeated rejections, and total time/cost
+to independent acceptance, including all diagnostic work. This tests whether fast
+verdicts save end-to-end effort rather than merely shifting work to later attempts.
+Audit a predeclared sample of confident passes and failures against independent
+labels as well as escalated cases; evaluating only uncertain cases would hide
+confident errors. Keep audit feedback out of held-out routing decisions.
+
 Retain only categories meeting the frozen criteria on held-out tasks; report
 first-family and second-family evidence separately. Keep the original Dream-RSI
 comparison Jev-free. A later combined study must freeze Jev's model, rubrics, and
