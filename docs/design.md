@@ -12,9 +12,10 @@ When an input changes, revisit the affected work instead of reconstructing the
 entire argument from prose.
 
 Test two hypotheses separately: checked, reusable knowledge improves completion
-and recovery; replay-based search scheduling can add further gains at an acceptable
-total cost. A fixed model should suffice for either experiment. Neither benefit
-is assumed, and Lean must earn its cost over executable models and ordinary checks.
+and recovery; Dream-RSI-inspired search scheduling can add further gains at an
+acceptable total cost. A fixed model should suffice for either experiment.
+Neither benefit is assumed, and Lean must earn its cost over executable models
+and ordinary checks.
 
 ## Boundaries and ownership
 
@@ -30,15 +31,24 @@ is assumed, and Lean must earn its cost over executable models and ordinary chec
 
 These are responsibility boundaries, not seven services or a mandatory class
 hierarchy. Keep them in one package until working use cases require separation.
-mini-swe-agent is the initial worker candidate. LangGraph and the worker supply
-execution infrastructure; neither owns evidence semantics. Add and pin their
-dependencies when integrating them, rather than building replacements now.
+[mini-swe-agent](https://mini-swe-agent.com/latest/) is the initial worker candidate:
+its small, shell-based agent loop fits bounded investigation sessions.
+[LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) supplies
+workflow persistence and resumption. We intend to build on those projects'
+execution infrastructure while the Warranted host owns evidence semantics.
+Add and pin their dependencies when integrating them.
 
-The worker's interface should remain small. Expose documented, searchable files
-and permitted read-only state; allow scripts and normal command composition.
+The preference for a small worker interface also draws directly on
+[Vercel's d0 case study](https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools).
+Their revised agent explored documented files through shell commands and retained
+a SQL execution tool. For Warranted, the lesson is to make the environment legible
+and give the worker general ways to inspect it. Expose documented, searchable
+files and permitted read-only state; allow scripts and normal command composition.
 Host adapters record raw results, snapshots, and costs mechanically. Ask for
 semantic dependencies or claim interpretations when they cannot be observed.
 Avoid making the worker navigate a rigid sequence of bookkeeping forms.
+The case study motivates this choice; our pilot must measure its costs and benefits
+on Warranted's tasks.
 
 Keep the authoritative database, receipts, and checker state outside the worker's
 writable workspace. Read-only projections must respect visibility rules. A SQL
@@ -47,6 +57,18 @@ that need mediation go through host-owned execution boundaries; shell access
 cannot bypass them.
 
 ## Durable knowledge
+
+[Schema](https://schema-harness.github.io/) and
+[PRO-LONG](https://arxiv.org/html/2607.20064v2) are explicit influences, carried
+forward from the [original proposal](#sources-and-provenance). Schema motivates
+representing learned world behavior as executable models checked against observed
+transitions. PRO-LONG motivates preserving complete interaction histories that
+an agent can search programmatically. Their ARC-AGI-3 work inspired this project;
+transfer to our task families remains an experimental question.
+
+Warranted's proposed extension ties these artifacts and histories to explicit
+assumptions, dependencies, and acceptance receipts. The pilot separates history,
+executable models, dependency tracking, and Lean to measure what each contributes.
 
 Start from the smallest records needed by the next complete slice:
 
@@ -85,7 +107,10 @@ acceptance contract, checker, gate classification, or enforcement to improve a
 score. Contract-owner revisions are explicit new versions, not passes of old gates.
 
 Formalisation is progressive. Begin with executable models and regression checks;
-introduce Lean for obligations whose reuse or failure cost makes proofs worthwhile.
+introduce [Lean](https://lean-lang.org/doc/reference/latest/) for obligations whose
+reuse or failure cost makes proofs worthwhile. Lean provides the formal language
+and proof-checking foundation; Warranted must connect checked statements to the
+current evidence and task requirements.
 Pin the Lean toolchain, libraries, target, and permitted axioms. Isolate untrusted
 elaboration/tactics and independently check the resulting artifact and transitive
 dependencies, including indirect use of `sorryAx` or unapproved axioms.
@@ -112,7 +137,24 @@ Do not promise exactly-once effects from arbitrary external APIs.
 Use a controlled fake service to test these cases before real external writes.
 Keep pure recomputation, historical replay, and retries of live operations distinct.
 
-## Exploration and replay
+## Dream-RSI: exploration and replay
+
+The search-improvement pilot is a planned adaptation of Tong Zheng and colleagues'
+[Dream-RSI: Recursive Self-Improvement through Evolving Worlds](https://arxiv.org/html/2609.14858v1),
+especially Sections 2–3. Its central contribution is to use recorded discovery trees
+as replay worlds for evaluating exploration policies. A policy-development agent
+revises scheduling code using replay feedback; the selected policy guides another
+live rollout, expanding the history available for the next improvement round.
+The discovery model remains fixed. This is the source of our proposed recursive
+search-strategy improvement loop.
+
+Warranted asks how that method works alongside durable, checked project knowledge.
+Our adaptation adds the context-compatibility, evidence, gate, and accounting
+requirements below. They define the Warranted pilot's contract. Shared knowledge
+can change an investigation's premises, so recording when that knowledge becomes
+visible is essential to deciding whether a historical continuation is usable.
+This is a proposed application of the published method; implementation reuse and
+benefits on our tasks still need evaluation.
 
 Design recording for replay early, but establish fixed-policy behavior first.
 The policy receives only currently permitted observations and host-owned limits;
@@ -150,9 +192,15 @@ The exact schema, worker adapter, workflow wiring, and proof library remain
 provisional. Introduce shared domain interfaces after two working fixtures expose
 what is common. Evidence semantics must not inherit a particular tool API.
 
-Hindsight may later help retrieval through provenance-linked projections; recalled
-text remains untrusted and cannot satisfy a gate on its own. AutoSaddler may later
-optimise broader harness choices. Keep both outside the first pilot comparisons.
+[Hindsight](https://hindsight.vectorize.io/) is a later candidate for memory
+retrieval, consolidation, and reflection. We would connect its recalled memories
+to versioned evidence and artifact records; recalled text remains untrusted and
+cannot satisfy a gate on its own.
+
+[AutoSaddler](https://github.com/microsoft/AutoSaddler) is a later candidate for
+trace-driven changes to prompts, tools, and other harness components. That wider
+mutation surface deserves a separate experiment from the Dream-RSI scheduling
+pilot. Keep both Hindsight and AutoSaddler outside the first pilot comparisons.
 
 ## Sources and provenance
 
@@ -161,11 +209,23 @@ This standalone design derives from the
 That document is historical context; this repository's design and roadmap govern
 Warranted. No interface or runtime dependency on its originating project is implied.
 
-- [Dream-RSI](https://arxiv.org/html/2609.14858v1) motivates the scheduling experiment;
-  use its published method without assuming an available integration.
-- [Vercel's tool-reduction case study](https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools)
-  motivates a small worker interface, not a universal performance claim.
-- [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview),
-  [mini-swe-agent](https://mini-swe-agent.com/latest/), and
-  [Lean](https://lean-lang.org/doc/reference/latest/) are integration candidates;
-  check and pin concrete versions at the relevant milestone.
+The project also grew out of ReSchema's reverse-engineering work and its use of
+validated executable artifacts. Keeping Warranted's core independent preserves
+that history while letting new task families determine its interfaces.
+
+| Source | Influence and intended use | Where developed here |
+| --- | --- | --- |
+| [Schema](https://schema-harness.github.io/) | Executable world models checked against observations | [Durable knowledge](#durable-knowledge) |
+| [PRO-LONG, v2](https://arxiv.org/html/2607.20064v2) | Complete, programmatically searchable interaction history | [Durable knowledge](#durable-knowledge) |
+| [Dream-RSI, v1](https://arxiv.org/html/2609.14858v1) | Published method adapted for the planned scheduling experiment | [Exploration and replay](#dream-rsi-exploration-and-replay) |
+| [Vercel's d0 case study](https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools) | Legible files and a small worker interface | [Boundaries and ownership](#boundaries-and-ownership) |
+| [mini-swe-agent](https://mini-swe-agent.com/latest/) | Candidate worker implementation | [Boundaries and ownership](#boundaries-and-ownership) |
+| [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) | Candidate workflow and persistence implementation | [Boundaries and ownership](#boundaries-and-ownership) |
+| [Lean](https://lean-lang.org/doc/reference/latest/) | Formal language and proof-checking foundation | [Rules, gates, and verification](#rules-gates-and-verification) |
+| [Hindsight](https://hindsight.vectorize.io/) | Later memory integration candidate | [Scope and provisional choices](#scope-and-provisional-choices) |
+| [AutoSaddler](https://github.com/microsoft/AutoSaddler) | Later harness-optimisation candidate | [Scope and provisional choices](#scope-and-provisional-choices) |
+
+Credit the source where its idea is introduced, explain our adaptation, and retain
+the citation when refactoring the design. Check and pin implementation versions
+at the relevant milestone; research inspiration does not imply an integration
+already exists or that upstream results have been reproduced here.

@@ -60,6 +60,13 @@ the task's usage or authorises a blind retry.
 
 ## Knowledge-workflow conditions
 
+The first two additions make the influences of
+[PRO-LONG](https://arxiv.org/html/2607.20064v2) and
+[Schema](https://schema-harness.github.io/) explicit: accessible history in B,
+then executable models in C. These are Warranted conditions inspired by that work;
+they are not replications of those systems or their ARC-AGI-3 evaluations. D and E
+test the additional value of dependency tracking and formal proof support.
+
 | Condition | Added support |
 | --- | --- |
 | A | Ordinary workspace and prose notes |
@@ -86,14 +93,24 @@ with inexpensive development runs to set budgets and a minimum useful improvemen
 then freeze them before final evaluation. Split by task instance and derivation
 lineage so variants or descendants do not leak between training and held-out data.
 
-## Scheduling comparison
+## Dream-RSI scheduling comparison
 
-After A–E works, use one controlled family for a focused comparison:
+This is the pilot's adaptation of
+[Dream-RSI](https://arxiv.org/html/2609.14858v1), with the method and our additional
+requirements explained in the [design](design.md#dream-rsi-exploration-and-replay).
+After A–E works, use one controlled family to ask whether Dream-RSI-inspired
+scheduling helps both a simpler knowledge workflow and the full Warranted workflow:
 
-| Knowledge workflow | Fixed policy | Replay-improved policy |
+| Knowledge workflow | Fixed policy | Dream-RSI-inspired policy |
 | --- | --- | --- |
 | C | Executable-model baseline | Search improvement with the simpler workflow |
 | E | Full knowledge workflow | Combined knowledge and search treatment |
+
+Keep the comparisons distinct: C fixed versus C evolved measures search gains
+with the simpler workflow; E fixed versus E evolved measures them with the full
+workflow. Comparing their gains tests whether the two approaches complement each
+other. Report these as results of Warranted's adaptation, with any departures from
+the published method recorded in the experiment manifest.
 
 Train a policy per workflow on the same training instances with equal optimisation
 caps. Each policy sees only the observations and knowledge support allowed in that

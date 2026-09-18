@@ -35,13 +35,35 @@ can then identify which conclusions need another check.
 - **Simple worker interfaces.** Prefer shell execution and files. The host owns
   bookkeeping and acceptance; the model chooses how to investigate.
 - **Measured search improvement.** Establish a fixed-policy baseline, then test
-  Dream-RSI-style replay to improve scheduling without changing the model or
-  letting an optimiser alter what counts as success.
+  an adaptation of [Dream-RSI](https://arxiv.org/html/2609.14858v1) to improve
+  scheduling through replay, with the model and acceptance contract held fixed.
 
 The initial task families are controlled data transformations and repository
 migrations. Their purpose is to exercise changed assumptions, restarts, and
 interdependent work. No existing domain harness or tool protocol defines the
 core interfaces.
+
+## Inspirations and foundations
+
+Warranted builds on other people's research and engineering. We want those
+influences to be visible alongside the design choices they inform:
+
+- **Dream-RSI** supplies the method behind the planned search-improvement pilot.
+  The [design](docs/design.md#dream-rsi-exploration-and-replay) explains its
+  contribution and Warranted's adaptation.
+- **[Schema](https://schema-harness.github.io/) and
+  [PRO-LONG](https://arxiv.org/html/2607.20064v2)** motivate executable world models
+  and complete, programmatically accessible histories, respectively.
+- **[Vercel's tool-reduction case study](https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools)
+  and [mini-swe-agent](https://mini-swe-agent.com/latest/)** inform the preference
+  for a small worker interface and legible files.
+- **[LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) and
+  [Lean](https://lean-lang.org/doc/reference/latest/)** are the intended foundations
+  for durable workflow execution and formal proof checking.
+
+Our experiment brings these ideas together around evidence, changing assumptions,
+and independently checked acceptance. The [design's sources and provenance](docs/design.md#sources-and-provenance)
+also explain the project's origins and later candidates, Hindsight and AutoSaddler.
 
 ## Get started
 
