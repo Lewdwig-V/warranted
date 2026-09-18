@@ -120,6 +120,54 @@ the proposition captures the user's requirement or that empirical premises hold.
 A proof of a Lean function does not verify a separate implementation or parser.
 An unsuccessful proof attempt is unproved, not a counterexample or a false claim.
 
+## Intent, contracts, and acceptance
+
+Formalisation can enforce chosen properties without establishing that those
+properties express the intended or complete requirement. An implementation can
+also preserve every proved property while changing behavior the user expected
+to keep. Treat these as distinct failure modes when defining acceptance.
+
+Preserve the original request, subsequent clarifications, reference examples,
+assumptions, and declared behavior to preserve alongside each versioned formal
+interpretation. Link obligations to their source requirements and record known
+gaps or unresolved ambiguities. Use ordinary documents and existing artifact and
+dependency records; do not require a new specification language or bookkeeping
+interface. A generated interpretation or explanation is a proposal, not authority
+to replace the request. The contract owner approves targets and the evidence
+required for acceptance.
+
+Keep three assessments distinct: whether a proposition has a valid proof,
+whether its premises and implementation correspondence support its current use,
+and whether the candidate satisfies the current task's acceptance obligations.
+A receipt establishes only its stated scope. A valid proof cannot override a
+failed behavioral check or discharge an unrelated obligation. Missing or unknown
+required evidence remains blocking. Acceptance means the pinned contract's
+requirements were met; it does not certify that the contract captures every
+user need. Preserve known limitations in the acceptance record.
+
+Review a proposed contract by asking: what implementation would satisfy it but
+clearly disappoint the user? Compare concrete counterexamples with independently
+supplied requirements and examples, including empty or degenerate behavior that
+makes a property vacuously true. Candidate-generated tests may reveal gaps, but
+cannot replace independent acceptance checks. This review can expose omissions;
+it does not guarantee discovery of every unstated requirement.
+
+For changes to existing work, identify intended changes and declared behavior
+to preserve. Retain relevant regression checks, compatibility cases, and observable
+examples outside the new formal obligations. Their results remain separate
+acceptance evidence; a proof is not a substitute for them. Record uncovered
+behavior rather than claiming that all unintended deviation is excluded.
+
+A contract may be fallible while remaining binding until an authorised revision.
+Revision review covers supporting definitions and dependency versions as well as
+the top-level statement: changing a predicate can change what a law means without
+changing its text. Record the owner, rationale, and affected requirements; reassess
+dependent acceptance evidence against the new version. An agent's discovery of
+a gap does not waive an existing gate or turn a failed old contract into a pass.
+
+The [pilot cases](pilot.md#specification-and-behavioral-failures) exercise these
+requirements without assuming that Warranted can infer missing user intent.
+
 ## Recovery and accounting
 
 The ledger is authoritative; checkpoints carry references and execution cursors.

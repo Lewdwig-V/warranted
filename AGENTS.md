@@ -69,6 +69,10 @@ tests or a test command that silently accepts an empty suite.
    is unsupported, replay adds no new evidence, and it cannot call live tools.
 7. Training, development, and held-out tasks remain separate by provenance and
    lineage. Report failed attempts and optimisation cost as well as successes.
+8. Passing a check establishes only its stated scope, not fidelity to user intent
+   or whole-task success. Specifications remain binding until an authorised
+   revision; preserve failed independent obligations and known gaps. See
+   [intent, contracts, and acceptance](docs/design.md#intent-contracts-and-acceptance).
 
 These are requirements for the future runtime. Maintain the threat model and
 negative cases as each boundary is implemented; do not claim enforcement from

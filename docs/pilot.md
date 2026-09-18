@@ -49,6 +49,59 @@ These two fixtures should determine the first shared adapter contract. Keep the
 environment's observations/operations, the worker's proposals, and authoritative
 checking distinct, but avoid freezing a universal API before both fixtures work.
 
+## Specification and behavioral failures
+
+Exercise the [intent and acceptance requirements](design.md#intent-contracts-and-acceptance)
+with deterministic candidates before adding agent trials. Each fixture retains
+the original request, source documentation, and independently supplied behavioral
+examples as versioned artifacts alongside its formal interpretation. The fixture
+owner fixes the acceptance obligations and evaluator before the run; the worker
+cannot replace them with its own laws, tests, or explanations.
+
+Include three distinct negative cases:
+
+1. **Mistranslated requirement.** A data transformation's formal target uses the
+   wrong timestamp offset convention. The candidate meets that target, but fails
+   an example derived independently from the source documentation and request.
+2. **Incomplete formal target.** A transformation drops records while satisfying
+   an identifier-uniqueness law. The original request requires preserving all
+   records, and an independent check detects the loss. Include the degenerate
+   candidate that drops every record; uniqueness alone permits it.
+3. **Regression outside the proved properties.** A repository migration meets
+   its field-renaming properties but drops an optional field required by a legacy
+   consumer. A predeclared compatibility case fails even though the new formal
+   obligations remain satisfied.
+
+Establish the two data-transformation cases with executable checks in M2. In M4,
+formalise only uniqueness preservation and reuse that theorem for the incomplete
+target case and its successful control. For example, applying the theorem to an
+empty selected input can establish output uniqueness while the independent check
+rejects losing records from the nonempty source. This requires no proof of record
+preservation or timestamp semantics. Introduce the migration fixture across all
+conditions in M5; add the timestamp-mistranslation and migration proofs in its
+Lean condition, retaining M4's case.
+
+Use valid proofs of these inadequate targets. Do not substitute proof forgery,
+unsupported premises, or a mismatch between model and implementation for these
+specification failures. Include successful controls satisfying all obligations
+so that rejecting every candidate cannot count as success. Keep final task
+acceptance identical across A–E.
+
+Record the narrow check or proof as successful and the task as rejected by the
+failed independent obligation. Preserve the conflicting evidence across restart;
+neither another proof nor an agent-authored reinterpretation may erase it. A
+corrected candidate may pass after the required checks run again, with the old
+failure still recorded. When the fixture owner authorises a contract revision,
+retain the old result and require a fresh acceptance decision bound to the revised
+contract and definitions.
+Also reject attempts to change a supporting predicate to make an unchanged law
+easier to satisfy under the old contract identity.
+
+These cases test rejection of known failures against independently supplied
+requirements. They do not demonstrate automatic discovery of unstated user intent.
+Measure finding omitted requirements separately from enforcing known ones; do
+not count an evaluator rejection alone as successful specification repair.
+
 ## Recovery fixture
 
 Use a controlled fake service for operation-level crash tests. It can supply an
@@ -146,6 +199,13 @@ environment, limits, split, and outcome. Retain failures and interrupted runs.
 Report task success, stale conclusions used, recovery correctness, repeated work,
 human interventions, unknown outcomes, and total tokens/tool/proof work, elapsed
 time, and cost. Record formalisation errors and interface/bookkeeping overhead.
+
+Separate mistranslated or omitted requirements, regressions outside proved
+properties, and proof/checker failures. Report cases where formal checks pass but
+independent task acceptance fails; proof success is not task success. Record
+contract revisions and unresolved gaps without treating them as passes of the
+original contract.
+
 For scheduling, also report replay coverage and mismatches between replay rankings
 and live results, including regressions.
 
