@@ -32,6 +32,151 @@ for unique input identifiers. Checks supporting those premises belong to the
 current input snapshot. The theorem does not by itself verify the separate
 transformation implementation or establish the source data's properties.
 
+## M1 scripted walkthrough
+
+Status: proposed acceptance cases for M1. The script, fixture, and tests do not
+exist yet. Record the following history before choosing a schema or public API.
+These descriptions name observable facts, not mandatory tool calls or event types.
+
+### Fixed fixture and expected outputs
+
+Use this small instance of the first task family. Keep its source contract fixed
+throughout M1. M2 adds revised assumptions and dependent claims.
+
+The input is a UTF-8 CSV file:
+
+```csv
+id,timestamp,value
+r1,2026-01-01T00:30:00+01:00,7
+r2,2026-01-01T02:00:00+01:00,11
+r3,2026-01-02T00:15:00+01:00,5
+```
+
+The source contract requires the transformation to preserve every row, its order,
+its identifier, and its integer value. Convert each explicit timestamp offset to
+UTC. Sum the values by the UTC date, not the source date.
+
+The expected normalized CSV is:
+
+```csv
+id,timestamp,value
+r1,2025-12-31T23:30:00Z,7
+r2,2026-01-01T01:00:00Z,11
+r3,2026-01-01T23:15:00Z,5
+```
+
+The expected daily totals are:
+
+```json
+{"2025-12-31": 7, "2026-01-01": 16}
+```
+
+Store the fixed expected outputs independently of the transformation code. Compare
+the normalized rows and parsed totals with these fixed expectations. Preserve
+the exact raw output bytes even when the comparison ignores serialization details.
+This comparison establishes this fixture's output behavior. It does not implement
+the M2 acceptance gates or prove the transformation correct for other inputs.
+
+### Identity and recorded context
+
+An operation ID names one requested execution within a project. Bind it to the
+operation kind, input bytes, transformation version, source contract, and relevant
+environment and context versions. Compare this identity before returning a stored
+result or dispatching work. A new session does not change an operation's identity.
+Equal output bytes do not make different requests identical.
+
+A world identifies an investigation with fixed relevant context. Record the
+fixture version, run identity, initial limits, and environment. Record the world
+identity, its parent or explicit absence, and session boundaries.
+The [Dream-RSI adaptation](design.md#dream-rsi-exploration-and-replay) requires
+this context later. M1 records one root world. It does not execute branches or
+replay histories.
+
+Record the script version and its input references with each result. The host
+captures raw standard output, standard error, exit status, and output artifacts.
+Keep the source contract and input snapshot as versioned artifacts too.
+Agent-authored text cannot supply the origin of an authoritative result.
+Model and proof configuration are not applicable to this scripted run.
+
+### Expected history
+
+A reservation holds resources for an unresolved operation. Use a project limit
+of five synthetic work units for transformation attempts. Reserve three units
+before dispatch and report two units of actual usage for this successful script.
+These numbers test accounting. They are not measured tokens, time, or money.
+Record measured elapsed time separately.
+
+| Step | Observable history | Spent / reserved / available units |
+| --- | --- | --- |
+| Create | Create a project and session. Record the manifest, source contract, and input snapshot. | 0 / 0 / 5 |
+| Reserve | Record `transform-1`, its exact request identity, and its reservation before execution. | 0 / 3 / 2 |
+| Execute | Run the script once. Capture its raw results and output files outside authoritative storage. | 0 / 3 / 2 |
+| Complete | Publish complete artifact bytes. Commit the result references, operation outcome, and accounting together. | 2 / 0 / 3 |
+| Reopen | Start a fresh process and session. Recover the same project history and artifact bytes. | 2 / 0 / 3 |
+| Repeat | Request `transform-1` with the same identity. Return its recorded outcome without execution or another charge. | 2 / 0 / 3 |
+| Inspect | Export the permitted history. Trace the output bytes to the operation, input snapshot, and source contract. | 2 / 0 / 3 |
+
+Recording completion releases the entire reservation and adds actual usage once.
+Keep the original session and outcome in history when a later session reads them.
+Inspection and repeated reads do not add corroborating evidence or repeat work.
+The script's execution count must remain one across completion and reopening.
+Tests must observe executions independently of the ledger's claim of completion.
+
+### Interruption and negative cases
+
+Run each case from a fresh copy of the fixture. Start recovery in a new process.
+Use controlled interruption points, not sleeps. Assert the resulting history,
+artifact bytes, execution count, and accounting through supported inspection.
+
+| Case | Required result |
+| --- | --- |
+| Interrupt before the reservation commits | No execution starts. No partial operation or charge appears. The available allowance remains five units. |
+| Interrupt after reservation, before a committed result | The three-unit reservation survives. Reopening dispatches nothing. Preserve a known unstarted operation as pending. If prior execution is uncertain, retain an unknown outcome. Repeating the unresolved request does not dispatch or add another reservation. |
+| Interrupt during artifact publication | No committed completion references a partial or missing artifact. Unreferenced and temporary files supply no evidence. The reservation survives. |
+| Interrupt during the completion transaction | Recovery sees either the unresolved reservation or the complete outcome with settled usage. It never sees a partial accounting update. |
+| Commit completion, then lose the response | The repeated request returns the committed result. Execution count remains one. Spent usage remains two units and the reservation remains zero. |
+| Repeat a completion receipt | An identical receipt changes nothing. A conflicting outcome, artifact reference, or usage value is rejected. The original result remains intact. |
+| Reuse an operation ID with changed identity | Change input bytes, transformation version, contract version, or relevant context separately. Each request fails before execution or cached success, even if it produces the same output. |
+| Record another observation or artifact version | The new record retains its origin. The old record and its raw bytes remain readable and unchanged. Attempts to replace the old record through the writer fail. |
+| Remove or alter a referenced artifact | Inspection reports missing or corrupt evidence. It does not report a usable result or silently regenerate the bytes. |
+| Reserve beyond the remaining allowance | The request fails before execution. In particular, an unresolved three-unit reservation blocks another three-unit request under the five-unit cap, across sessions and operation IDs. |
+| Report usage above the reservation or cap | Retain the full observed usage and record the breach. Block further dispatch. Never reduce recorded usage to fit the reservation or cap. |
+| Script fails with a known outcome | Preserve its nonzero exit status, raw diagnostics, and actual usage. Settle its reservation once. A repeated request returns that failure without another execution. |
+
+File publication and a database transaction do not form one atomic operation.
+The required ordering publishes complete artifact bytes before a transaction
+commits references to them. A crash can leave an unreferenced file. Such a file
+does not establish an operation outcome or release a reservation. M1 does not
+need automatic cleanup of those files.
+
+The successful case is required alongside the failures. Reopening must recover
+usable completed work. Rejecting every operation does not satisfy M1.
+
+### Scope and completion evidence
+
+M1 covers process interruption on a local filesystem with one trusted writer.
+The tests do not establish recovery from power loss, disk loss, or hostile changes
+to host-owned state. They do establish explicit failure when referenced evidence
+is missing or corrupt. Concurrent writers remain outside this milestone.
+
+Keep candidate output separate from authoritative files. Give inspection consumers
+only permitted exports or access that cannot reach the authoritative write path.
+Editing an export must leave authoritative history unchanged. M1 has no untrusted
+worker. Process isolation and worker attempts to forge receipts belong to M3.
+
+An unresolved operation keeps its reservation until attributable evidence permits
+reconciliation. An operator's guess or a new session is not such evidence.
+The fake service and lost-response reconciliation in the recovery fixture belong
+to M3. M1 completion evidence must show that unresolved work stays visible and
+blocks unsafe retries.
+
+Implement these cases alongside the three PRs in
+[the M1 roadmap](roadmap.md#m1--local-evidence-and-restart). Add pytest with the
+first behavior-bearing slice, as required by [AGENTS.md](../AGENTS.md).
+Local checks must need no model credentials or external services. Add the exact
+walkthrough and test commands when they exist. Retain the resulting history as
+completion evidence. This plan alone does not complete any M1 checkbox.
+
 ## Second family: repository migration with revised requirements
 
 Provide a small local repository containing configuration, a consumer, and tests.
