@@ -7,7 +7,7 @@ a simpler way to meet the requirements; preserve the independent comparisons.
 | Milestone | Result | Depends on | Status |
 | --- | --- | --- | --- |
 | M0 | Reproducible repository scaffold | — | Complete |
-| M1 | Inspectable evidence that survives restart | M0 | Next |
+| M1 | Inspectable evidence that survives restart | M0 | In progress |
 | M2 | Changed-premise recovery with explicit gates | M1 | Planned |
 | M3 | Bounded worker and trustworthy operation recovery | M2 | Planned |
 | M4 | Independently checked Lean obligations | M2; M3 for agent trials | Planned |
@@ -31,7 +31,7 @@ Start with observations, operation identity, raw results, and usage; add richer
 claim semantics in M2.
 
 - [ ] Commit events atomically and preserve immutable observation/artifact versions.
-- [ ] Reopen a project in a fresh process and recover committed state.
+- [x] Reopen a project in a fresh process and recover committed state.
 - [ ] Deduplicate a completed operation by ID and input identity; reject collisions.
 - [ ] Retain pending/unknown operations and resource reservations after interruption.
 - [ ] Expose legible files or permitted read-only queries without giving workers
@@ -51,8 +51,10 @@ Each PR includes the negative cases for the behavior it introduces.
 Use the [M1 scripted walkthrough](pilot.md#m1-scripted-walkthrough) to derive the
 first records and interfaces. It specifies fixed outputs, expected history,
 accounting totals, and interruption cases. The plan is not implemented evidence.
-The [PR1 persistence plan](m1-persistence.md) proposes the records, host interface,
-publication order, and focused tests for the first slice.
+The [PR1 persistence contract](m1-persistence.md) describes the implemented records,
+host interface, publication order, and focused tests. Observation persistence and
+fresh-process recovery are implemented. Atomic operation completion, accounting,
+and permitted exports remain open.
 
 ## M2 — Claims, applicability, and gates
 

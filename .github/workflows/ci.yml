@@ -27,6 +27,8 @@ jobs:
         run: |
           uv run --locked ruff check .
           uv run --locked ruff format --check .
+      - name: Test evidence persistence
+        run: uv run --locked pytest -q tests/test_ledger.py
       - name: Check entry points
         run: |
           uv run --locked warranted --help
@@ -38,3 +40,4 @@ jobs:
           uv venv .venv-wheel
           uv pip install --python .venv-wheel/bin/python --no-deps dist/*.whl
           .venv-wheel/bin/warranted --version
+          .venv-wheel/bin/python -c "from warranted.ledger import Ledger"

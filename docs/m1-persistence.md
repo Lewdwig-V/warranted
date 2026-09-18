@@ -1,8 +1,8 @@
 # M1 PR1: evidence persistence
 
-Status: proposed implementation plan. No runtime behavior in this document exists
-yet. The [scripted walkthrough](pilot.md#m1-scripted-walkthrough) defines the
-observable requirements. This document selects the first records and host API.
+Status: PR1 is implemented with local tests. The
+[scripted walkthrough](pilot.md#m1-scripted-walkthrough) defines the full M1
+requirements. This document describes the first records and provisional host API.
 
 PR1 stores raw evidence, preserves its origin, and recovers it in a fresh process.
 PR2 adds operation identity enforcement, reservations, and completion receipts.
@@ -11,8 +11,8 @@ PR3 adds permitted exports and the complete scripted walkthrough.
 ## Records and files
 
 Use one concrete `Ledger` class in `src/warranted/ledger.py`. Use Python's standard
-library for SQLite, serialization, identifiers, hashing, and files. Add no runtime
-dependency. Add pytest through uv when implementation starts.
+library for SQLite, serialization, identifiers, hashing, and files. There are no
+runtime dependencies. pytest is a development dependency for the failure cases.
 
 The project directory contains `ledger.sqlite3` and `artifacts/sha256/`.
 An artifact is a stored sequence of exact bytes. Name each artifact file by its
@@ -60,7 +60,13 @@ structured result merely because it contains words such as `accepted` or `succes
 
 Use ordinary methods on the concrete ledger. These are Python interfaces for
 trusted host code, not worker tools or a mandatory sequence of model actions.
-The names and parameter shapes remain provisional until implementation tests them.
+The names and parameter shapes remain provisional until a second use case tests them.
+
+`Manifest` records string environment entries and integer allowances by unit.
+`Snapshot` takes raw bytes, an origin label, and a version. Creation returns
+`SnapshotRef` values in the project's immutable snapshot mapping. `Origin` takes
+the operation ID and kind, producer name and version, and named input references.
+See the [runnable example](../README.md#local-evidence-api).
 
 | Method | Contract |
 | --- | --- |
@@ -154,11 +160,11 @@ it at a known boundary, then reopen from another process. Do not depend on timin
 sleeps or exception-only simulations of a crash. Test instrumentation can pause
 at private boundaries without becoming a production callback interface.
 
-Run the focused tests through uv and all documented lint, entry-point, and build
-checks before proposing the implementation merge. Update `pyproject.toml` and
-`uv.lock` together when pytest is added. CI must execute the real tests.
+Run `uv run --locked pytest -q tests/test_ledger.py` for the focused tests.
+CI runs this suite on pull requests and main. Keep `pyproject.toml` and `uv.lock`
+together when dependencies change. Run the documented lint, entry-point, and build
+checks before proposing a merge.
 
-PR1 is complete when these tests establish evidence persistence and the README
-describes that limited behavior accurately. Operation receipts, accounting, task
-execution, permitted exports, and the full walkthrough remain later PRs. Keep
-the M1 milestone open until its complete acceptance cases pass.
+PR1 implements evidence persistence within the scope above. Operation receipts,
+accounting, task execution, permitted exports, and the full walkthrough remain
+later PRs. Keep the M1 milestone open until its complete acceptance cases pass.
