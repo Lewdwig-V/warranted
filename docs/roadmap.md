@@ -59,11 +59,23 @@ claim/dependency representation that can recover after one changed premise.
 - [ ] Enforce gates against exact versions at the protected operation, including
   missing evidence, unknown applicability, and attempted bypass cases.
 - [ ] Apply an independent deterministic completion check to the fixture.
+- [ ] Preserve the request, clarifications, examples, and formal interpretations
+  as linked versions; identify the contract owner, acceptance obligations, and
+  known gaps as described in [the design](design.md#intent-contracts-and-acceptance).
+- [ ] Exercise the data-transformation [specification failures](pilot.md#specification-and-behavioral-failures)
+  with executable checks: narrow success cannot override a failed behavioral
+  obligation, including after restart. Include a successful control.
+- [ ] Retain contract revision provenance and prior outcomes; require reassessment
+  against changed definitions and reject worker-authored weakening under an old
+  contract identity.
 - [ ] Resume after a forced fresh-process restart and revised input interpretation.
 
 **Completion evidence:** a scripted run initially reaches a justified result,
 receives contrary evidence, blocks stale reuse, and rebuilds only the affected
 work. A rule exception never opens a gate. A forged or mismatched receipt fails.
+Passing a narrow check cannot establish task completion while an independently
+specified obligation fails. An authorised contract revision creates a new
+acceptance decision without rewriting the old failure.
 
 **Decision:** keep dependency capture conservative until its omissions can be
 detected. Do not construct a general reasoning ontology to support one example.
@@ -104,11 +116,16 @@ and the independent task evaluator outside the theorem.
   `sorryAx`, unapproved axioms, and forged success labels.
 - [ ] Keep a checked theorem valid when a premise becomes unsupported, while
   blocking its application to the changed input.
+- [ ] Demonstrate valid proofs of the mistranslated and incomplete targets in the
+  pilot while independent behavioral checks keep task acceptance blocked. Preserve
+  proof success and task failure separately, alongside a successful control.
 - [ ] Bound and account for proof work; record timeout/failure as unproved.
 
 **Completion evidence:** one accepted conditional theorem, one currently supported
 application, and negative tests for every acceptance boundary. Demonstrate the
 premise change without claiming a Lean proof verifies a separate Python program.
+The specification cases must fail because their targets are inadequate, not
+because the proof is invalid or the implementation differs from its model.
 
 **Decision:** compare the additional cost with the executable-check baseline.
 Formalisation should target useful obligations rather than all exploratory claims.
@@ -120,11 +137,15 @@ in local copies and uses an independent acceptance checker; no remote publishing
 or production writes are required.
 
 - [ ] Complete the same restart/changed-premise exercise in this second task family.
+- [ ] Exercise the pilot's migration regression outside the proved properties,
+  retaining the declared compatibility obligations and a successful control.
 - [ ] Derive the smallest shared adapter boundary from both working fixtures.
 - [ ] Run the A–E conditions in [pilot.md](pilot.md) with fixed scheduling and
   equal worker capabilities, including frontier and small-model trials.
 - [ ] Separate training/development/final tasks and preserve full failure records.
 - [ ] Report task success, stale reuse, recovery, repeated work, and total cost.
+- [ ] Report specification failures separately from proof/checker failures and
+  distinguish rejecting known failures from discovering omitted requirements.
 
 **Completion evidence:** reproducible runs on both families, versioned experiment
 manifests, and untouched final results. Development runs set useful-improvement
