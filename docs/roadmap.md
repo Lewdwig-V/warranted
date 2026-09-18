@@ -48,6 +48,12 @@ crash. A short scripted walkthrough exposes the recorded raw evidence.
 receipts with recovery/accounting; read-only inspection plus the scripted walkthrough.
 Each PR includes the negative cases for the behavior it introduces.
 
+Use the [M1 scripted walkthrough](pilot.md#m1-scripted-walkthrough) to derive the
+first records and interfaces. It specifies fixed outputs, expected history,
+accounting totals, and interruption cases. The plan is not implemented evidence.
+The [PR1 persistence plan](m1-persistence.md) proposes the records, host interface,
+publication order, and focused tests for the first slice.
+
 ## M2 — Claims, applicability, and gates
 
 Use the data-transformation fixture in [pilot.md](pilot.md). Implement the smallest
