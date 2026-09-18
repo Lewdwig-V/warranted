@@ -244,6 +244,32 @@ and error costs on our tasks before choosing thresholds. Typed output constrains
 the answer format; it does not ensure factual correctness. The integration and
 its benefits remain unimplemented hypotheses.
 
+### Evaluator independence
+
+A second hypothesis is that separating generation from judgment reduces shared
+errors and self-validation bias, beyond any latency benefit. Studies of
+[LLM self-preference](https://arxiv.org/abs/2404.13076) and
+[evaluation on verifiable tasks](https://arxiv.org/abs/2504.03846) motivate testing
+this failure mode. They do not establish that Jev removes confirmation bias or
+that generative reasoning makes it unavoidable.
+
+Preserve three distinct forms of separation:
+
+- **Reasoning context:** invoke the judge in a fresh context without the worker's
+  deliberation or preferred verdict; retain evidence needed to assess the artifact.
+- **Evidence access:** the host supplies the requirements, candidate, and relevant
+  raw observations under the gate's visibility contract. A worker-selected summary
+  must not be the sole basis for judgment or hide contrary evidence.
+- **Learned failure modes:** a different model or training objective may provide
+  complementary errors. Different providers or System 1/System 2 labels alone
+  do not establish statistical independence.
+
+Measure whether Jev catches the generator's actual mistakes against a fresh-context
+same-model judge and a different generative judge in the [pilot](pilot.md#jev-classifier-and-judge-comparison).
+Overall judge accuracy is insufficient if its errors coincide with the generator's.
+Keep false rejection, abstention, and cost visible alongside erroneous acceptance;
+rejecting everything cannot demonstrate a useful reduction in shared errors.
+
 ## Recovery and accounting
 
 The ledger is authoritative; checkpoints carry references and execution cursors.

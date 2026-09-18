@@ -308,14 +308,40 @@ model versions and compute costs separately from the reasoning worker.
 First collect shadow predictions without affecting the baseline run; paired live
 trials with fresh state are required to establish downstream benefit.
 
-Evaluate judgment gates separately on a common candidate set, comparing designated
-LLM and Jev judges against independent reference labels. Keep the requirement,
-rubric, evidence access, and error tolerance fixed; record each judge's calibrated
+Evaluate judgment gates separately on a common candidate set against independent
+reference labels, with three designated judges:
+
+| Judge | Comparison purpose |
+| --- | --- |
+| Generator model in a fresh evaluation context | Separate evaluation from the generation history while retaining the same model |
+| Different generative model in a fresh context | Test whether changing models reduces shared errors |
+| Jev in a fresh context | Test whether a decision model supplies a more useful independent judgment |
+
+Keep the requirement, rubric, evidence access, and error tolerance fixed; record
+each judge's calibrated
 decision rule in its own pinned contract version. Then test them in paired live
 runs, retaining the same independent final task-success predicate. A no-judge run
 is a workflow baseline, never a way to bypass a required judgment gate. Include
 positive controls where a qualifying judgment permits its protected transition,
 plus nonqualifying, stale, forged, and abstaining results that leave it blocked.
+
+Hold the generating model fixed within each comparison and have all judges assess
+the same correct and incorrect candidates. Repeat by generator and task family;
+report the pairings separately. Hide explicit generator identity and its preferred
+verdict, but preserve the candidate and necessary evidence. Each judge receives
+the same host-prepared requirements and raw observations, without the generator's
+deliberation or a persuasive summary replacing evidence. Fresh context and hidden
+identity cannot guarantee that a judge will not recognise familiar output styles.
+
+Predeclare the conditional false-acceptance measure:
+`P(judge accepts | generator candidate violates the assessed obligation)`.
+Determine violations from independent reference labels, not another judge's vote;
+an unrelated task failure is not an error on the obligation being judged. Report
+counts and uncertainty by generator, category, and failure mode, including errors
+missed by multiple judges. Compare at development-selected operating points with
+matched coverage or false-rejection constraints and stated cost budgets. Freeze
+them before held-out evaluation; report when a judge cannot meet those constraints.
+Do not claim independence from raw disagreement or a lower acceptance rate alone.
 
 Define reference labels independently of the candidate and its judge, using
 fixture outcomes for objective categories and independently reviewed labels for

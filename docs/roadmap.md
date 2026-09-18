@@ -164,9 +164,16 @@ dependency or assumed speed, cost, calibration, or accuracy benefit.
   host-issued receipt. It cannot waive another gate, suppress a required check,
   or certify broader claims than the judgment contract specifies.
 - [ ] Compare routing with no learned classifier/judge, an LLM, and Jev; compare
-  LLM and Jev judgment gates against independent reference labels. Use the same
-  decision questions on the first family and repeat on the second family in M5.
+  same-model, different-model, and Jev judgment gates against independent reference
+  labels. Use the same decision questions on the first family and repeat on the
+  second family in M5.
   Freeze thresholds and rubrics before held-out evaluation and retain failures.
+- [ ] Test [evaluator independence](design.md#evaluator-independence) with fresh
+  judgment contexts and host-supplied evidence, preserving the same candidate set
+  across judges. Measure acceptance conditional on a generator error in the
+  assessed obligation, alongside false rejection, abstention, shared failure modes,
+  and cost. Treat reduced self-validation bias as a hypothesis, not a guarantee
+  of the System 1/System 2 split.
 
 **Completion evidence:** reproducible shadow and paired live runs show classification
 and judgment errors, calibration, coverage/abstention, escalation, latency, and total
