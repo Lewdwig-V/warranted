@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.15"
+          enable-cache: true
+      - name: Install Python and project
+        run: |
+          uv python install
+          uv sync --locked
+      - name: Check source
+        run: |
+          uv run --locked ruff check .
+          uv run --locked ruff format --check .
+      - name: Check entry points
+        run: |
+          uv run --locked warranted --help
+          uv run --locked warranted --version
+          uv run --locked python -m warranted --version
+      - name: Build and install the wheel
+        run: |
+          uv build --no-sources
+          uv venv .venv-wheel
+          uv pip install --python .venv-wheel/bin/python --no-deps dist/*.whl
+          .venv-wheel/bin/warranted --version
