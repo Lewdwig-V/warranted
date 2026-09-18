@@ -34,10 +34,9 @@ transformation implementation or establish the source data's properties.
 
 ## M1 scripted walkthrough
 
-Status: acceptance cases for M1. Local ledger tests now cover persistence,
-operation recovery, and accounting. The complete CSV script, fixture, and permitted
-exports remain PR3 work. The history below defines observable facts, not mandatory
-tool calls or event types.
+Status: implemented for the trusted local M1 slice. Tests cover persistence,
+operation recovery, accounting, permitted exports, and the complete CSV walkthrough.
+The history below defines observable facts, not mandatory tool calls or event types.
 
 ### Fixed fixture and expected outputs
 
@@ -171,12 +170,32 @@ The fake service and lost-response reconciliation in the recovery fixture belong
 to M3. M1 completion evidence must show that unresolved work stays visible and
 blocks unsafe retries.
 
-Implement these cases alongside the three PRs in
-[the M1 roadmap](roadmap.md#m1--local-evidence-and-restart). Add pytest with the
-first behavior-bearing slice, as required by [AGENTS.md](../AGENTS.md).
-Local checks must need no model credentials or external services. Add the exact
-walkthrough and test commands when they exist. Retain the resulting history as
-completion evidence. This plan alone does not complete any M1 checkbox.
+The three PRs in [the M1 roadmap](roadmap.md#m1--local-evidence-and-restart)
+implement these cases. Run the tests and demonstration from the repository root:
+
+```bash
+uv run --locked pytest -q tests
+uv run --locked python examples/m1/walkthrough.py start runs/m1
+uv run --locked python examples/m1/walkthrough.py resume runs/m1
+```
+
+Use a new run directory for `start`. Both processes report the same output checks
+and the accounting totals above. The script retains raw stdout, stderr, exit
+status, output bytes, source snapshots, expected outputs, and measured elapsed time.
+The fixed policy, evaluator version, Python version, and platform are recorded.
+Expected-output records and host code are separate snapshots and are not copied into
+the candidate workspace or permitted exports.
+
+The [walkthrough tests](../tests/test_walkthrough.py) observe the script's execution
+counter outside the ledger. They cover a nonzero process exit, wrong output with
+a zero exit, changed input or evaluator files, and a killed host after execution.
+Successful resume keeps one execution and one charge. An unknown outcome stays
+reserved and blocked. The checks assess only the fixed fixture's outputs.
+They are not M2 acceptance receipts or a general transformation proof.
+
+The run directory retains the full local history. CI retains only the selected
+exports, host reports, and execution counter in its `m1-walkthrough` artifact for
+14 days. These commands need no model credentials or external services.
 
 ## Second family: repository migration with revised requirements
 

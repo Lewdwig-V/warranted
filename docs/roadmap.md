@@ -1,14 +1,14 @@
 # Provisional roadmap
 
-Updated 2026-09-18. These are ordered experiments and implementation slices, not
-delivery dates. Only M0 is complete. M3a is an optional experiment alongside the
+Updated 2026-09-19. These are ordered experiments and implementation slices, not
+delivery dates. M0 and M1 are complete. M3a is an optional experiment alongside the
 main sequence, not a prerequisite for M4–M6. Review the design when a milestone
 exposes a simpler way to meet the requirements; preserve the independent comparisons.
 
 | Milestone | Result | Depends on | Status |
 | --- | --- | --- | --- |
 | M0 | Reproducible repository scaffold | — | Complete |
-| M1 | Inspectable evidence that survives restart | M0 | In progress |
+| M1 | Inspectable evidence that survives restart | M0 | Complete |
 | M2 | Changed-premise recovery with explicit gates | M1 | Planned |
 | M3 | Bounded worker and trustworthy operation recovery | M2 | Planned |
 | M3a | Jev as a System 1 classifier and judge | M3; second-family evaluation in M5 | Planned, optional |
@@ -36,7 +36,7 @@ claim semantics in M2.
 - [x] Reopen a project in a fresh process and recover committed state.
 - [x] Deduplicate a completed operation by ID and input identity; reject collisions.
 - [x] Retain pending/unknown operations and resource reservations after interruption.
-- [ ] Expose legible files or permitted read-only queries without giving workers
+- [x] Expose legible files or permitted read-only queries without giving workers
   access to the authoritative write path.
 - [x] Record world/parent identity, input/context versions, session boundaries,
   allowances, and costs needed for the Dream-RSI adaptation in M6. Do not build
@@ -52,13 +52,19 @@ Each PR includes the negative cases for the behavior it introduces.
 
 Use the [M1 scripted walkthrough](pilot.md#m1-scripted-walkthrough) to derive the
 first records and interfaces. It specifies fixed outputs, expected history,
-accounting totals, and interruption cases. The plan is not implemented evidence.
+accounting totals, and interruption cases.
 The [persistence contract](m1-persistence.md) describes the implemented records,
 host interface, publication order, and focused tests. PR1 and PR2 implement evidence
 persistence, atomic operation completion, and accounting. Process termination tests
 cover reservation, dispatch, publication, and completion. The tests count executions
-outside the ledger and recover state in a new process. PR3 still needs permitted
-exports and the complete CSV walkthrough. M1 remains open.
+outside the ledger and recover state in a new process. PR3 adds explicitly selected
+exports and the complete CSV walkthrough. `uv run --locked pytest -q tests` covers
+the M1 cases. The [documented commands](../README.md#run-the-m1-walkthrough) run the
+fixture and resume it in separate processes. CI retains the permitted evidence
+and independent execution counter for 14 days. Export tests demonstrate that
+excluded fields and bytes stay out, and editing copies leaves the ledger unchanged.
+M1 is complete within its single-writer, local-process durability scope. Worker
+isolation remains M3 work.
 
 ## M2 — Claims, applicability, and gates
 

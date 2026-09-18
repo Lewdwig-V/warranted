@@ -1,6 +1,6 @@
 # M1: evidence persistence and operation recovery
 
-Status: PR1 and PR2 are implemented with local tests. The
+Status: PR1, PR2, and PR3 are implemented with local tests. The
 [scripted walkthrough](pilot.md#m1-scripted-walkthrough) defines the full M1
 requirements. This document describes the first records and provisional host API.
 
@@ -96,8 +96,8 @@ budget, deduplicate execution, or establish task acceptance. A repeated call
 records another capture. Do not retry a write automatically after a lost response.
 PR2 supplies the operation receipt needed to resolve that ambiguity.
 
-These methods grant host access. They do not implement worker isolation or the
-permission filter for exports. PR3 must restrict exported fields and files.
+These methods grant host access. They do not implement worker isolation.
+The separate export function restricts exported fields and files.
 M3 must enforce the process boundary before an untrusted worker receives access.
 
 ## Publication and transaction contract
@@ -164,14 +164,15 @@ it at a known boundary, then reopen from another process. Do not depend on timin
 sleeps or exception-only simulations of a crash. Test instrumentation can pause
 at private boundaries without becoming a production callback interface.
 
-Run `uv run --locked pytest -q tests/test_ledger.py` for the focused tests.
+Run `uv run --locked pytest -q tests/test_ledger.py` for the focused ledger tests.
+Run `uv run --locked pytest -q tests` for the complete M1 suite.
 CI runs this suite on pull requests and main. Keep `pyproject.toml` and `uv.lock`
 together when dependencies change. Run the documented lint, entry-point, and build
 checks before proposing a merge.
 
 PR1 and PR2 implement evidence persistence and operation accounting within this scope.
-Task execution, permitted exports, and the full walkthrough remain later work.
-Keep the M1 milestone open until its complete acceptance cases pass.
+PR3 supplies permitted exports and the fixed CSV walkthrough. The complete M1
+suite demonstrates this scope. A general runner and worker isolation remain later work.
 
 ## Operation identity and recovery
 
@@ -242,3 +243,73 @@ executions. Recovery runs in a fresh process and observes either the unresolved
 reservation or the entire completion. Other tests cover successful reuse, known
 failure reuse, conflicting identities and receipts, missing bytes, transaction
 failure, multiple allowance units, and persistent budget breaches.
+
+## Permitted exports
+
+`warranted.exports.export_evidence` writes an inspection copy to a new directory.
+The trusted host supplies explicit selections. Every selection defaults to empty.
+
+```python
+from pathlib import Path
+
+from warranted.exports import export_evidence
+
+
+def export_result(ledger, observation):
+    return export_evidence(
+        ledger,
+        Path("inspection-copy"),
+        snapshots=("input.csv", "contract.md"),
+        observations={observation.sequence: ("stdout", "normalized.csv")},
+        operations=("transform-1",),
+    )
+```
+
+Snapshot and operation selections are tuples of exact names. Observation selections
+map sequence numbers to tuples of raw channel names. Unknown records, unknown
+channels, malformed selections, and existing destinations fail explicitly.
+Names remain JSON labels. Artifact filenames come only from their checked digests.
+
+The fixed format includes the generated project ID and these selected fields:
+
+| Selection | Exported fields |
+| --- | --- |
+| Snapshot | Name, version, digest, and byte length. Source labels are excluded. |
+| Observation | Sequence, original session and time, selected raw references, operation ID, kind, producer/version, and selected input references. A superseded sequence appears only when that observation is also selected. |
+| Operation | Origin fields above, reservation, original session/time, dispatch session/time, state, and any result with usage, elapsed time, and breached units. A completion links only to a selected observation. |
+
+Environment fields, fixture/run/world labels, complete request contexts, unselected
+input references, and unselected channel names and bytes are excluded. Selecting
+an operation does not implicitly select its raw evidence. No project-wide totals
+are exported because those totals can disclose unselected work. The host can
+inspect totals with `ledger.accounting()`.
+
+Approving a field or raw channel approves its complete value or bytes. The function
+does not scrub secrets embedded in approved text. The host must select disclosures
+before providing the export to a consumer. A consumer receives only that directory,
+not the `Ledger` object, database connection, run directory, or authoritative path.
+Selected bytes can match an unselected artifact's bytes. That does not grant the
+unselected record's name, provenance, or other fields.
+
+`index.json` identifies export format version 1 and marks the view as partial and
+non-authoritative. Missing fields mean omitted information, not negative evidence.
+An exported completion reports recorded state. It does not assert that all evidence
+was selected, certify task acceptance, or become a new acceptance receipt.
+There is no export import path.
+
+The writer copies checked artifact bytes into `artifacts/<digest>`. It creates no
+links to authoritative files. After all copies finish, it atomically publishes
+`index.json`. A failed copy reports its error and removes the incomplete directory.
+A killed process can leave files without an index. Such a directory is incomplete.
+Consumers must ignore it. Export edits cannot change the ledger or settle usage.
+
+The destination must be separate from authoritative storage, including through
+existing symlink aliases. Its parent must remain under trusted host control during
+publication. M1 does not defend against concurrent hostile filesystem changes or
+provide process isolation. Reuse the one-writer deployment rule during export.
+
+The [export tests](../tests/test_exports.py) cover disclosure, indirect references,
+copy independence, damaged selected bytes, destination overlap, write failure,
+and forced termination before and after index publication. The
+[walkthrough tests](../tests/test_walkthrough.py) run the documented CSV workflow
+in separate processes and retain the operation's original evidence across resume.

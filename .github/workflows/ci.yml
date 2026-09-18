@@ -27,8 +27,24 @@ jobs:
         run: |
           uv run --locked ruff check .
           uv run --locked ruff format --check .
-      - name: Test evidence and operation recovery
-        run: uv run --locked pytest -q tests/test_ledger.py
+      - name: Test M1 persistence, exports, and walkthrough
+        run: uv run --locked pytest -q tests
+      - name: Run the CSV walkthrough across two processes
+        id: walkthrough
+        run: |
+          uv run --locked python examples/m1/walkthrough.py start runs/m1-ci
+          uv run --locked python examples/m1/walkthrough.py resume runs/m1-ci
+      - name: Retain permitted walkthrough evidence
+        if: ${{ always() && steps.walkthrough.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: m1-walkthrough
+          path: |
+            runs/m1-ci/exports/
+            runs/m1-ci/reports/
+            runs/m1-ci/candidate/executions.log
+          if-no-files-found: error
+          retention-days: 14
       - name: Check entry points
         run: |
           uv run --locked warranted --help
@@ -41,3 +57,4 @@ jobs:
           uv pip install --python .venv-wheel/bin/python --no-deps dist/*.whl
           .venv-wheel/bin/warranted --version
           .venv-wheel/bin/python -c "from warranted.ledger import Ledger, Request, Result"
+          .venv-wheel/bin/python -c "from warranted.exports import export_evidence"
