@@ -18,10 +18,12 @@ interruption. It uses SQLite and files with one trusted writer.
 
 Reservations survive restart. Repeated requests reuse completed results without
 another charge, and uncertain executions remain blocked. Worker isolation, gates,
-Lean verification, and replay remain planned. M1 is still in progress.
+Lean verification, and replay remain planned. M1 is complete for a local filesystem
+with one trusted writer. A scripted CSV walkthrough demonstrates restart, result
+reuse, accounting, and selected evidence exports.
 
 There are no model calls, external services, or runtime dependencies in the
-current package. The command does not create a project or execute a task yet.
+current package. The main CLI still provides help and version information only.
 
 ## What we are building
 
@@ -87,7 +89,7 @@ newer. uv manages the project environment and dependencies through
 ## Development
 
 ```bash
-uv run --locked pytest -q tests/test_ledger.py
+uv run --locked pytest -q tests
 uv run --locked ruff check .
 uv run --locked ruff format --check .
 uv build --no-sources
@@ -97,6 +99,36 @@ Use `uv add` for new dependencies and commit the resulting lockfile. The focused
 tests cover conflicting requests, duplicate charges, damaged artifacts, budget
 breaches, and forced process termination. CI runs these tests on pull requests,
 alongside lint, formatting, entry points, and installation of the built wheel.
+
+## Run the M1 walkthrough
+
+From the repository root, run these commands with a new destination:
+
+```bash
+uv run --locked python examples/m1/walkthrough.py start runs/m1
+uv run --locked python examples/m1/walkthrough.py resume runs/m1
+```
+
+The first process converts the fixed CSV timestamps to UTC and sums values by UTC
+date. The second process recovers the same result. Each report must show one
+execution, two spent units, zero reserved units, three available units, and three
+passing output checks. These work units are synthetic. Elapsed nanoseconds are
+measured separately in the operation result.
+
+The script retains authoritative state in `runs/m1/ledger`, candidate files in
+`runs/m1/candidate`, and reports in `runs/m1/reports`. Each report names a separate
+export under `runs/m1/exports`. Open its `index.json` to trace selected snapshots,
+observations, and operation results to copied files in `artifacts/`.
+
+Give inspection consumers only the export directory. Evaluator snapshot records,
+host code, environment fields, and authoritative database files are excluded. Export edits
+cannot change the ledger. The script uses trusted fixture code and does not
+provide worker isolation. A changed fixture or environment fails before reuse.
+Unknown execution keeps its reservation and is not retried.
+
+CI runs both commands and retains the exports, reports, and execution counter in
+the `m1-walkthrough` artifact for 14 days. The [pilot](docs/pilot.md#m1-scripted-walkthrough)
+defines the fixed outputs and the limits of this demonstration.
 
 ## Local evidence API
 
@@ -190,7 +222,11 @@ Keep the authoritative project outside any untrusted worker's writable workspace
 | [docs/pilot.md](docs/pilot.md) | Domain-independent task fixtures and experimental comparisons |
 | [src/warranted](src/warranted) | Evidence ledger and help/version CLI |
 | [tests/test_ledger.py](tests/test_ledger.py) | Evidence, operation recovery, and accounting cases |
+| [src/warranted/exports.py](src/warranted/exports.py) | Explicit selection and independent file copies |
+| [examples/m1](examples/m1) | Fixed CSV fixture and restart walkthrough |
+| [tests/test_exports.py](tests/test_exports.py) | Export disclosure and publication boundaries |
+| [tests/test_walkthrough.py](tests/test_walkthrough.py) | Success, failure, changed input, and interrupted CSV execution |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | Persistence tests and package checks |
 
-The next implementation slice adds permitted exports and the scripted CSV
-walkthrough. See [M1 in the roadmap](docs/roadmap.md#m1--local-evidence-and-restart).
+The next milestone adds changed-premise handling, dependencies, and independent
+acceptance gates. See [M2 in the roadmap](docs/roadmap.md#m2--claims-applicability-and-gates).
