@@ -1,6 +1,6 @@
-# M1 PR1: evidence persistence
+# M1: evidence persistence and operation recovery
 
-Status: PR1 is implemented with local tests. The
+Status: PR1 and PR2 are implemented with local tests. The
 [scripted walkthrough](pilot.md#m1-scripted-walkthrough) defines the full M1
 requirements. This document describes the first records and provisional host API.
 
@@ -19,7 +19,7 @@ An artifact is a stored sequence of exact bytes. Name each artifact file by its
 SHA-256 digest. Temporary files belong on the same filesystem as final artifacts.
 The script's working directory remains separate from this authoritative directory.
 
-Use three tables. Keep identity, ordering, and session references in columns.
+Use four tables. Keep identity, ordering, and session references in columns.
 Store the typed manifest, origin, and artifact references as versioned JSON where
 they contain several fields. Validate their structure before writing or using them.
 
@@ -28,6 +28,7 @@ they contain several fields. Validate their structure before writing or using th
 | Project | Project ID, storage format version, creation time, immutable manifest with named snapshot references | Identify the project and the exact starting context after reopening. |
 | Session | Session ID, start time | Separate process sessions without discarding earlier history. Each project database owns its sessions. |
 | Observation | Committed sequence, session ID, capture time, origin, named artifact references, optional superseded observation sequence | Preserve one capture and its lineage. Order history without relying on wall-clock time. |
+| Operation | Operation ID, request, reservation, original session/time, optional dispatch session/time, optional completion reference/result/breaches | Preserve identity, uncertain execution, and settled usage. |
 
 An `ArtifactRef` contains the digest and byte length. The writer derives both
 values from the bytes. Artifact identity does not replace observation identity:
@@ -40,7 +41,7 @@ Snapshots include the input, source contract, and transformation source with the
 versions and origin labels. Use the labels to explain where the host obtained them.
 Labels alone do not establish byte identity.
 
-For PR1, all sessions reuse this one fixed context. The manifest records the
+All sessions reuse this one fixed context. The manifest records the
 [Dream-RSI context requirements](design.md#dream-rsi-exploration-and-replay)
 without adding a world registry or branch executor. Model configuration is not
 applicable. PR2 enforces allowances and records actual usage.
@@ -52,8 +53,9 @@ match their recorded bytes. PR1 records this source description. PR2 binds an
 operation ID to one request identity and rejects conflicting reuse.
 
 Store each capture's raw channels separately. For a script result, these include
-standard output, standard error, and each output file. Store exit status and other
-host-captured result metadata in a named JSON artifact. Raw text never becomes a
+standard output, standard error, and each output file. The operation receipt stores
+exit status, usage, and elapsed time as typed fields. Other result metadata can use
+a named JSON artifact. Raw text never becomes a
 structured result merely because it contains words such as `accepted` or `success`.
 
 ## Host interface
@@ -100,9 +102,9 @@ M3 must enforce the process boundary before an untrusted worker receives access.
 
 ## Publication and transaction contract
 
-The writer owns each transaction. Keep the insertion steps private so that PR2
-can insert evidence, completion, and accounting in one transaction. PR2 must not
-call a method that commits evidence and then settle usage in a separate commit.
+The writer owns each transaction. Private insertion methods let `complete` store
+evidence and completion together. Accounting derives from the committed operations.
+There is no separate mutable total that can drift from the receipts.
 
 For `record`, follow this order:
 
@@ -127,7 +129,9 @@ Initialize schema and project metadata together. Publish initial snapshot files
 before committing their references too. If initialization is interrupted, `open`
 must reject an incomplete project. It must not guess how to finish it.
 `create` must not overwrite that directory on a retry. Detect unsupported storage
-versions and report them explicitly. Automatic migrations are outside PR1.
+versions and report them explicitly. The current storage format is version 2.
+Version 1 projects remain unchanged and require the PR1 reader. Automatic migration
+is outside this slice.
 
 History identifies recorded facts even when a referenced file later disappears.
 Returning metadata does not certify the file's availability. Consumers must use
@@ -165,6 +169,76 @@ CI runs this suite on pull requests and main. Keep `pyproject.toml` and `uv.lock
 together when dependencies change. Run the documented lint, entry-point, and build
 checks before proposing a merge.
 
-PR1 implements evidence persistence within the scope above. Operation receipts,
-accounting, task execution, permitted exports, and the full walkthrough remain
-later PRs. Keep the M1 milestone open until its complete acceptance cases pass.
+PR1 and PR2 implement evidence persistence and operation accounting within this scope.
+Task execution, permitted exports, and the full walkthrough remain later work.
+Keep the M1 milestone open until its complete acceptance cases pass.
+
+## Operation identity and recovery
+
+A `Request` binds an `Origin` to the complete immutable `Project` context.
+This reuses the existing types for snapshot versions, source labels, environment,
+world lineage, fixture, run, and allowances. All context fields participate in
+equality. Sessions do not participate. Context changes require a new project in
+M1, even when the resulting bytes match. M2 adds changed-premise handling.
+
+Supply the exact requested context, not a context copied from a cached receipt
+after the caller changes its inputs. The host remains responsible for capturing
+every execution input. This API has no general command runner or argument parser.
+
+The `operations` table stores one row per operation ID. Reservation fields stay
+fixed. Dispatch and completion fields each move from absent to present once.
+SQL foreign keys bind sessions and the completion observation. Original session
+and dispatch times remain visible after a later session records the result.
+
+| Method | Contract |
+| --- | --- |
+| `reserve(session_id, request, reservation)` | Reserve nonnegative integer amounts by declared unit before execution. Repeating an identical request and reservation returns its existing state. Reject changed identity or reservation. |
+| `begin(session_id, request)` | Commit a dispatch marker before returning `True`. Only this return permits execution. Return `False` for unknown or completed work. Reject unreserved work or a budget breach. |
+| `complete(session_id, request, result, raw)` | Publish raw bytes, then commit one observation and completion together. Settle usage exactly once. Require a prior dispatch marker. |
+| `lookup(request)` | Compare identity and make sure that snapshot and result bytes remain intact. Return the operation, or `None` when the ID has no reservation. |
+| `operations()` | Return operation metadata in reservation order, including pending and unknown work. This inspection does not certify artifact availability. |
+| `accounting()` | Return each unit's limit, spent usage, unresolved reservations, and available balance. This inspection does not read artifact contents. |
+
+An operation is `pending` before its dispatch marker, `unknown` after that marker,
+and `completed` after its receipt. The marker means execution can have started.
+It does not assert that the process launched. A crash after `begin` commits but
+before execution leaves an unknown operation, because repeating execution is unsafe.
+Opening a project starts no work and changes no operation state.
+
+Repeated `reserve` calls never dispatch work. A host can explicitly call `begin`
+for known pending work after restart. An unknown operation keeps its reservation.
+There is no cancel, release, or automatic retry method. A host can settle an
+unknown operation only from an attributable captured result. An operator's guess
+or a new session supplies no such evidence. External receipt reconciliation
+remains M3 work.
+
+A `Result` records an `Outcome`, exit code, integer usage by unit, and elapsed
+nanoseconds. `SUCCEEDED` requires exit code zero. `FAILED` requires a nonzero exit
+code, including a negative signal code. `INFRASTRUCTURE_FAILURE` has no process
+exit code and requires a known failure. An uncertain outcome must remain unknown.
+These outcomes describe execution, not independent task acceptance.
+
+Actual usage must include every reserved unit, including an explicit zero when
+unused. Completion releases the entire reservation and adds actual usage once.
+The ledger retains usage above the reservation, including unexpected units, and
+records the affected units in `Completion.breaches`. Unexpected units have a zero
+allowance. Available balances can be negative. No value is clipped to fit a limit.
+
+A recorded breach blocks new reservations and pending dispatches. Existing
+unknown operations can still record their results and usage. Repeated completed
+requests remain readable. An identical completion, including elapsed time and
+named raw bytes, changes nothing. Conflicting completions fail and preserve the
+original evidence and charge.
+
+The operation methods enforce this protocol for trusted host code. They do not
+prevent arbitrary shell execution or direct writes to the database. `record`
+cannot create a completion, even when raw text claims success. Worker isolation
+and independent acceptance remain later milestones.
+
+The tests force process termination before reservation commit, after reservation,
+before and after dispatch commit, after execution, during publication, after
+evidence insertion, and before and after completion commit. A separate file counts
+executions. Recovery runs in a fresh process and observes either the unresolved
+reservation or the entire completion. Other tests cover successful reuse, known
+failure reuse, conflicting identities and receipts, missing bytes, transaction
+failure, multiple allowance units, and persistent budget breaches.

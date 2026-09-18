@@ -34,9 +34,10 @@ transformation implementation or establish the source data's properties.
 
 ## M1 scripted walkthrough
 
-Status: proposed acceptance cases for M1. The script, fixture, and tests do not
-exist yet. Record the following history before choosing a schema or public API.
-These descriptions name observable facts, not mandatory tool calls or event types.
+Status: acceptance cases for M1. Local ledger tests now cover persistence,
+operation recovery, and accounting. The complete CSV script, fixture, and permitted
+exports remain PR3 work. The history below defines observable facts, not mandatory
+tool calls or event types.
 
 ### Fixed fixture and expected outputs
 
