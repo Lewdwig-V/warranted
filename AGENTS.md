@@ -48,6 +48,9 @@ tests or a test command that silently accepts an empty suite.
   such as rejected, unproved, unsupported, unknown, and infrastructure failure.
 - Keep documentation and runnable commands in sync. Explain why a new abstraction
   or dependency is needed, and distinguish measurements from expectations.
+- Name and link research or engineering influences where their ideas enter the
+  design. Preserve attribution when generalising interfaces or moving documents;
+  distinguish borrowed methods, our adaptations, and implemented integrations.
 
 ## Invariants to preserve
 

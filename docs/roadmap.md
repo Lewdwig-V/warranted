@@ -12,7 +12,7 @@ a simpler way to meet the requirements; preserve the independent comparisons.
 | M3 | Bounded worker and trustworthy operation recovery | M2 | Planned |
 | M4 | Independently checked Lean obligations | M2; M3 for agent trials | Planned |
 | M5 | Second task family and knowledge-workflow comparisons | M3, M4 | Planned |
-| M6 | Replay-based scheduling pilot | M5; recording begins in M1 | Planned |
+| M6 | Dream-RSI adaptation: replay-based scheduling pilot | M5; recording begins in M1 | Planned |
 
 ## M0 — Repository foundation
 
@@ -37,7 +37,8 @@ claim semantics in M2.
 - [ ] Expose legible files or permitted read-only queries without giving workers
   access to the authoritative write path.
 - [ ] Record world/parent identity, input/context versions, session boundaries,
-  allowances, and costs needed for future replay. Do not build the replay engine yet.
+  allowances, and costs needed for the Dream-RSI adaptation in M6. Do not build
+  the replay engine yet.
 
 **Completion evidence:** local tests demonstrate reopen durability, atomicity,
 deduplication, changed-input rejection, and no double counting after a simulated
@@ -133,10 +134,18 @@ thresholds before final evaluation.
 simplify the design. Retain Lean only where its contribution justifies its cost.
 The core must remain independent of any pre-existing domain tool protocol.
 
-## M6 — Replay-based search improvement
+## M6 — Dream-RSI adaptation for search improvement
 
-Use one controlled task family with stable, replay-compatible contexts. The policy
-interface serves live and offline executors, with all enforcement outside policy code.
+Implement the [Dream-RSI](https://arxiv.org/html/2609.14858v1) adaptation described
+in the [design](design.md#dream-rsi-exploration-and-replay), using one controlled
+task family with stable, replay-compatible contexts. This milestone tests whether
+the method adds value alongside Warranted's knowledge workflow. Its placement
+after M5 isolates that question from the knowledge experiment; the recording
+requirements already shape M1 and the fixed exploration policy begins in M3.
+
+The policy interface serves live and offline executors, with all enforcement
+outside policy code. Use the [Dream-RSI scheduling comparison](pilot.md#dream-rsi-scheduling-comparison)
+to measure the adaptation against the fixed-policy baseline.
 
 - [ ] Replay recorded histories without executing workers, live tools, or side effects.
 - [ ] Reveal only available observations in recorded branch order; label missing or
@@ -157,9 +166,11 @@ branches, altered context, hidden evaluator access, counter resets, and replay w
 Batch width alone is not evidence of a wall-clock speedup.
 
 **Decision:** keep evolved scheduling only if untouched live results justify its
-total cost. A successful replay score is not a deployment guarantee. Assess reuse
-of Dream-RSI's implementation when available; do not make upstream availability
-a prerequisite for the small published-method experiment.
+total cost. A successful replay score is not a deployment guarantee. Assess
+Dream-RSI's upstream implementation for reuse at this milestone and document
+whether we integrate it or implement the published method independently. In
+either case, retain attribution and record departures from the method; upstream
+availability is not a prerequisite for the small experiment.
 
 ## Later, only if justified
 
