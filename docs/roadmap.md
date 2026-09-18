@@ -30,13 +30,13 @@ scripted task so persistence can be verified without a model or external service
 Start with observations, operation identity, raw results, and usage; add richer
 claim semantics in M2.
 
-- [ ] Commit events atomically and preserve immutable observation/artifact versions.
+- [x] Commit events atomically and preserve immutable observation/artifact versions.
 - [x] Reopen a project in a fresh process and recover committed state.
-- [ ] Deduplicate a completed operation by ID and input identity; reject collisions.
-- [ ] Retain pending/unknown operations and resource reservations after interruption.
+- [x] Deduplicate a completed operation by ID and input identity; reject collisions.
+- [x] Retain pending/unknown operations and resource reservations after interruption.
 - [ ] Expose legible files or permitted read-only queries without giving workers
   access to the authoritative write path.
-- [ ] Record world/parent identity, input/context versions, session boundaries,
+- [x] Record world/parent identity, input/context versions, session boundaries,
   allowances, and costs needed for the Dream-RSI adaptation in M6. Do not build
   the replay engine yet.
 
@@ -51,10 +51,12 @@ Each PR includes the negative cases for the behavior it introduces.
 Use the [M1 scripted walkthrough](pilot.md#m1-scripted-walkthrough) to derive the
 first records and interfaces. It specifies fixed outputs, expected history,
 accounting totals, and interruption cases. The plan is not implemented evidence.
-The [PR1 persistence contract](m1-persistence.md) describes the implemented records,
-host interface, publication order, and focused tests. Observation persistence and
-fresh-process recovery are implemented. Atomic operation completion, accounting,
-and permitted exports remain open.
+The [persistence contract](m1-persistence.md) describes the implemented records,
+host interface, publication order, and focused tests. PR1 and PR2 implement evidence
+persistence, atomic operation completion, and accounting. Process termination tests
+cover reservation, dispatch, publication, and completion. The tests count executions
+outside the ledger and recover state in a new process. PR3 still needs permitted
+exports and the complete CSV walkthrough. M1 remains open.
 
 ## M2 — Claims, applicability, and gates
 

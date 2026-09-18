@@ -12,12 +12,13 @@ explore, and be precise about what counts as established knowledge.**
 
 ## Status
 
-The first local evidence slice is implemented. Its Python API stores immutable
-observations and raw artifact bytes with their origins, and recovers them after
-process interruption. It uses SQLite and files with one trusted writer.
+The local ledger stores immutable observations, raw artifact bytes, operation
+requests, and resource usage. Its Python API recovers these records after process
+interruption. It uses SQLite and files with one trusted writer.
 
-Operation deduplication, reservations, accounting, worker isolation, gates, Lean
-verification, and replay remain planned. M1 is still in progress.
+Reservations survive restart. Repeated requests reuse completed results without
+another charge, and uncertain executions remain blocked. Worker isolation, gates,
+Lean verification, and replay remain planned. M1 is still in progress.
 
 There are no model calls, external services, or runtime dependencies in the
 current package. The command does not create a project or execute a task yet.
@@ -93,21 +94,32 @@ uv build --no-sources
 ```
 
 Use `uv add` for new dependencies and commit the resulting lockfile. The focused
-tests cover invalid records, damaged artifacts, transaction failures, and forced
-process termination. CI runs these tests on pull requests, alongside lint,
-formatting, entry points, and installation of the built wheel.
+tests cover conflicting requests, duplicate charges, damaged artifacts, budget
+breaches, and forced process termination. CI runs these tests on pull requests,
+alongside lint, formatting, entry points, and installation of the built wheel.
 
 ## Local evidence API
 
-This example captures bytes from a file snapshot in a temporary project. It uses
-the trusted host API. The CLI still provides help and version information only.
+This example reserves three synthetic units, reads a snapshot, and charges two
+units once. These units demonstrate accounting, not measured money or tokens.
+The host records elapsed time separately. The CLI still provides help and version
+information only.
 
 ```python
 import platform
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from time import perf_counter_ns
 
-from warranted.ledger import Ledger, Manifest, Origin, Snapshot
+from warranted.ledger import (
+    Ledger,
+    Manifest,
+    Origin,
+    Outcome,
+    Request,
+    Result,
+    Snapshot,
+)
 
 manifest = Manifest(
     fixture_id="example",
@@ -131,15 +143,37 @@ with TemporaryDirectory() as directory:
             producer_version=platform.python_version(),
             inputs={"input": source},
         )
-        ledger.record(session, origin, {"raw": ledger.read_artifact(source)})
+        request = Request(origin, ledger.project)
+        ledger.reserve(session, request, {"synthetic-work": 3})
+        if ledger.begin(session, request):
+            started = perf_counter_ns()
+            raw = ledger.read_artifact(source)
+            result = Result(
+                Outcome.SUCCEEDED,
+                exit_code=0,
+                usage={"synthetic-work": 2},
+                elapsed_ns=perf_counter_ns() - started,
+            )
+            ledger.complete(session, request, result, {"raw": raw})
     with Ledger.open(root) as ledger:
-        observation = ledger.history()[0]
+        observation = ledger.lookup(request).completion.observation
         assert ledger.read_artifact(observation.artifacts["raw"]) == b"example bytes\n"
+        assert not ledger.begin(ledger.start_session(), request)
+        assert ledger.accounting()["synthetic-work"].spent == 2
 ```
 
-`record` commits captured evidence. It does not complete an operation or accept
-a task. Repeating a call creates another observation. Missing or corrupt artifact
-bytes fail explicitly. Declared allowances are recorded but not yet enforced.
+Only a successful `begin` returning `True` permits the host to execute work.
+If execution might have started, the operation stays unknown until the host
+captures an attributable result. Reopening or repeating the request does not
+release its reservation. A completion records the process outcome, not task
+acceptance. Missing or corrupt artifact bytes fail explicitly.
+
+`record` remains available for evidence without an operation receipt. It does not
+complete work or settle usage. Host code must use the operation methods around
+execution. This Python API does not isolate a worker or intercept shell commands.
+
+The storage format is now version 2. Version 1 projects fail explicitly on open
+and remain unchanged. Automatic migration is not implemented.
 
 The [persistence contract](docs/m1-persistence.md) describes the API and tests.
 The tests establish recovery from process termination on a working local
@@ -155,9 +189,8 @@ Keep the authoritative project outside any untrusted worker's writable workspace
 | [docs/roadmap.md](docs/roadmap.md) | Ordered milestones, completion criteria, and decision points |
 | [docs/pilot.md](docs/pilot.md) | Domain-independent task fixtures and experimental comparisons |
 | [src/warranted](src/warranted) | Evidence ledger and help/version CLI |
-| [tests/test_ledger.py](tests/test_ledger.py) | Evidence persistence and failure cases |
+| [tests/test_ledger.py](tests/test_ledger.py) | Evidence, operation recovery, and accounting cases |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | Persistence tests and package checks |
 
-The next implementation slice adds operation receipts, recovery, and accounting
-to the local ledger. See
-[M1 in the roadmap](docs/roadmap.md#m1--local-evidence-and-restart).
+The next implementation slice adds permitted exports and the scripted CSV
+walkthrough. See [M1 in the roadmap](docs/roadmap.md#m1--local-evidence-and-restart).
