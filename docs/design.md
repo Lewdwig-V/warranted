@@ -17,6 +17,10 @@ acceptable total cost. A fixed model should suffice for either experiment.
 Neither benefit is assumed, and Lean must earn its cost over executable models
 and ordinary checks.
 
+A separate optional experiment evaluates Jev as a System 1 classifier and judge
+around the reasoning worker. Keep it outside the original knowledge and scheduling
+comparisons so its contribution can be measured independently.
+
 ## Boundaries and ownership
 
 | Component | Responsibility | Initial direction |
@@ -26,7 +30,7 @@ and ordinary checks.
 | Worker | Inspect permitted context, propose artifacts and investigations | Existing bounded coding worker; shell and files |
 | Workflow runner | Dispatch and checkpoint bounded sessions | Evaluate LangGraph when the worker slice lands |
 | Domain environment | Supply observations and execute permitted operations | Local, controlled fixtures first |
-| Independent checker | Assess a specific artifact against a pinned contract | Deterministic task checks; later Lean proof checking |
+| Independent checker | Assess a specific artifact against a pinned contract | Deterministic task checks; later Lean and designated model-judgment gates |
 | Exploration policy | Select branches to continue, branch out, batch, or stop | Fixed policy first; replay-improved policy later |
 
 These are responsibility boundaries, not seven services or a mandatory class
@@ -100,6 +104,14 @@ include their applicability predicate, exact target, evidence requirements, and
 checker. Unknown kinds, unknown applicability, missing evidence, and checker
 failure do not default to permission.
 
+A gate need not be deductive. The contract owner may designate a model judge for
+a statistical acceptance criterion, such as relevance or rubric-based quality.
+The host independently obtains and checks the judge's attributable result against
+the pinned gate policy. Passing establishes that criterion was met, with measured
+error risk; it does not establish a proof or satisfy other required obligations.
+Independence means the candidate cannot control the checker or manufacture its
+receipt, not that two models' errors are necessarily uncorrelated.
+
 Check the current input and dependency versions at acceptance, not merely when a
 worker began. All entry paths, including resumes and direct commands, use the
 same boundary. Neither the worker nor an optimiser may alter the objective,
@@ -167,6 +179,55 @@ a gap does not waive an existing gate or turn a failed old contract into a pass.
 
 The [pilot cases](pilot.md#specification-and-behavioral-failures) exercise these
 requirements without assuming that Warranted can infer missing user intent.
+
+## Jev: System 1 classification and judgment
+
+[Jev](https://docs.typesafe.ai/introduction), from TypeSafe, is the proposed first
+provider for bounded classification and rubric-based judgment. Its documented
+Choice and Score primitives return typed decisions and distributions. Warranted's
+adaptation uses those outputs to prioritise investigation, escalate uncertainty,
+and satisfy explicitly designated judgment gates. The reasoning worker develops
+plans and artifacts; the host enforces acceptance, including independent model
+judgments where the contract requires them. See [M3a](roadmap.md#m3a--jev-as-a-system-1-classifier-and-judge)
+and the [separate comparison](pilot.md#jev-classifier-and-judge-comparison).
+
+Use supplied categories and explicit, versioned rubrics: classify a failure for
+the next investigation, rank candidate continuations, or assess evidence relevance
+and apparent contradiction. A judgment records what the model predicted about
+the supplied evidence. For advisory use it informs the next action. For a judgment
+gate, the contract owner pins the target, evidence requirements, judge identity
+and version, rubric, decision rule, retry/aggregation policy, tolerable error, and
+escalation path. The host invokes that judge independently of the candidate worker
+and binds its response
+to an acceptance receipt when the criterion is met. This is authoritative for
+that obligation, without certifying factual truth, complete user intent, or a
+separately required deterministic or Lean obligation.
+
+For routing, the host supplies only context already permitted to the worker. For
+gates, it supplies the contract's evidence bundle through the isolated checker
+path; evaluator answers stay private. Neither the provider nor worker-authored
+text can change the policy, rubric, or acceptance contract. Bind predictions to
+exact input versions and re-evaluate after relevant changes. Preserve raw responses,
+probabilities, model identity, question/rubric versions, and costs as model-derived
+observations. A validation receipt additionally records the host's application of
+the designated gate policy; an arbitrary model response cannot stand in for it.
+
+Start with shadow evaluation, then evaluate routing and judgment gates separately.
+Advisory abstention uses a budgeted baseline fallback. A gate stays blocked on an
+unknown, invalid, stale, or nonqualifying result until qualifying evidence arrives
+under the contract or its approved escalation path. Repeated judging cannot be
+used to cherry-pick a pass outside the pinned retry policy. Worker reasoning alone
+cannot substitute for the required judge, and high scores cannot override other
+failed checks. Treat candidate evidence as untrusted input, including attempts to
+instruct the judge. Confidence
+alone cannot detect every unfamiliar case or confidently wrong answer.
+
+TypeSafe's [confidence documentation](https://docs.typesafe.ai/confidence) describes
+Choice/Score confidence as a statistic of the returned distribution. Do not read it
+as a verified probability that the selected answer is correct. Measure calibration
+and error costs on our tasks before choosing thresholds. Typed output constrains
+the answer format; it does not ensure factual correctness. The integration and
+its benefits remain unimplemented hypotheses.
 
 ## Recovery and accounting
 
@@ -270,6 +331,7 @@ that history while letting new task families determine its interfaces.
 | [mini-swe-agent](https://mini-swe-agent.com/latest/) | Candidate worker implementation | [Boundaries and ownership](#boundaries-and-ownership) |
 | [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) | Candidate workflow and persistence implementation | [Boundaries and ownership](#boundaries-and-ownership) |
 | [Lean](https://lean-lang.org/doc/reference/latest/) | Formal language and proof-checking foundation | [Rules, gates, and verification](#rules-gates-and-verification) |
+| [Jev / TypeSafe](https://docs.typesafe.ai/introduction) | Planned optional System 1 classifier and rubric-based judge | [Classification and judgment](#jev-system-1-classification-and-judgment) |
 | [Hindsight](https://hindsight.vectorize.io/) | Later memory integration candidate | [Scope and provisional choices](#scope-and-provisional-choices) |
 | [AutoSaddler](https://github.com/microsoft/AutoSaddler) | Later harness-optimisation candidate | [Scope and provisional choices](#scope-and-provisional-choices) |
 
