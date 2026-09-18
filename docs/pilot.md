@@ -285,12 +285,104 @@ Use the same initial fixed search policy, task instances, model/inference settin
 per-attempt allowances, source access, and host caps. Execution permissions and
 evaluator isolation remain in force for every condition. Harness-only recording
 may capture all runs for measurement, but must not expose B–E's extra knowledge
-support to A. Keep Hindsight and broader harness optimisation out of this study.
+support to A. Keep Jev, Hindsight, and broader harness optimisation out of this study.
 
 Run multiple fresh trials and include both frontier and smaller models. Begin
 with inexpensive development runs to set budgets and a minimum useful improvement,
 then freeze them before final evaluation. Split by task instance and derivation
 lineage so variants or descendants do not leak between training and held-out data.
+
+## Jev classifier and judge comparison
+
+The optional [M3a experiment](roadmap.md#m3a--jev-as-a-system-1-classifier-and-judge)
+tests [routing and judgment gates](design.md#jev-system-1-classification-and-judgment)
+separately from A–E and Dream-RSI. Begin with M3's first-family baseline; use M5's
+second family to test transfer. Fix the knowledge workflow and reasoning worker
+within each comparison, along with available context, task acceptance, host caps,
+and the surrounding exploration policy.
+
+For routing, compare three arms: the baseline without a learned classifier/judge;
+an LLM classifier/judge; and Jev. The latter two receive the same evidence, supplied
+choices, and rubrics and use the same allowed routing/ranking actions. Record their
+model versions and compute costs separately from the reasoning worker.
+First collect shadow predictions without affecting the baseline run; paired live
+trials with fresh state are required to establish downstream benefit.
+
+Evaluate judgment gates separately on a common candidate set against independent
+reference labels, with three designated judges:
+
+| Judge | Comparison purpose |
+| --- | --- |
+| Generator model in a fresh evaluation context | Separate evaluation from the generation history while retaining the same model |
+| Different generative model in a fresh context | Test whether changing models reduces shared errors |
+| Jev in a fresh context | Test whether a decision model supplies a more useful independent judgment |
+
+Keep the requirement, rubric, evidence access, and error tolerance fixed; record
+each judge's calibrated
+decision rule in its own pinned contract version. Then test them in paired live
+runs, retaining the same independent final task-success predicate. A no-judge run
+is a workflow baseline, never a way to bypass a required judgment gate. Include
+positive controls where a qualifying judgment permits its protected transition,
+plus nonqualifying, stale, forged, and abstaining results that leave it blocked.
+
+Hold the generating model fixed within each comparison and have all judges assess
+the same correct and incorrect candidates. Repeat by generator and task family;
+report the pairings separately. Hide explicit generator identity and its preferred
+verdict, but preserve the candidate and necessary evidence. Each judge receives
+the same host-prepared requirements and raw observations, without the generator's
+deliberation or a persuasive summary replacing evidence. Fresh context and hidden
+identity cannot guarantee that a judge will not recognise familiar output styles.
+
+Predeclare the conditional false-acceptance measure:
+`P(judge accepts | generator candidate violates the assessed obligation)`.
+Determine violations from independent reference labels, not another judge's vote;
+an unrelated task failure is not an error on the obligation being judged. Report
+counts and uncertainty by generator, category, and failure mode, including errors
+missed by multiple judges. Compare at development-selected operating points with
+matched coverage or false-rejection constraints and stated cost budgets. Freeze
+them before held-out evaluation; report when a judge cannot meet those constraints.
+Do not claim independence from raw disagreement or a lower acceptance rate alone.
+
+Define reference labels independently of the candidate and its judge, using
+fixture outcomes for objective categories and independently reviewed labels for
+subjective rubrics. Preserve ambiguous cases; agreement with another model is
+not ground truth. Keep final evaluator answers hidden from all decision inputs.
+Split calibration/development and held-out examples by task provenance and lineage.
+Set category-specific thresholds, false-acceptance/false-rejection tolerances,
+approved escalation paths, and a minimum useful cost or latency gain on development
+data, then freeze them for held-out trials.
+
+Report confusion/error rates by category, rubric agreement, probability calibration
+(for example Brier score and reliability bins), and error versus retained coverage
+as abstention increases. Include confident errors, escalation rates, p50/p95
+latency, and total cost including fallbacks, failures, and calibration. For gates,
+report false acceptances and rejections with uncertainty estimates, including
+correlated worker/judge errors. Report live task success, recovery, and gate
+enforcement violations independently of the judge's scores. A wrong judgment
+accepted under the declared policy is a measured judge error, not a bypass;
+both kinds of failure matter and must remain visible.
+Exercise the existing specification-failure candidates, stale or missing evidence,
+unfamiliar inputs, adversarial judge instructions, attempts to cherry-pick repeated
+judgments, provider failures, and budget exhaustion, with successful controls.
+Development fixtures must show that even a
+maximally favourable judgment cannot override another failed required obligation.
+
+Compare confidence-only escalation with escalation that also considers diagnostic
+usefulness, under equal total budgets. Include confidently rejected candidates
+with unclear causes, interacting failures, and repeated repairs that leave the
+same defect. Measure successful repairs, repeated rejections, and total time/cost
+to independent acceptance, including all diagnostic work. This tests whether fast
+verdicts save end-to-end effort rather than merely shifting work to later attempts.
+Audit a predeclared sample of confident passes and failures against independent
+labels as well as escalated cases; evaluating only uncertain cases would hide
+confident errors. Keep audit feedback out of held-out routing decisions.
+
+Retain only categories meeting the frozen criteria on held-out tasks; report
+first-family and second-family evidence separately. Keep the original Dream-RSI
+comparison Jev-free. A later combined study must freeze Jev's model, rubrics, and
+routing thresholds across fixed/evolved policies. Bind them into world identity,
+reveal recorded predictions only when their inputs were visible, and make missing
+predictions unsupported in replay rather than calling a live judge.
 
 ## Dream-RSI scheduling comparison
 
