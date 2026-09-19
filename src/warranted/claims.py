@@ -164,7 +164,7 @@ class Claims:
     def _validation(self, body: dict) -> Status:
         check = body["validation"]
         if check is None:
-            return Status.UNKNOWN
+            return Status.UNPROVED
         operation = next(
             (
                 op

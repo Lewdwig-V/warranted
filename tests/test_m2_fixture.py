@@ -94,7 +94,7 @@ def test_all_experiments_survive_restart_with_selective_work(tmp_path):
         )
     old = resumed["offset"]["support_before"]
     assert old["source-facts"]["applicability"] == "current"
-    assert old["source-facts"]["validation"] == "unknown"
+    assert old["source-facts"]["validation"] == "unproved"
     for name in ("normalize", "aggregate", "candidate", "main/utc_timestamps"):
         assert old[name]["applicability"] == "stale"
     assert old["main/utc_timestamps"]["validation"] == "passed"

@@ -73,7 +73,7 @@ Claim records retain assertions, assumptions, parent dependencies, and scoped
 validation references. Reports separate historical validation from current
 applicability. An offset revision propagates staleness through normalization,
 aggregation, and candidate claims. Source facts remain current.
-Transformation assertions have no independent validation and remain unchecked.
+Transformation assertions have no validator and report `unproved` validation.
 Candidate claims use the independent evaluator. Each binds all inputs to its
 four-field receipt, so a definition revision requires reassessing all four fields.
 Unknown versions or incomplete dependency lists cannot establish current support.

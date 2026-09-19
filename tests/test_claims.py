@@ -94,7 +94,7 @@ def test_restart_propagates_staleness_without_rewriting_validation(tmp_path):
         assert report.validation == "passed"
         assert report.applicability == "stale"
         assert claims.assess(unaffected, state).applicability == "current"
-        assert claims.assess(unaffected, state).validation == "unknown"
+        assert claims.assess(unaffected, state).validation == "unproved"
         assert ledger.read_artifact(parent.artifact) == before
         assert ledger.accounting()["work"].spent == 1
 
@@ -124,6 +124,7 @@ def test_unknown_dependencies_and_raw_success_do_not_supply_support(tmp_path):
             complete=True,
         )
         assert claims.assess(child, {}).applicability == "unknown"
+        assert claims.assess(child, {}).validation == "unproved"
         wrong = replace(request, origin=replace(request.origin, inputs={}))
         with pytest.raises(ValueError, match="target"):
             claims.record(
@@ -136,6 +137,14 @@ def test_unknown_dependencies_and_raw_success_do_not_supply_support(tmp_path):
         )
         with pytest.raises(ValueError, match="claim"):
             claims.assess(Evidence.captured(forged, "claim.json"), {})
+        assert ledger.begin(session, request)
+    with Ledger.open(tmp_path / "ledger") as ledger:
+        claims = Claims(ledger, ledger.start_session())
+        assert claims.assess(claim, {}).validation == "unknown"
+        assert claims.assess(child, {}).validation == "unproved"
+        assert claims.assess(child, {}).applicability == "unknown"
+        assert ledger.lookup(request).state == "unknown"
+        assert ledger.accounting()["work"].reserved == 1
 
 
 def test_a_different_request_under_the_planned_id_cannot_validate_a_claim(tmp_path):

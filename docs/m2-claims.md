@@ -41,8 +41,11 @@ The dependency map preserves the separate reasons.
 Validation reads the exact committed checker completion. A true boolean field
 reports `passed`, and a false field reports `rejected`. Missing receipts, unresolved
 operations, malformed results, and infrastructure failures remain distinct.
-An unchecked assertion reports `unknown`. Raw observations cannot replace operation
-completions. Assessment never runs a checker, adds evidence, or changes accounting.
+A claim without a validator reports `unproved`. A configured checker with an
+unresolved operation reports `unknown`. These validation states remain separate
+from unknown applicability caused by missing versions or incomplete dependencies.
+Raw observations cannot replace operation completions. Assessment never runs a
+checker, adds evidence, or changes accounting.
 
 `current` establishes version agreement, not the truth of an assumption.
 Parent edges track applicability. They do not prove an inference from parent
