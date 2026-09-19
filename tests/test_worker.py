@@ -6,6 +6,7 @@ import multiprocessing
 import pytest
 
 from warranted.ledger import (
+    CorruptArtifact,
     Ledger,
     Manifest,
     OperationConflict,
@@ -149,3 +150,15 @@ def test_graph_progress_without_host_evidence_blocks(tmp_path):
             model=lambda *_: pytest.fail("must not dispatch"),
             environment=lambda *_: pytest.fail("must not dispatch"),
         )
+
+
+def test_finished_checkpoint_cannot_hide_corrupt_attempt_bytes(tmp_path):
+    project(tmp_path)
+    run(tmp_path)
+    with Ledger.open(tmp_path / "ledger") as ledger:
+        op = ledger.operations()[0]
+        ref = op.completion.observation.artifacts["response"]
+        (ledger.root / "artifacts" / "sha256" / ref.digest).write_bytes(b"corrupt")
+    with pytest.raises(CorruptArtifact):
+        run(tmp_path)
+    assert counts(tmp_path) == ["model", "tool"]

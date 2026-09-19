@@ -86,6 +86,34 @@ and explicit uncertainty, not a promise of exactly-once arbitrary external effec
 Check every dispatching node against the host journal before external work.
 An unknown predecessor remains blocking through repeated deaths and fresh sessions.
 
+The external-attempt slice adds `ReceiptService`, a concrete client for the
+loopback fake service in `examples/m3/fake_service.py`. Each model call makes one
+HTTP POST. The client disables redirects and environment proxies and has no retry
+loop. The service records every POST independently of the ledger and graph.
+It deliberately counts duplicate requests as extra effects.
+
+Before each dispatch, the episode reserves its pinned per-attempt allowance.
+The adapter records raw response bytes and known usage before parsing a command.
+Failed responses and parse errors retain their charges. Usage above a reservation
+is fully charged and blocks further work. These integer units are synthetic
+fixture costs, not dollars or measured model tokens.
+
+On resume, the host can make one read-only receipt lookup for each unknown model
+attempt. It accepts only the exact service, project, operation, and full request
+digest with known usage. A missing receipt leaves the attempt unknown. Wrong
+identity, duplicate receipts, malformed data, and unknown usage cannot settle it.
+Lookup requests are independently logged. This fixture's lookups are free and
+perform no model computation. A paid provider's reconciliation would need its
+own reservation and usage contract.
+
+`tests/test_attempts.py` runs the service in another process. It tests lost
+responses, repeated deaths during receipt recovery, unprovable outcomes, unknown
+usage, wrong identities, billed failures, parse errors, redirects, and cumulative
+budget enforcement. Completed graph state also requires intact attempt artifacts.
+The protocol assumes a trusted local service. It provides neither production
+service authentication nor a live provider integration. No provider credentials
+or SDK retry behavior enter these tests.
+
 ## Containment and acceptance
 
 Start with native rootless container facilities. Export only approved task inputs

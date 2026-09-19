@@ -55,6 +55,8 @@ class Episode:
     model: str = "scripted-v1"
     environment: str = "scripted-v1"
     max_steps: int = 4
+    model_reservation: int = 1
+    tool_reservation: int = 1
 
     def __post_init__(self):
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", self.episode_id):
@@ -68,6 +70,11 @@ class Episode:
             raise ValueError("episode inputs must be distinct snapshot names")
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("episode step limit must be between 1 and 100")
+        if any(
+            type(n) is not int or n < 1
+            for n in (self.model_reservation, self.tool_reservation)
+        ):
+            raise ValueError("attempt reservations must be positive integers")
 
 
 def record_once(
@@ -164,7 +171,8 @@ class Journal:
             ),
             self.ledger.project,
         )
-        op = self.ledger.reserve(self.session, request, {kind: 1})
+        reservation = getattr(self.episode, kind + "_reservation")
+        op = self.ledger.reserve(self.session, request, {kind: reservation})
         if op.completion is not None:
             return op.completion
         unresolved(self.ledger)
@@ -180,7 +188,7 @@ class Journal:
         return self.ledger.read_artifact(completion.observation.artifacts[channel])
 
     def receipt(self) -> Observation | None:
-        return next(
+        receipt = next(
             (
                 o
                 for o in self.ledger.history()
@@ -188,6 +196,14 @@ class Journal:
             ),
             None,
         )
+        if receipt is not None:
+            # A finished graph cursor cannot hide damaged attempt evidence.
+            for operation in self.ledger.operations():
+                if operation.request.origin.operation_id.startswith(self.prefix + "/"):
+                    self.ledger.lookup(operation.request)
+            for ref in receipt.artifacts.values():
+                self.ledger.read_artifact(ref)
+        return receipt
 
 
 class WorkerModel:
@@ -302,11 +318,21 @@ def run_workflow(
     *,
     model: Boundary,
     environment: Boundary,
+    reconcile: Callable[[Request], AttemptResult | None] | None = None,
 ) -> dict:
     """Run or resume one bounded episode. Checkpoint state grants no authority."""
     if checkpoint_path.resolve().is_relative_to(ledger_root.resolve()):
         raise ValueError("checkpoint database must be separate from the ledger")
     with Ledger.open(ledger_root) as ledger:
+        if reconcile is not None:
+            session = ledger.start_session()
+            for operation in ledger.operations():
+                if operation.state == "unknown":
+                    response = reconcile(operation.request)
+                    if response is not None:
+                        ledger.complete(
+                            session, operation.request, response.result, response.raw
+                        )
         unresolved(ledger)
         journal = Journal(ledger, episode)
         project_id = ledger.project.project_id
