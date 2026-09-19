@@ -111,6 +111,18 @@ def test_ledger_ahead_of_graph_reuses_completed_execution(tmp_path):
             ledger.read_artifact(tool.completion.observation.artifacts["stderr"])
             == b"\xff"
         )
+        receipt = next(
+            o for o in ledger.history() if o.origin.kind == "episode-finished"
+        )
+        for operation in ledger.operations():
+            observation = operation.completion.observation
+            for channel, ref in observation.artifacts.items():
+                assert (
+                    receipt.origin.inputs[
+                        f"observation/{observation.sequence}/{channel}"
+                    ]
+                    == ref
+                )
 
 
 def test_unknown_execution_blocks_resume_and_new_episode(tmp_path):
@@ -152,13 +164,28 @@ def test_graph_progress_without_host_evidence_blocks(tmp_path):
         )
 
 
-def test_finished_checkpoint_cannot_hide_corrupt_attempt_bytes(tmp_path):
+@pytest.mark.parametrize("checkpoint_lost", [False, True])
+@pytest.mark.parametrize("channel", ["response", "stdout"])
+@pytest.mark.parametrize("damage", ["corrupt", "missing"])
+def test_finished_receipt_requires_intact_attempt_evidence(
+    tmp_path, checkpoint_lost, channel, damage
+):
     project(tmp_path)
     run(tmp_path)
+    if checkpoint_lost:
+        (tmp_path / "checkpoints.sqlite3").unlink()
     with Ledger.open(tmp_path / "ledger") as ledger:
-        op = ledger.operations()[0]
-        ref = op.completion.observation.artifacts["response"]
-        (ledger.root / "artifacts" / "sha256" / ref.digest).write_bytes(b"corrupt")
-    with pytest.raises(CorruptArtifact):
+        observation = next(
+            op.completion.observation
+            for op in ledger.operations()
+            if channel in op.completion.observation.artifacts
+        )
+        ref = observation.artifacts[channel]
+        path = ledger.root / "artifacts" / "sha256" / ref.digest
+        if damage == "missing":
+            path.unlink()
+        else:
+            path.write_bytes(b"corrupt")
+    with pytest.raises(FileNotFoundError if damage == "missing" else CorruptArtifact):
         run(tmp_path)
     assert counts(tmp_path) == ["model", "tool"]

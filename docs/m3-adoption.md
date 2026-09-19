@@ -135,7 +135,11 @@ The root filesystem is read-only. No host directory or runtime socket is mounted
 `export_evidence` supplies an explicit selection of public input snapshots.
 
 The worker runs as UID 1000 with no effective capabilities. A trusted supervisor
-inside the container retains only `CAP_KILL`. On submission, it kills worker
+inside the container retains `CAP_KILL`, `CAP_SETUID`, and `CAP_SETGID` to start
+workers with restricted credentials and record their exit status in a root-only
+directory. This separates shell failures from runtime failures without trusting
+worker output. Podman's automatic proxy forwarding is disabled.
+On submission, the supervisor kills worker
 descendants and waits until none remain live. It then opens `result.json` without
 following links and accepts only a regular file with one link and at most 1 MiB.
 The host removes the container before recording those bytes in the tool receipt.

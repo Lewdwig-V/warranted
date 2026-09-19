@@ -187,6 +187,19 @@ class Journal:
     def raw(self, completion: Completion, channel: str) -> bytes:
         return self.ledger.read_artifact(completion.observation.artifacts[channel])
 
+    def completion_inputs(self) -> dict:
+        inputs = dict(self.inputs)
+        for operation in self.ledger.operations():
+            if operation.request.origin.operation_id.startswith(self.prefix + "/"):
+                self.ledger.lookup(operation.request)
+                if operation.completion is None:
+                    raise UnknownOutcome("episode has an unfinished attempt")
+                observation = operation.completion.observation
+                for channel in observation.artifacts:
+                    evidence = Evidence.captured(observation, channel)
+                    inputs[evidence.name] = evidence.artifact
+        return inputs
+
     def receipt(self) -> Observation | None:
         receipt = next(
             (
@@ -197,10 +210,9 @@ class Journal:
             None,
         )
         if receipt is not None:
-            # A finished graph cursor cannot hide damaged attempt evidence.
-            for operation in self.ledger.operations():
-                if operation.request.origin.operation_id.startswith(self.prefix + "/"):
-                    self.ledger.lookup(operation.request)
+            if receipt.origin.inputs != self.completion_inputs():
+                raise UnknownOutcome("episode receipt has different attempt evidence")
+            self.ledger.lookup(Request(receipt.origin, self.ledger.project))
             for ref in receipt.artifacts.values():
                 self.ledger.read_artifact(ref)
         return receipt
@@ -367,7 +379,7 @@ def run_workflow(
                         "episode-finished",
                         "warranted-worker",
                         "1",
-                        journal.inputs,
+                        journal.completion_inputs(),
                     ),
                     {
                         "result.json": _encode(result),
@@ -399,10 +411,6 @@ def run_workflow(
         unresolved(ledger)
         journal = Journal(ledger, episode)
         receipt = journal.receipt()
-        if (
-            receipt is None
-            or result["receipt"] != receipt.origin.operation_id
-            or receipt.origin.inputs != journal.inputs
-        ):
+        if receipt is None or result["receipt"] != receipt.origin.operation_id:
             raise UnknownOutcome("checkpoint has no matching host receipt")
         return json.loads(ledger.read_artifact(receipt.artifacts["result.json"]))
