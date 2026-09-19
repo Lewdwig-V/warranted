@@ -30,7 +30,7 @@ M2 is complete within this trusted local scope.
 
 M3 now integrates mini-swe-agent 2.4.6 and LangGraph 1.2.11 with the SQLite
 checkpointer 3.1.1. Scripted boundary tests exercise real framework recovery,
-completed-result reuse, and unknown-outcome blocking. This first slice executes
+completed-result reuse, and unknown-outcome blocking. This integration executes
 no live model requests. A rootless Podman adapter now contains generated shell
 commands and captures a bounded candidate after stopping worker processes.
 Its native tests run in a separate CI job. The main CLI still provides help and
@@ -41,6 +41,13 @@ A local fake HTTP service now tests lost model responses. Exact operation
 receipts can settle known usage after restart. Missing receipts and unknown
 usage remain blocked. Malformed responses and known failures retain their costs.
 The adapter performs one request per attempt and disables redirects and retries.
+
+The [M3 demonstration](docs/m3-adoption.md#changed-premise-demonstration) runs the
+offset-revision task across a forced restart. It rejects stale checks, preserves
+the old candidate's failures, and independently accepts the corrected candidate.
+The fake model supplies a fixed program. This establishes local integration
+behavior, not model quality or a live provider integration.
+M3 is complete for this local scripted-model fixture.
 
 ## What we are building
 
@@ -168,8 +175,9 @@ events. [Claims and current support](docs/m2-claims.md) separate historical chec
 from current dependency versions and retain approved revision provenance.
 The [acceptance boundary](docs/m2-acceptance.md) enforces all four gates and
 records a separate source-format rule exception. Its protected operation records
-local acceptance. Owner authentication, external-effect authorization, and worker
-isolation remain planned.
+local acceptance. Owner authentication and external-effect authorization remain
+planned. This M2 script uses trusted code. M3 exercises a separately contained
+worker against the same evaluator and acceptance rules.
 
 ## Local evidence API
 
@@ -274,6 +282,6 @@ Keep the authoritative project outside any untrusted worker's writable workspace
 | [tests/test_acceptance.py](tests/test_acceptance.py) | Gate bypass attempts, rule exceptions, and acceptance recovery |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | Persistence tests and package checks |
 
-M2 is complete in its trusted local scope. M3 continues with worker containment,
+M2 is complete in its trusted local scope. M3 adds worker containment,
 external-attempt reconciliation, and a changed-premise demonstration.
 See [M3 in the roadmap](docs/roadmap.md#m3--bounded-worker-and-execution-recovery).

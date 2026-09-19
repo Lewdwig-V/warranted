@@ -155,6 +155,31 @@ Its protected operation records local candidate acceptance with one trusted writ
 Remote owner authentication, external-effect authorization, worker isolation, Lean
 proofs, and replay remain separate work.
 
+## M3 worker recovery demonstration
+
+The [M3 adoption document](m3-adoption.md#changed-premise-demonstration) defines
+the runnable worker version of M2's offset experiment. It uses the real mini and
+LangGraph packages, rootless Podman, and a fake model in a separate HTTP process.
+The independent evaluator and all four gates remain unchanged. The initial
+workspace excludes future offsets and private reference answers.
+
+The fixed serial policy runs one initial episode and one fresh continuation
+after the approved revision. A forced host kill separates the two stages.
+Current acceptance first rejects the old receipt as stale, then rejects the old
+candidate's timestamps and totals. The corrected candidate passes all gates.
+The failed independent obligations remain in the ledger after acceptance.
+
+Expected totals are two model requests, two tool dispatches, and four checker
+executions. Each costs one synthetic unit. Repeated resume must leave these
+counts unchanged with zero reserved units. Unknown external outcomes instead
+retain reservations and block retry, as separate crash cases demonstrate.
+Reports retain elapsed time, version metadata, costs, and selected evidence.
+
+These development trials establish integration behavior within the documented
+local threat model. The fake model supplies a fixed program. No learned policy,
+live provider, held-out result, or improvement in model quality is demonstrated.
+The A–E knowledge comparisons and broader task families remain later work.
+
 ## M1 scripted walkthrough
 
 Status: implemented for the trusted local M1 slice. Tests cover persistence,

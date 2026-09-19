@@ -28,20 +28,21 @@ comparisons so its contribution can be measured independently.
 | Host controller | Operation permissions, authoritative writes, budgets, recovery, acceptance | Small Python implementation with one ledger writer |
 | Evidence ledger | Versioned observations, claims, dependencies, attempts, and receipts | SQLite plus content-addressed artifact files |
 | Worker | Inspect permitted context, propose artifacts and investigations | Existing bounded coding worker; shell and files |
-| Workflow runner | Dispatch and checkpoint bounded sessions | Evaluate LangGraph when the worker slice lands |
+| Workflow runner | Dispatch and checkpoint bounded sessions | LangGraph with separate SQLite checkpoints in M3 |
 | Domain environment | Supply observations and execute permitted operations | Local, controlled fixtures first |
 | Independent checker | Assess a specific artifact against a pinned contract | Deterministic task checks; later Lean and designated model-judgment gates |
 | Exploration policy | Select branches to continue, branch out, batch, or stop | Fixed policy first; replay-improved policy later |
 
 These are responsibility boundaries, not seven services or a mandatory class
 hierarchy. Keep them in one package until working use cases require separation.
-[mini-swe-agent](https://mini-swe-agent.com/latest/) is the initial worker candidate:
+[mini-swe-agent](https://mini-swe-agent.com/latest/) supplies the initial worker:
 its small, shell-based agent loop fits bounded investigation sessions.
 [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) supplies
-workflow persistence and resumption. We intend to build on those projects'
-execution infrastructure while the Warranted host owns evidence semantics.
+workflow persistence and resumption. M3 uses those projects' execution
+infrastructure while the Warranted host owns evidence semantics.
 The [M3 adoption plan](m3-adoption.md) records the integration boundary and pinned
-versions. The initial integration uses scripted boundaries to test recovery.
+versions. The local demonstration uses a scripted model, native rootless shell
+containment, and independent acceptance to test recovery across a changed premise.
 
 The preference for a small worker interface also draws directly on
 [Vercel's d0 case study](https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools).
@@ -370,8 +371,8 @@ that history while letting new task families determine its interfaces.
 | [PRO-LONG, v2](https://arxiv.org/html/2607.20064v2) | Complete, programmatically searchable interaction history | [Durable knowledge](#durable-knowledge) |
 | [Dream-RSI, v1](https://arxiv.org/html/2609.14858v1) | Published method adapted for the planned scheduling experiment | [Exploration and replay](#dream-rsi-exploration-and-replay) |
 | [Vercel's d0 case study](https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools) | Legible files and a small worker interface | [Boundaries and ownership](#boundaries-and-ownership) |
-| [mini-swe-agent](https://mini-swe-agent.com/latest/) | Candidate worker implementation | [Boundaries and ownership](#boundaries-and-ownership) |
-| [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) | Candidate workflow and persistence implementation | [Boundaries and ownership](#boundaries-and-ownership) |
+| [mini-swe-agent](https://mini-swe-agent.com/latest/) | M3 worker loop | [Boundaries and ownership](#boundaries-and-ownership) |
+| [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) | M3 workflow and checkpoint implementation | [Boundaries and ownership](#boundaries-and-ownership) |
 | [Lean](https://lean-lang.org/doc/reference/latest/) | Formal language and proof-checking foundation | [Rules, gates, and verification](#rules-gates-and-verification) |
 | [Jev / TypeSafe](https://docs.typesafe.ai/introduction) | Planned optional System 1 classifier and rubric-based judge | [Classification and judgment](#jev-system-1-classification-and-judgment) |
 | [Hindsight](https://hindsight.vectorize.io/) | Later memory integration candidate | [Scope and provisional choices](#scope-and-provisional-choices) |

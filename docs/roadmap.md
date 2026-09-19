@@ -1,7 +1,8 @@
 # Provisional roadmap
 
 Updated 2026-09-19. These are ordered experiments and implementation slices, not
-delivery dates. M0, M1, and the trusted local M2 slice are complete.
+delivery dates. M0, M1, the trusted local M2 slice, and M3's local scripted-model
+fixture are complete.
 M3a is an optional experiment alongside the
 main sequence, not a prerequisite for M4–M6. Review the design when a milestone
 exposes a simpler way to meet the requirements; preserve the independent comparisons.
@@ -11,7 +12,7 @@ exposes a simpler way to meet the requirements; preserve the independent compari
 | M0 | Reproducible repository scaffold | — | Complete |
 | M1 | Inspectable evidence that survives restart | M0 | Complete |
 | M2 | Changed-premise recovery with explicit gates | M1 | Complete for the trusted local fixture |
-| M3 | Bounded worker and trustworthy operation recovery | M2 | Planned |
+| M3 | Bounded worker and trustworthy operation recovery | M2 | Complete for the local scripted-model fixture |
 | M3a | Jev as a System 1 classifier and judge | M3; second-family evaluation in M5 | Planned, optional |
 | M4 | Independently checked Lean obligations | M2; M3 for agent trials | Planned |
 | M5 | Second task family and knowledge-workflow comparisons | M3, M4 | Planned |
@@ -128,22 +129,31 @@ slice pins mini-swe-agent 2.4.6, LangGraph 1.2.11, and its SQLite checkpointer 3
 Real framework tests demonstrate completed-result reuse and unknown-outcome
 blocking. The rootless Podman adapter passes native containment tests. A separate
 fake HTTP service demonstrates attributable receipt recovery, billed failures,
-and retained reservations through repeated host deaths. The full changed-premise
-demonstration remains unfinished.
+and retained reservations through repeated host deaths. The changed-premise
+demonstration runs through a forced restart with unchanged independent gates.
 
-- [ ] Give the worker shell/files, an objective, permitted context, and a bounded
+- [x] Give the worker shell/files, an objective, permitted context, and a bounded
   workspace; capture mechanical provenance in the host.
-- [ ] Enforce workspace/process isolation from the ledger writer and private checker.
-- [ ] Reconcile workflow cursors with the ledger after interruption; use a fresh
+- [x] Enforce workspace/process isolation from the ledger writer and private checker.
+- [x] Reconcile workflow cursors with the ledger after interruption; use a fresh
   worker session when an unfinished session cannot be safely resumed.
-- [ ] Reserve and charge all model/tool work, including failures and resumed runs.
-- [ ] Introduce a minimal fixed exploration policy, initially with serial execution.
-- [ ] Exercise lost-response recovery against a fake service with explicit receipts.
+- [x] Reserve and charge all model/tool work, including failures and resumed runs.
+- [x] Introduce a minimal fixed exploration policy, initially with serial execution.
+- [x] Exercise lost-response recovery against a fake service with explicit receipts.
 
 **Completion evidence:** an agent performs the changed-premise task across a
 restart; deterministic integration tests verify worker isolation, deduplication,
 preserved budgets, and blocked retry when the fake service cannot establish an
 outcome. Local CI still requires no model credentials.
+
+**Demonstrated scope:** the [M3 walkthrough and crash matrix](m3-adoption.md#changed-premise-demonstration)
+use real frameworks, native Linux rootless containment, and a scripted model.
+The successful revised task spends two model units, two tool units, and four
+checker units. Repeated resume leaves those totals unchanged. The fake service
+provides exact receipts or leaves outcomes blocked through repeated host deaths.
+No live provider, paid-token accounting, model-quality gain, or held-out task
+performance is claimed. The single trusted host, kernel, and runtime remain part
+of the threat model.
 
 **Decision:** measure interface and bookkeeping overhead before adding specialised
 tools. Checkpoint infrastructure does not replace operation-level receipts.

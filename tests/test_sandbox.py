@@ -1,6 +1,7 @@
 """Native rootless containment; enabled explicitly and required by container CI."""
 
 import json
+import multiprocessing
 import os
 import subprocess
 
@@ -8,7 +9,7 @@ import pytest
 
 from warranted.ledger import Ledger, Manifest, Outcome, Result, Snapshot
 from warranted.sandbox import SANDBOX_ID, Sandbox
-from warranted.worker import AttemptResult, Episode, run_workflow
+from warranted.worker import AttemptResult, Episode, UnknownOutcome, run_workflow
 
 pytestmark = [
     pytest.mark.container,
@@ -40,18 +41,26 @@ def setup(root):
 
 def run(root, episode, command):
     def model(*_):
+        with (root / "model-calls.log").open("ab") as witness:
+            witness.write(b"called\n")
         return AttemptResult(
             Result(Outcome.SUCCEEDED, 0, {"model": 1}, 1),
             {"response": json.dumps({"command": command}).encode()},
         )
 
     with Sandbox(root / "ledger", episode) as sandbox:
+
+        def execute(request, payload):
+            with (root / "tool-calls.log").open("ab") as witness:
+                witness.write(b"called\n")
+            return sandbox(request, payload)
+
         result = run_workflow(
             root / "ledger",
             root / "graph.sqlite3",
             episode,
             model=model,
-            environment=sandbox,
+            environment=execute,
         )
         name = sandbox.name
     assert subprocess.run(["podman", "container", "exists", name]).returncode == 1
@@ -155,3 +164,66 @@ def test_raw_invalid_utf8_survives_capture(tmp_path):
     )
     assert result["exit_status"] == "Submitted"
     assert raw["stderr"] == b"\xff"
+
+
+SUBMIT = "printf '{}' > result.json; printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'"
+
+
+def capture_crash(root, episode, pipe, when):
+    from warranted import sandbox
+
+    execute, complete = sandbox._run, Ledger.complete
+
+    def barrier():
+        pipe.send("capture barrier")
+        pipe.recv()
+
+    def at_capture(args, *a, **kw):
+        if when == "before-capture" and args[-1] == sandbox._CAPTURE:
+            barrier()
+        return execute(args, *a, **kw)
+
+    def at_complete(self, session, request, result, raw):
+        if request.origin.kind != "tool" or when == "before-capture":
+            return complete(self, session, request, result, raw)
+        if when == "saved":
+            value = complete(self, session, request, result, raw)
+        else:
+            assert raw["candidate/result.json"] == b"{}"
+            value = None
+        barrier()
+        return value
+
+    sandbox._run, Ledger.complete = at_capture, at_complete
+    run(root, episode, SUBMIT)
+
+
+@pytest.mark.parametrize("when", ["before-capture", "captured", "saved"])
+def test_native_capture_crash_keeps_exact_evidence_or_blocks(tmp_path, when):
+    episode = setup(tmp_path)
+    ctx = multiprocessing.get_context("spawn")
+    parent, child = ctx.Pipe()
+    process = ctx.Process(target=capture_crash, args=(tmp_path, episode, child, when))
+    process.start()
+    try:
+        assert parent.poll(45), f"capture barrier not reached: {process.exitcode}"
+        assert parent.recv() == "capture barrier"
+    finally:
+        if process.is_alive():
+            process.kill()
+        process.join(10)
+        parent.close()
+        child.close()
+        Sandbox(tmp_path / "ledger", episode).close()
+    if when == "saved":
+        result, raw = run(tmp_path, episode, SUBMIT)
+        assert result["exit_status"] == "Submitted"
+        assert raw["candidate/result.json"] == b"{}"
+    else:
+        for _ in range(2):
+            with pytest.raises(UnknownOutcome):
+                run(tmp_path, episode, SUBMIT)
+        with Ledger.open(tmp_path / "ledger") as ledger:
+            assert ledger.accounting()["tool"].reserved == 1
+    assert (tmp_path / "model-calls.log").read_bytes() == b"called\n"
+    assert (tmp_path / "tool-calls.log").read_bytes() == b"called\n"
