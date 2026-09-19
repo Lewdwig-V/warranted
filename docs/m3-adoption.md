@@ -93,6 +93,10 @@ loop. The service records every POST independently of the ledger and graph.
 It deliberately counts duplicate requests as extra effects.
 
 Before each dispatch, the episode reserves its pinned per-attempt allowance.
+The episode pins `model_service` separately from the model version. Each model
+request records that service as its producer, so its digest binds the service
+identity. Dispatch and reconciliation reject a different configured service
+before sending an HTTP request. The loopback port may change across restarts.
 The adapter records raw response bytes and known usage before parsing a command.
 Failed responses and parse errors retain their charges. Usage above a reservation
 is fully charged and blocks further work. These integer units are synthetic

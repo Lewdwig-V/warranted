@@ -57,6 +57,7 @@ class Episode:
     max_steps: int = 4
     model_reservation: int = 1
     tool_reservation: int = 1
+    model_service: str | None = None
 
     def __post_init__(self):
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", self.episode_id):
@@ -70,6 +71,10 @@ class Episode:
             raise ValueError("episode inputs must be distinct snapshot names")
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("episode step limit must be between 1 and 100")
+        if self.model_service is not None and (
+            type(self.model_service) is not str or not self.model_service.strip()
+        ):
+            raise ValueError("model service identity must be nonempty")
         if any(
             type(n) is not int or n < 1
             for n in (self.model_reservation, self.tool_reservation)
@@ -165,7 +170,9 @@ class Journal:
             Origin(
                 operation_id,
                 kind,
-                "warranted-worker",
+                (self.episode.model_service or "warranted-worker")
+                if kind == "model"
+                else "warranted-worker",
                 "1",
                 {**self.inputs, evidence.name: evidence.artifact},
             ),
