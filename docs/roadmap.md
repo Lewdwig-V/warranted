@@ -1,7 +1,8 @@
 # Provisional roadmap
 
 Updated 2026-09-19. These are ordered experiments and implementation slices, not
-delivery dates. M0 and M1 are complete. M3a is an optional experiment alongside the
+delivery dates. M0, M1, and the trusted local M2 slice are complete.
+M3a is an optional experiment alongside the
 main sequence, not a prerequisite for M4–M6. Review the design when a milestone
 exposes a simpler way to meet the requirements; preserve the independent comparisons.
 
@@ -9,7 +10,7 @@ exposes a simpler way to meet the requirements; preserve the independent compari
 | --- | --- | --- | --- |
 | M0 | Reproducible repository scaffold | — | Complete |
 | M1 | Inspectable evidence that survives restart | M0 | Complete |
-| M2 | Changed-premise recovery with explicit gates | M1 | In progress: fixtures and local acceptance boundary |
+| M2 | Changed-premise recovery with explicit gates | M1 | Complete for the trusted local fixture |
 | M3 | Bounded worker and trustworthy operation recovery | M2 | Planned |
 | M3a | Jev as a System 1 classifier and judge | M3; second-family evaluation in M5 | Planned, optional |
 | M4 | Independently checked Lean obligations | M2; M3 for agent trials | Planned |
@@ -71,19 +72,19 @@ isolation remains M3 work.
 Use the data-transformation fixture in [pilot.md](pilot.md). Implement the smallest
 claim/dependency representation that can recover after one changed premise.
 
-- [ ] Separate observations, assumptions, validation results, and current support.
-- [ ] Propagate staleness to dependent applications while preserving unaffected work.
+- [x] Separate observations, assumptions, validation results, and current support.
+- [x] Propagate staleness to dependent applications while preserving unaffected work.
 - [x] Represent rules and gates distinctly; permit a recorded rule exception.
 - [x] Enforce gates against exact versions at the protected operation, including
   missing evidence, unknown applicability, and attempted bypass cases.
 - [x] Apply an independent deterministic completion check to the fixture.
-- [ ] Preserve the request, clarifications, examples, and formal interpretations
+- [x] Preserve the request, clarifications, examples, and formal interpretations
   as linked versions; identify the contract owner, acceptance obligations, and
   known gaps as described in [the design](design.md#intent-contracts-and-acceptance).
 - [x] Exercise the data-transformation [specification failures](pilot.md#specification-and-behavioral-failures)
   with executable checks: narrow success cannot override a failed behavioral
   obligation, including after restart. Include a successful control.
-- [ ] Retain contract revision provenance and prior outcomes; require reassessment
+- [x] Retain contract revision provenance and prior outcomes; require reassessment
   against changed definitions and reject worker-authored weakening under an old
   contract identity.
 - [x] Resume after a forced fresh-process restart and revised input interpretation.
@@ -93,9 +94,18 @@ evidence for these checked items. They retain independent failures, compare
 annotation and offset revisions, and reassess a changed definition with unchanged
 candidate bytes. The [shared acceptance boundary](m2-acceptance.md) checks exact
 versions and records scoped rule exceptions. Its protected operation is local
-candidate acceptance, with one trusted, serialized host. Fixture dependencies
-remain explicit. General claims, owner authentication, external-effect
-authorization, and worker isolation remain separate work.
+candidate acceptance, with one trusted, serialized host.
+The [claims API](m2-claims.md) separates assertions, assumption versions, historical
+validation, and current applicability. It propagates staleness through declared
+parents and leaves incomplete dependency capture unknown.
+The pinned owner approvals retain the request, source documents, obligation links,
+known gaps, and authorized changes. A restart test preserves an old rejection and
+requires a new check before the revised contract accepts the same candidate.
+Unapproved proposals and worker-authored revision events cannot change acceptance.
+M2 is complete for this local fixture and its explicit dependencies.
+Remote owner authentication, external-effect authorization, and worker isolation
+remain separate work. These checks do not prove that an assumption is true or that
+a contract captures every user need.
 
 **Completion evidence:** a scripted run initially reaches a justified result,
 receives contrary evidence, blocks stale reuse, and rebuilds only the affected

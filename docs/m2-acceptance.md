@@ -21,8 +21,9 @@ code that reads current versions when the boundary calls it. It accepts a candid
 length. Equal bytes from different observations retain different references.
 Checker requests bind producer, version, inputs, and the complete project context.
 Every gate's request must name the exact candidate among its inputs.
-The resolver must include all relevant dependencies. This slice does not discover
-omitted dependencies or authenticate owner revisions.
+The resolver must include all relevant dependencies. It does not discover
+omitted dependencies or authenticate remote owners. The M2 fixture checks revisions
+against its [pinned local owner approvals](m2-claims.md#approved-fixture-revisions).
 
 The [fixture policy](../examples/m2/fixture/acceptance.json) is the first policy format.
 It declares version 1, owner attribution, the `accept-candidate` transition, and
@@ -101,5 +102,7 @@ This remains one trusted, serialized writer on a working local filesystem.
 The host must not interleave another revision or write during a boundary call.
 Workers must not receive the resolver, exception method, ledger writer, or private
 checker state. Python objects and command wrappers provide no worker isolation.
-Concurrent writers, power loss, general claim graphs, remote owner authentication,
+Concurrent writers, power loss, remote owner authentication,
 external-effect authorization, Lean verification, and replay remain outside this slice.
+The separate [claims API](m2-claims.md) tracks declared dependencies. Its reports
+cannot replace the independent evidence required here.

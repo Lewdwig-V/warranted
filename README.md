@@ -23,7 +23,10 @@ Worker isolation, Lean verification, and replay remain planned. M1 is complete f
 a local filesystem with one trusted writer. A scripted CSV walkthrough demonstrates restart, result
 reuse, accounting, and selected evidence exports. The M2 fixture adds three
 scripted experiments for selective rebuilding, changed definitions, and independent
-acceptance obligations. M2 remains in progress.
+acceptance obligations. Claims retain their assumptions and checker references.
+Current support reports propagate staleness through declared dependencies.
+The fixture checks contract revisions against pinned local owner approvals.
+M2 is complete within this trusted local scope.
 
 There are no model calls, external services, or runtime dependencies in the
 current package. The main CLI still provides help and version information only.
@@ -150,7 +153,9 @@ charged operations, retained reservations, and an independent execution count.
 The [pilot](docs/pilot.md#m2-fixture-experiments) gives the expected results and
 operation counts. CI runs all three experiments and retains the public development
 evidence for 14 days. The host uses explicit dependencies and trusted revision
-events. The [acceptance boundary](docs/m2-acceptance.md) enforces all four gates and
+events. [Claims and current support](docs/m2-claims.md) separate historical checks
+from current dependency versions and retain approved revision provenance.
+The [acceptance boundary](docs/m2-acceptance.md) enforces all four gates and
 records a separate source-format rule exception. Its protected operation records
 local acceptance. Owner authentication, external-effect authorization, and worker
 isolation remain planned.

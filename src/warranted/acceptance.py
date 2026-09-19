@@ -91,6 +91,7 @@ class Status(StrEnum):
     MISSING = "missing"
     STALE = "stale"
     UNKNOWN = "unknown"
+    UNPROVED = "unproved"
     UNSUPPORTED = "unsupported"
     INFRASTRUCTURE_FAILURE = "infrastructure_failure"
 
