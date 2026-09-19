@@ -35,5 +35,8 @@ dev = [
 target-version = "py312"
 line-length = 88
 
+[tool.pytest.ini_options]
+markers = ["container: requires rootless Podman and the pinned local image"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

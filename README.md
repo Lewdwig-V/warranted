@@ -19,7 +19,7 @@ interruption. It uses SQLite and files with one trusted writer.
 Reservations survive restart. Repeated requests reuse completed results without
 another charge, and uncertain executions remain blocked. A trusted host boundary
 checks gates and scoped rule exceptions before recording candidate acceptance.
-Worker isolation, Lean verification, and replay remain planned. M1 is complete for
+Lean verification and replay remain planned. M1 is complete for
 a local filesystem with one trusted writer. A scripted CSV walkthrough demonstrates restart, result
 reuse, accounting, and selected evidence exports. The M2 fixture adds three
 scripted experiments for selective rebuilding, changed definitions, and independent
@@ -31,7 +31,9 @@ M2 is complete within this trusted local scope.
 M3 now integrates mini-swe-agent 2.4.6 and LangGraph 1.2.11 with the SQLite
 checkpointer 3.1.1. Scripted boundary tests exercise real framework recovery,
 completed-result reuse, and unknown-outcome blocking. This first slice executes
-no generated shell or live model requests. The main CLI still provides help and
+no live model requests. A rootless Podman adapter now contains generated shell
+commands and captures a bounded candidate after stopping worker processes.
+Its native tests run in a separate CI job. The main CLI still provides help and
 version information only. The [M3 adoption plan](docs/m3-adoption.md) describes
 the four implementation PRs and their evidence requirements.
 
