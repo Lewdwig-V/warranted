@@ -99,3 +99,27 @@ jobs:
           podman pull "$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
       - name: Exercise the actual container boundary
         run: uv run --locked pytest -q -m container tests
+      - name: Force a restart during the M3 task
+        id: m3
+        run: |
+          set +e
+          uv run --locked python examples/m3/demo.py start runs/m3-ci --crash
+          task_status=$?
+          set -e
+          test "$task_status" -eq 137
+          uv run --locked python examples/m3/demo.py resume runs/m3-ci
+          uv run --locked python examples/m3/demo.py resume runs/m3-ci
+      - name: Retain M3 recovery evidence
+        if: ${{ always() && steps.m3.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: m3-recovery
+          path: |
+            runs/m3-ci/reports/
+            runs/m3-ci/exports/
+            runs/m3-ci/tool-dispatches.jsonl
+            runs/m3-ci/executions.jsonl
+            runs/m3-ci/service/requests.jsonl
+            runs/m3-ci/service/receipts.jsonl
+          if-no-files-found: error
+          retention-days: 14

@@ -2,8 +2,10 @@
 
 import json
 import multiprocessing
+import sqlite3
 
 import pytest
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from warranted.ledger import (
     CorruptArtifact,
@@ -60,17 +62,58 @@ def counts(root):
 
 def killed(root, pipe, when):
     complete = Ledger.complete
+    reserve, begin, record, put = (
+        Ledger.reserve,
+        Ledger.begin,
+        Ledger.record,
+        SqliteSaver.put,
+    )
+
+    def barrier():
+        pipe.send("tool completed externally")
+        pipe.recv()
+
+    def reserve_pause(self, session, request, reservation):
+        result = reserve(self, session, request, reservation)
+        if when == "reserved" and request.origin.kind == "tool":
+            barrier()
+        return result
+
+    def begin_pause(self, session, request):
+        result = begin(self, session, request)
+        if when == "dispatched" and request.origin.kind == "tool":
+            barrier()
+        return result
+
+    def record_pause(self, session, origin, raw, supersedes=None):
+        result = record(self, session, origin, raw, supersedes)
+        if when == "finished" and origin.kind == "episode-finished":
+            barrier()
+        return result
+
+    def checkpoint_pause(self, config, checkpoint, *args, **kwargs):
+        result = put(self, config, checkpoint, *args, **kwargs)
+        if when == "checkpoint" and checkpoint["channel_values"].get("receipt"):
+            barrier()
+        return result
 
     def pause(self, session, request, result, raw):
         if request.origin.kind != "tool":
             return complete(self, session, request, result, raw)
+        if when not in ("before", "after"):
+            return complete(self, session, request, result, raw)
         if when == "after":
             result = complete(self, session, request, result, raw)
-        pipe.send("tool completed externally")
-        pipe.recv()
+        barrier()
         return result
 
     Ledger.complete = pause
+    Ledger.reserve, Ledger.begin, Ledger.record = (
+        reserve_pause,
+        begin_pause,
+        record_pause,
+    )
+    SqliteSaver.put = checkpoint_pause
     run(root)
 
 
@@ -128,7 +171,11 @@ def test_ledger_ahead_of_graph_reuses_completed_execution(tmp_path):
 def test_unknown_execution_blocks_resume_and_new_episode(tmp_path):
     project(tmp_path)
     kill_at(tmp_path, "before")
-    for episode in (None, None, Episode("replacement", "Try again", ("task",))):
+    for episode in (
+        None,
+        None,
+        Episode("replacement", "Try again", ("task",), continues="first"),
+    ):
         with pytest.raises(UnknownOutcome, match="unknown"):
             run(tmp_path, episode)
     assert counts(tmp_path) == ["model", "tool"]
@@ -189,3 +236,66 @@ def test_finished_receipt_requires_intact_attempt_evidence(
     with pytest.raises(FileNotFoundError if damage == "missing" else CorruptArtifact):
         run(tmp_path)
     assert counts(tmp_path) == ["model", "tool"]
+
+
+@pytest.mark.parametrize("when", ["reserved", "finished", "checkpoint"])
+def test_crash_matrix_reuses_known_progress_and_dispatches_pending_once(tmp_path, when):
+    project(tmp_path)
+    kill_at(tmp_path, when)
+    assert run(tmp_path)["exit_status"] == "Submitted"
+    assert counts(tmp_path) == ["model", "tool"]
+    with Ledger.open(tmp_path / "ledger") as ledger:
+        assert all(
+            balance.spent == 1 and balance.reserved == 0
+            for balance in ledger.accounting().values()
+        )
+
+
+def test_crash_after_dispatch_marker_blocks_even_without_observed_effect(tmp_path):
+    project(tmp_path)
+    kill_at(tmp_path, "dispatched")
+    with pytest.raises(UnknownOutcome):
+        run(tmp_path)
+    assert counts(tmp_path) == ["model"]
+    with Ledger.open(tmp_path / "ledger") as ledger:
+        assert ledger.accounting()["tool"].reserved == 1
+
+
+def test_finished_checkpoint_without_matching_receipt_blocks(tmp_path):
+    project(tmp_path)
+    run(tmp_path)
+    with Ledger.open(tmp_path / "ledger") as ledger:
+        seq = next(
+            o.sequence for o in ledger.history() if o.origin.kind == "episode-finished"
+        )
+    with sqlite3.connect(tmp_path / "ledger/ledger.sqlite3") as db:
+        db.execute("DELETE FROM observations WHERE sequence = ?", (seq,))
+    with pytest.raises(UnknownOutcome, match="checkpoint"):
+        run(tmp_path)
+    assert counts(tmp_path) == ["model", "tool"]
+
+
+def test_fresh_continuation_records_lineage_without_resetting_cost(tmp_path):
+    project(tmp_path)
+    kill_at(tmp_path, "after")
+    episode = Episode("fresh", "Submit the fixture.", ("task",), continues="first")
+    assert run(tmp_path, episode)["exit_status"] == "Submitted"
+    with Ledger.open(tmp_path / "ledger") as ledger:
+        first = next(
+            o for o in ledger.history() if o.origin.operation_id == "episode/first"
+        )
+        fresh = next(
+            o for o in ledger.history() if o.origin.operation_id == "episode/fresh"
+        )
+        assert (
+            fresh.origin.inputs[f"observation/{first.sequence}/episode.json"]
+            == first.artifacts["episode.json"]
+        )
+        assert all(
+            balance.spent == 2 and balance.reserved == 0
+            for balance in ledger.accounting().values()
+        )
+        parent_ref = first.artifacts["episode.json"]
+        (ledger.root / "artifacts/sha256" / parent_ref.digest).write_bytes(b"corrupt")
+    with pytest.raises(CorruptArtifact):
+        run(tmp_path, episode)

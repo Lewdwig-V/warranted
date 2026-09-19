@@ -57,6 +57,7 @@ class Episode:
     max_steps: int = 4
     model_reservation: int = 1
     tool_reservation: int = 1
+    continues: str | None = None
     model_service: str | None = None
 
     def __post_init__(self):
@@ -71,6 +72,11 @@ class Episode:
             raise ValueError("episode inputs must be distinct snapshot names")
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("episode step limit must be between 1 and 100")
+        if self.continues is not None and (
+            not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", self.continues)
+            or self.continues == self.episode_id
+        ):
+            raise ValueError("continuation must name a different episode")
         if self.model_service is not None and (
             type(self.model_service) is not str or not self.model_service.strip()
         ):
@@ -86,6 +92,7 @@ def record_once(
     ledger: Ledger, session: str, origin: Origin, raw: dict[str, bytes]
 ) -> Observation:
     """Bind a host-authored record to one stable identity, including its bytes."""
+    ledger.lookup(Request(origin, ledger.project))
     # ponytail: scan this small local journal; index named captures if it grows.
     matches = [
         o for o in ledger.history() if o.origin.operation_id == origin.operation_id
@@ -121,6 +128,18 @@ class Journal:
         inputs = {
             name: ledger.project.snapshots[name].artifact for name in episode.inputs
         }
+        if episode.continues is not None:
+            parents = [
+                o
+                for o in ledger.history()
+                if o.origin.operation_id == f"episode/{episode.continues}"
+                and (o.origin.kind, o.origin.producer, o.origin.producer_version)
+                == ("episode", "warranted-worker", "1")
+            ]
+            if len(parents) != 1:
+                raise ValueError("continuation has no unique recorded parent episode")
+            parent = Evidence.captured(parents[0], "episode.json")
+            inputs[parent.name] = parent.artifact
         self.spec = record_once(
             ledger,
             self.session,

@@ -85,6 +85,10 @@ The graph and ledger have separate transactions. This is operation deduplication
 and explicit uncertainty, not a promise of exactly-once arbitrary external effects.
 Check every dispatching node against the host journal before external work.
 An unknown predecessor remains blocking through repeated deaths and fresh sessions.
+`Episode.continues` records the predecessor's exact episode evidence. The host
+chooses this continuation under its fixed policy. It starts a fresh conversation
+without changing project allowances or erasing old attempts. Unknown work blocks
+both reconstruction and fresh continuation.
 
 The external-attempt slice adds `ReceiptService`, a concrete client for the
 loopback fake service in `examples/m3/fake_service.py`. Each model call makes one
@@ -181,6 +185,73 @@ The crash matrix covers reservation, dispatch, external completion, ledger
 completion, graph checkpointing, submission, candidate capture, and acceptance.
 Test both an attributable receipt and a service that cannot establish an outcome.
 Checkpoint deletion or rewind must not reset budgets or create extra effects.
+
+## Changed-premise demonstration
+
+`examples/m3/demo.py` reuses M2's private evaluator, gates, scoped rule exception,
+claims, and approved revision protocol. It changes the execution path from the
+scripted transformation to mini's actual loop and the rootless shell adapter.
+The fake model returns a pinned transformation program. This tests integration
+and recovery, not learned reasoning or model quality.
+
+The fixed serial policy runs one initial episode, then one fresh episode after
+the approved offset revision. Each allows at most two model steps. Project caps
+are four model units, four tool units, and twenty checker units across restarts.
+Only the current offset, source CSV, and public task instructions enter each
+workspace. The M2 contract, future versions, and literal answers remain private.
+
+The initial candidate passes under +01:00. The host records the owner's +00:00
+revision and kills the demonstration process after durable reporting and resource
+cleanup. A fresh process rejects the old receipt as stale. It then checks the
+old candidate against the new reference and retains its two failed obligations.
+The new worker candidate must pass all four unchanged gates before acceptance.
+
+| Stage | Model requests / spent | Tool dispatches / spent | Checker executions / spent | Reserved |
+| --- | --- | --- | --- | --- |
+| Initial checkpoint | 1 / 1 | 1 / 1 | 2 / 2 | 0 |
+| Revised acceptance | 2 / 2 | 2 / 2 | 4 / 4 | 0 |
+| Repeated resume | 2 / 2 | 2 / 2 | 4 / 4 | 0 |
+
+Model request counts come from the separate service. Tool dispatch and checker
+execution logs live outside both databases and outside the worker. Dispatch counts
+do not prove an uncertain shell effect happened. Reports retain package, model,
+policy, evaluator, task, and environment versions, costs, and known obligations.
+They measure host elapsed time through report construction and elapsed time for
+new operations. These are local measurements, not claims of speed or quality gains.
+
+After pulling the pinned image, run:
+
+```bash
+uv run --locked python examples/m3/demo.py start runs/m3 --crash
+# The expected SIGKILL exit status is 137 in a shell.
+uv run --locked python examples/m3/demo.py resume runs/m3
+uv run --locked python examples/m3/demo.py resume runs/m3
+```
+
+The native CI job runs these commands and retains reports, selected evidence,
+and independent request logs in `m3-recovery`. Reports preserve failures from the
+old candidate and link immutable captures used by the private checker.
+
+## Demonstrated crash boundaries
+
+| Boundary | Required observation | Test source |
+| --- | --- | --- |
+| Reserved, before dispatch | Same pending slot executes once | `test_worker.py` |
+| Dispatch marker, before observed effect | Unknown and reserved, no retry | `test_worker.py` |
+| External response lost | Exact receipt settles once or remains unknown | `test_attempts.py` |
+| Repeated death during reconciliation | One POST, retained reservation until settled | `test_attempts.py` |
+| Shell submission, before capture | Unknown, no candidate acceptance | `test_sandbox.py` |
+| Candidate captured, before ledger commit | Unknown, no duplicate shell dispatch | `test_sandbox.py` |
+| Candidate receipt committed | Reuse the exact bytes after native container removal | `test_sandbox.py` |
+| Episode receipt before graph checkpoint | Reuse completed attempts or the episode receipt | `test_worker.py` |
+| Graph checkpoint committed or deleted | No additional execution or charge | `test_worker.py` |
+| Graph claims a missing host receipt | Block rather than infer success | `test_worker.py` |
+| Approved revision followed by host kill | Old checks become stale; new candidate passes current gates | `test_m3_demo.py` |
+| Acceptance interrupted before/after commit | Remain unknown or reuse its committed receipt | `test_acceptance.py` |
+
+The last row reuses M2's existing acceptance tests because the demonstration calls
+that same boundary. Tests also cover corrupt parent evidence, resource limits,
+background writers, special files, redirects, billed failures, and budget breaches.
 
 Native [LangGraph time travel](https://docs.langchain.com/oss/python/langgraph/use-time-travel)
 can execute downstream calls again. It is not Warranted's planned M6 replay,
