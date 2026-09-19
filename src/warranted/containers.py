@@ -80,7 +80,11 @@ def _run(
                 pass
             process.wait()
             raise SandboxFailure(
-                str(error), bytes(output["stdout"]), bytes(output["stderr"])
+                "runtime timeout"
+                if isinstance(error, subprocess.TimeoutExpired)
+                else str(error),
+                bytes(output["stdout"]),
+                bytes(output["stderr"]),
             ) from error
     return subprocess.CompletedProcess(
         args, code, bytes(output["stdout"]), bytes(output["stderr"])

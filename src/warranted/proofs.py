@@ -118,9 +118,14 @@ def verify(source: bytes, bundle_path: Path) -> Verification:
     }
     name = "warranted-proof-" + uuid.uuid4().hex
     started = perf_counter_ns()
-    raw: dict[str, bytes] = {"bundle.json": bundle_bytes}
+    raw: dict[str, bytes] = {
+        "bundle.json": bundle_bytes,
+        "Solution.lean": source,
+        "Challenge.lean": (RESOURCES / "Challenge.lean").read_bytes(),
+    }
     status, diagnostic, axioms = ProofStatus.INFRASTRUCTURE_FAILURE, "", ()
     created = False
+    executing = False
     try:
         runtime = require_runtime()
         identity["podman"] = runtime["version"]
@@ -176,12 +181,10 @@ def verify(source: bytes, bundle_path: Path) -> Verification:
             ],
             source,
         )
+        executing = True
         result = _run([*entry, "execute"], seconds=LIMITS["seconds"])
-        raw = {
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "bundle.json": bundle_bytes,
-        }
+        executing = False
+        raw.update(stdout=result.stdout, stderr=result.stderr)
         if result.returncode:
             raise SandboxFailure(
                 "verification supervisor failed", result.stdout, result.stderr
@@ -227,7 +230,10 @@ def verify(source: bytes, bundle_path: Path) -> Verification:
         diagnostic = str(error)
         status = (
             ProofStatus.UNPROVED
-            if "runtime timeout" in diagnostic or "runtime output limit" in diagnostic
+            if executing
+            and (
+                "runtime timeout" in diagnostic or "runtime output limit" in diagnostic
+            )
             else ProofStatus.INFRASTRUCTURE_FAILURE
         )
         if isinstance(error, SandboxFailure):

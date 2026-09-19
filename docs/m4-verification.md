@@ -24,7 +24,7 @@ Keep that file outside worker storage.
 It records the image ID, executable digests, tool closure digest, source pins, policy, and build time.
 A tool closure digest identifies every file under `/opt` in the image.
 The image ID also identifies the base system and its libraries.
-Each verification report includes this bundle, source identity, limits, runtime version, and elapsed time.
+Each verification report includes this bundle, captured source bytes, limits, runtime version, and elapsed time.
 Native tests write reports under `runs/m4-native`.
 The separate `proof` CI job runs these checks and retains their reports for 14 days.
 

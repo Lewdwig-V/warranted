@@ -46,6 +46,7 @@ def test_real_proof_passes_with_exact_axioms():
     result = run(TARGET + PROOF)
     assert result.status is ProofStatus.PROVED, result.diagnostic
     assert result.axioms == ("Quot.sound", "propext")
+    assert result.raw["Solution.lean"] == (TARGET + PROOF).encode()
     assert result.raw["solution.ndjson"]
     assert result.raw["challenge.ndjson"]
 
