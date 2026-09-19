@@ -47,7 +47,8 @@ uv run --locked python examples/m2/experiments.py resume runs/m2
 
 `start` captures initial results and commits the owner-authored revision at the
 first submission checkpoint. `resume` reads that event in a fresh process before
-assessing acceptance. Each condition uses its own ledger and the same 20-unit cap.
+assessing acceptance through the [shared host boundary](m2-acceptance.md).
+Each condition uses its own ledger and the same 20-unit cap.
 The host pins the complete development fixture, including future revision files,
 in one immutable manifest. This script does not model new replay worlds or hide
 future fixture data from a worker. No worker runs in this slice.
@@ -92,6 +93,11 @@ required check's failure.
 | Empty | Pass | Fail | Pass | Fail | Reject |
 | Swapped timestamps on the same UTC date | Pass | Pass | Fail | Pass | Reject |
 
+All four obligations are gates. A separate rule prefers timestamps with embedded
+offsets. The fixture owner supplies an exception because the offset is documented
+separately. The host records that exception for each exact target and revision.
+It never waives a gate. The five failing candidates remain rejected.
+
 The timestamp obligation examines each emitted row, so empty output satisfies it
 without establishing preservation. The totals obligation independently sums the
 emitted rows and compares both those sums and reported totals with the reference.
@@ -102,22 +108,25 @@ After one `start` and one `resume`, these are the expected charged operation cou
 
 | Condition | Initial operations | New operations after restart | Total |
 | --- | --- | --- | --- |
-| Failure matrix | 6 | 1 | 7 |
-| Unchanged | 4 | 0 | 4 |
-| Annotation | 4 | 0 | 4 |
-| Offset | 4 | 4 | 8 |
-| Definition | 5 | 2 | 7 |
+| Failure matrix | 7 | 1 | 8 |
+| Unchanged | 5 | 0 | 5 |
+| Annotation | 5 | 0 | 5 |
+| Offset | 5 | 4 | 9 |
+| Definition | 6 | 2 | 8 |
 
 One operation costs one synthetic unit. The offset condition includes a new check
 that rejects the old candidate. Elapsed nanoseconds are recorded separately.
 These counts describe scripted work, not arbitrary worker computation or savings.
-Another `resume` repeats no charged operations. Decisions and reports are new
-records, and all earlier checks remain in the ledger.
+Each condition adds one source-style check and reuses it after restart. Decisions
+and exceptions have empty usage, with separate elapsed time and operation counts.
+Another `resume` repeats no charged operations. It rechecks current evidence and
+reuses identical decision and exception completions. Reports use new session IDs,
+and all earlier checks remain in the ledger.
 
 Each condition retains a ledger, an independent execution log, JSON reports, and
 selected evidence exports. CI keeps the logs, reports, and exports for 14 days.
 These are public development cases. Exports include their reference outputs and
-revisions, but exclude the host source snapshot and authoritative database.
+revisions, but exclude the host and acceptance source snapshots and authoritative database.
 
 The [tests](../tests/test_m2_fixture.py) cover the matrix, missing and mismatched
 receipts, forged raw results, changed fixture files, and process termination.
@@ -126,9 +135,12 @@ The first case recovers the revision. The second retains an unknown operation an
 its reservation. Recovery never retries it. A run without a committed checkpoint
 fails explicitly and requires inspection.
 
+Fixture version 2 uses the shared boundary and pinned acceptance policy. It requires
+a new run directory because the host code and contract differ from version 1.
 This fixture demonstrates selected M2 behavior with one trusted writer.
-It does not provide a general claim graph, owner authentication, rule exceptions,
-protected operations, worker isolation, Lean proofs, or replay. M2 remains open.
+Its protected operation records local candidate acceptance. General claim graphs,
+owner authentication, external-effect authorization, worker isolation, Lean proofs,
+and replay remain separate work. M2 remains open.
 
 ## M1 scripted walkthrough
 

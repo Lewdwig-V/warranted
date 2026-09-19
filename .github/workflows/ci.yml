@@ -74,3 +74,4 @@ jobs:
           .venv-wheel/bin/warranted --version
           .venv-wheel/bin/python -c "from warranted.ledger import Ledger, Request, Result"
           .venv-wheel/bin/python -c "from warranted.exports import export_evidence"
+          .venv-wheel/bin/python -c "from warranted.acceptance import Acceptance, AcceptanceContext, Evidence"

@@ -1,4 +1,4 @@
-# M2 data transformation contract, version 1
+# M2 data transformation contract, version 2
 
 The contract owner is `fixture-owner`, the trusted author of this scripted fixture.
 The original request is to preserve the source records, convert their local
@@ -38,6 +38,13 @@ The transformation does not produce these references. `candidates.json` supplies
 six fixed candidate outputs, including the successful control.
 These JSON rows represent normalized CSV fields without serialization differences.
 
+`acceptance.json` classifies all four obligations as gates. No exception can waive
+them. A separate rule prefers an explicit offset within every source timestamp.
+The source-style checker reports that this fixture does not satisfy that rule.
+The fixture owner approves an exception because a separate source document supplies
+the offset. The host records the reason against the exact candidate and current
+interpretation. This exception changes no gate or reference output.
+
 ## Revision protocol
 
 The checkpoint is the first candidate submission, after initial checks and before
@@ -53,7 +60,10 @@ also depend on the current definition and reference. An annotation change permit
 reuse of all calculations. An offset change retains source facts but requires new
 normalization, aggregation, and affected checks. A definition change requires new
 candidate and witness checks even when the candidate bytes remain identical.
+The shared host boundary resolves the interpretation before each acceptance call.
 Each final decision records the full current interpretation, including annotation.
+Identical calls reuse a committed decision only after checking current support.
+An earlier accepted decision does not authorize acceptance after a revision.
 
 ## Scope and known gaps
 
@@ -61,11 +71,16 @@ This is a trusted, local experiment with one writer. The host and checker code,
 source files, versions, candidates, and references are pinned in the ledger.
 The checker shares a process with the scripted host. No untrusted worker runs here.
 The fixture supplies explicit dependencies and owner-authored revisions. It does
-not discover dependencies, authenticate a remote owner, infer user intent, or
-enforce a general protected operation. Rule exceptions and gate waivers remain
-separate M2 work. Lean proofs, worker isolation, and replay remain later work.
+not discover dependencies, authenticate a remote owner, or infer user intent.
+The protected operation records candidate acceptance in the ledger. It does not
+authorize a later external effect. The host serializes calls and owns the policy,
+current-version resolver, checkers, and exception method. Lean proofs, worker
+isolation, and replay remain later work.
 
 Each executed operation costs one synthetic unit. Elapsed nanoseconds are measured
 separately. Host bookkeeping, interpretation lookup, and report writing are not
-charged operations. Each condition has a 20-unit allowance across all sessions.
+charged operations. Decision and exception records use operation receipts with
+empty usage and reservations. Their elapsed time is recorded. Each condition has
+a 20-unit allowance across all sessions. The source-style check costs one unit
+per condition and is reused after restart.
 There are no model calls, external services, training runs, or held-out results.

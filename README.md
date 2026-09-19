@@ -17,9 +17,10 @@ requests, and resource usage. Its Python API recovers these records after proces
 interruption. It uses SQLite and files with one trusted writer.
 
 Reservations survive restart. Repeated requests reuse completed results without
-another charge, and uncertain executions remain blocked. Worker isolation, gates,
-Lean verification, and replay remain planned. M1 is complete for a local filesystem
-with one trusted writer. A scripted CSV walkthrough demonstrates restart, result
+another charge, and uncertain executions remain blocked. A trusted host boundary
+checks gates and scoped rule exceptions before recording candidate acceptance.
+Worker isolation, Lean verification, and replay remain planned. M1 is complete for
+a local filesystem with one trusted writer. A scripted CSV walkthrough demonstrates restart, result
 reuse, accounting, and selected evidence exports. The M2 fixture adds three
 scripted experiments for selective rebuilding, changed definitions, and independent
 acceptance obligations. M2 remains in progress.
@@ -149,7 +150,10 @@ charged operations, retained reservations, and an independent execution count.
 The [pilot](docs/pilot.md#m2-fixture-experiments) gives the expected results and
 operation counts. CI runs all three experiments and retains the public development
 evidence for 14 days. The host uses explicit dependencies and trusted revision
-events. General gates, owner authentication, and worker isolation remain planned.
+events. The [acceptance boundary](docs/m2-acceptance.md) enforces all four gates and
+records a separate source-format rule exception. Its protected operation records
+local acceptance. Owner authentication, external-effect authorization, and worker
+isolation remain planned.
 
 ## Local evidence API
 
@@ -244,12 +248,15 @@ Keep the authoritative project outside any untrusted worker's writable workspace
 | [src/warranted](src/warranted) | Evidence ledger and help/version CLI |
 | [tests/test_ledger.py](tests/test_ledger.py) | Evidence, operation recovery, and accounting cases |
 | [src/warranted/exports.py](src/warranted/exports.py) | Explicit selection and independent file copies |
+| [src/warranted/acceptance.py](src/warranted/acceptance.py) | Current-context acceptance and scoped rule exceptions |
+| [docs/m2-acceptance.md](docs/m2-acceptance.md) | Host boundary, receipt protocol, recovery, and limits |
 | [examples/m1](examples/m1) | Fixed CSV fixture and restart walkthrough |
 | [examples/m2](examples/m2) | Three fixed experiments for revisions and independent obligations |
 | [tests/test_exports.py](tests/test_exports.py) | Export disclosure and publication boundaries |
 | [tests/test_walkthrough.py](tests/test_walkthrough.py) | Success, failure, changed input, and interrupted CSV execution |
 | [tests/test_m2_fixture.py](tests/test_m2_fixture.py) | Selective work, changed definitions, independent failures, and restart |
+| [tests/test_acceptance.py](tests/test_acceptance.py) | Gate bypass attempts, rule exceptions, and acceptance recovery |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | Persistence tests and package checks |
 
-M2 continues with claims, rule exceptions, and gates at protected operations.
+M2 continues with claims, current support, and owner-authorized contract revisions.
 See [M2 in the roadmap](docs/roadmap.md#m2--claims-applicability-and-gates).
