@@ -20,6 +20,12 @@ def test_invalid_source_cannot_start_verification(tmp_path, source):
         verify(source, tmp_path / "missing-bundle.json")
 
 
+@pytest.mark.parametrize("seconds", [0, -1, 121, True, "5"])
+def test_host_timeout_must_stay_within_the_policy_ceiling(tmp_path, seconds):
+    with pytest.raises(ValueError, match="timeout"):
+        verify(b"source", tmp_path / "missing-bundle.json", seconds=seconds)
+
+
 @pytest.mark.parametrize("field", ["policy", "image", "toolchain"])
 def test_changed_bundle_pin_fails_before_runtime_dispatch(tmp_path, field):
     bundle = {

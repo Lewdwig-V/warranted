@@ -95,7 +95,10 @@ It supplements Podman's default filter.
 A native probe requires Landlock support, denied writes to the decision file, and denied Unix sockets before each attempt.
 Missing controls produce an infrastructure failure.
 
-The limits are one CPU, 1 GiB memory, 64 processes, and 120 seconds for verification.
+The limits are one CPU, 1 GiB memory, 64 processes, and at most 120 seconds for verification.
+The host can select a smaller timeout with `verify(..., seconds=5)`.
+The result records that exact limit. The worker cannot increase the 120-second ceiling.
+The native timeout test uses five seconds and requires compilation to start before the timeout.
 The container also has a 180-second lifetime limit.
 The source limit is 1 MiB, each export limit is 8 MiB, and captured console output is at most 2 MiB.
 The workspace is 64 MiB, with a separate 8 MiB temporary directory.

@@ -31,9 +31,9 @@ end Warranted
 """
 
 
-def run(source):
+def run(source, *, seconds=120):
     bundle = Path(os.environ["WARRANTED_PROOF_BUNDLE"])
-    result = verify(source.encode(), bundle)
+    result = verify(source.encode(), bundle, seconds=seconds)
     reports = Path(os.environ.get("WARRANTED_PROOF_REPORTS", "runs/m4-native"))
     reports.mkdir(parents=True, exist_ok=True)
     (reports / f"{result.identity['solution']}.json").write_text(
@@ -186,7 +186,9 @@ def test_excessive_output_is_unproved_and_bounded():
 
 
 def test_timeout_is_unproved_and_cleanup_is_known():
-    result = run(TARGET + "#eval IO.sleep 200000\n" + PROOF)
+    result = run(TARGET + "#eval IO.sleep 200000\n" + PROOF, seconds=5)
     assert result.status is ProofStatus.UNPROVED, result.diagnostic
     assert "timeout" in result.diagnostic
-    assert result.elapsed_ns < 160 * 10**9
+    assert b"Building Solution" in result.raw["stdout"]
+    assert result.identity["limits"]["seconds"] == 5
+    assert result.elapsed_ns < 30 * 10**9

@@ -87,7 +87,9 @@ def _checked(args: list[str], data: bytes = b"", **kwargs) -> bytes:
     return result.stdout
 
 
-def verify(source: bytes, bundle_path: Path) -> Verification:
+def verify(
+    source: bytes, bundle_path: Path, *, seconds: int = LIMITS["seconds"]
+) -> Verification:
     """Verify captured bytes under a host-selected immutable build manifest.
 
     Cleanup failure raises instead of claiming a known, stopped attempt. This
@@ -95,6 +97,8 @@ def verify(source: bytes, bundle_path: Path) -> Verification:
     """
     if type(source) is not bytes or not 0 < len(source) <= SOURCE_LIMIT:
         raise ValueError("source must be nonempty bounded bytes")
+    if type(seconds) is not int or not 1 <= seconds <= LIMITS["seconds"]:
+        raise ValueError("timeout must be an integer from 1 to 120 seconds")
     bundle_bytes = bundle_path.read_bytes()
     bundle = json.loads(bundle_bytes)
     if (
@@ -113,7 +117,7 @@ def verify(source: bytes, bundle_path: Path) -> Verification:
         "image": bundle["image"],
         "tools": bundle["manifest"],
         "policy": bundle["policy"],
-        "limits": dict(LIMITS),
+        "limits": {**LIMITS, "seconds": seconds},
         "kernel": platform.release(),
     }
     name = "warranted-proof-" + uuid.uuid4().hex
@@ -182,7 +186,7 @@ def verify(source: bytes, bundle_path: Path) -> Verification:
             source,
         )
         executing = True
-        result = _run([*entry, "execute"], seconds=LIMITS["seconds"])
+        result = _run([*entry, "execute"], seconds=seconds)
         executing = False
         raw.update(stdout=result.stdout, stderr=result.stderr)
         if result.returncode:
