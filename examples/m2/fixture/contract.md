@@ -1,4 +1,4 @@
-# M2 data transformation contract, version 2
+# M2 data transformation contract, version 3
 
 The contract owner is `fixture-owner`, the trusted author of this scripted fixture.
 The original request is to preserve the source records, convert their local
@@ -47,11 +47,15 @@ interpretation. This exception changes no gate or reference output.
 
 ## Revision protocol
 
-The checkpoint is the first candidate submission, after initial checks and before
-final acceptance. The host records one owner-authored event at that checkpoint.
+The checkpoint is the first candidate submission, after initial checks and a
+decision under the initial contract. The host records one approved revision there.
 The unchanged, annotation, offset, and definition conditions use the same checkpoint
 and allowance. A fresh process reads the event before any acceptance decision.
+`intent.json` pins the request, source links, obligation links, known gaps, and
+owner approvals for each condition. An approval names exact changes and affected
+obligations. The host refuses revisions outside that approval.
 The event names old and new versions, the owner, and the reason for the revision.
+It links the approval, source evidence, prior candidates, receipts, and claims.
 The matrix condition keeps the initial interpretation throughout.
 
 Source facts depend on the input alone. Normalization depends on those facts and
@@ -65,13 +69,22 @@ Each final decision records the full current interpretation, including annotatio
 Identical calls reuse a committed decision only after checking current support.
 An earlier accepted decision does not authorize acceptance after a revision.
 
+Claim records retain assertions, assumptions, parent dependencies, and scoped
+validation references. Reports separate historical validation from current
+applicability. An offset revision propagates staleness through normalization,
+aggregation, and candidate claims. Source facts remain current.
+Transformation assertions have no independent validation and remain unchecked.
+Candidate claims use the independent evaluator. Each binds all inputs to its
+four-field receipt, so a definition revision requires reassessing all four fields.
+Unknown versions or incomplete dependency lists cannot establish current support.
+
 ## Scope and known gaps
 
 This is a trusted, local experiment with one writer. The host and checker code,
 source files, versions, candidates, and references are pinned in the ledger.
 The checker shares a process with the scripted host. No untrusted worker runs here.
-The fixture supplies explicit dependencies and owner-authored revisions. It does
-not discover dependencies, authenticate a remote owner, or infer user intent.
+The fixture supplies explicit dependencies and pinned local owner approvals. It
+does not discover dependencies, authenticate a remote owner, or infer user intent.
 The protected operation records candidate acceptance in the ledger. It does not
 authorize a later external effect. The host serializes calls and owns the policy,
 current-version resolver, checkers, and exception method. Lean proofs, worker
@@ -79,7 +92,8 @@ isolation, and replay remain later work.
 
 Each executed operation costs one synthetic unit. Elapsed nanoseconds are measured
 separately. Host bookkeeping, interpretation lookup, and report writing are not
-charged operations. Decision and exception records use operation receipts with
+charged operations. Claims use observation records without a synthetic charge.
+Decision and exception records use operation receipts with
 empty usage and reservations. Their elapsed time is recorded. Each condition has
 a 20-unit allowance across all sessions. The source-style check costs one unit
 per condition and is reused after restart.

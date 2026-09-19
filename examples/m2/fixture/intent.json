@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "owner": "fixture-owner",
+  "request": "Preserve source records, convert local timestamps to UTC, and sum integer values by UTC date.",
+  "sources": ["contract.md", "versions.json", "references.json", "candidates.json", "acceptance.json"],
+  "obligations": {
+    "unique_ids": "contract.md#independent-obligations",
+    "preserved_rows": "contract.md#independent-obligations",
+    "utc_timestamps": "contract.md#independent-obligations",
+    "daily_totals": "contract.md#independent-obligations",
+    "explicit_source_offsets": "contract.md#independent-obligations"
+  },
+  "known_gaps": [
+    "Only three ASCII source records and fixed offsets are covered.",
+    "An empty output satisfies the narrow timestamp and uniqueness checks.",
+    "The fixture does not establish that these obligations capture every user need.",
+    "Owner approvals are pinned local fixture data, not remote authentication."
+  ],
+  "initial": {"offset": "offset-v1", "definition": "definition-v1", "annotation": "annotation-v1"},
+  "approvals": {
+    "matrix": {
+      "changes": {},
+      "affected": [],
+      "reason": "Retain independent failures across restart."
+    },
+    "unchanged": {
+      "changes": {},
+      "affected": [],
+      "reason": "Restart without revision."
+    },
+    "annotation": {
+      "changes": {"annotation": "annotation-v2"},
+      "affected": [],
+      "reason": "Clarify the source annotation only."
+    },
+    "offset": {
+      "changes": {"offset": "offset-v2"},
+      "affected": ["utc_timestamps", "daily_totals"],
+      "reason": "Correct the documented fixed offset to +00:00."
+    },
+    "definition": {
+      "changes": {"definition": "definition-v2"},
+      "affected": ["unique_ids"],
+      "reason": "Ignore ASCII letter case; preserve ID spelling."
+    }
+  }
+}

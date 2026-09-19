@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from warranted.ledger import Ledger, Origin
+from warranted.ledger import Ledger, Manifest, Origin
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "m2"
 SCRIPT = EXAMPLE / "experiments.py"
@@ -83,6 +83,34 @@ def test_all_experiments_survive_restart_with_selective_work(tmp_path):
         assert report["new_operations"] == expected_new[name]
         assert report["spent"] == report["execution_count"] == expected_total[name]
         assert report["reserved"] == 0
+        assert all(
+            item["applicability"] == "current"
+            for item in initial[name]["support"].values()
+        )
+    for name in ("unchanged", "annotation", "matrix"):
+        assert all(
+            item["applicability"] == "current"
+            for item in resumed[name]["support_before"].values()
+        )
+    old = resumed["offset"]["support_before"]
+    assert old["source-facts"]["applicability"] == "current"
+    assert old["source-facts"]["validation"] == "unknown"
+    for name in ("normalize", "aggregate", "candidate", "main/utc_timestamps"):
+        assert old[name]["applicability"] == "stale"
+    assert old["main/utc_timestamps"]["validation"] == "passed"
+    for name in ("offset", "definition"):
+        assert all(
+            item["applicability"] == "current"
+            for item in resumed[name]["support_after"].values()
+        )
+    assert (
+        resumed["definition"]["support_before"]["candidate"]["applicability"]
+        == "current"
+    )
+    assert (
+        resumed["definition"]["support_before"]["main/unique_ids"]["applicability"]
+        == "stale"
+    )
     for name in ("unchanged", "annotation"):
         assert resumed[name]["before_reassessment"] == "accepted"
         assert resumed[name]["reused_pipeline"] == [
@@ -139,7 +167,8 @@ def test_all_experiments_survive_restart_with_selective_work(tmp_path):
             for item in ledger.history()
             if item.origin.kind == "decision"
         ]
-        assert sum(item["status"] == "rejected" for item in decisions) == 5
+        # Both the initial and revised contract retain all five independent failures.
+        assert sum(item["status"] == "rejected" for item in decisions) == 10
         assert all(
             item["requirements"]["explicit_source_offsets"] == "excepted"
             for item in decisions
@@ -148,7 +177,14 @@ def test_all_experiments_survive_restart_with_selective_work(tmp_path):
 
 @pytest.mark.parametrize(
     "changed",
-    ["contract.md", "versions.json", "references.json", "input.csv", "acceptance.json"],
+    [
+        "contract.md",
+        "versions.json",
+        "references.json",
+        "input.csv",
+        "acceptance.json",
+        "intent.json",
+    ],
 )
 def test_changed_fixture_fails_before_reuse_or_charges(tmp_path, changed):
     fixture = tmp_path / "fixture"
@@ -199,6 +235,72 @@ def test_missing_forged_wrong_target_and_unfinished_receipts_block_acceptance(tm
         assert ledger.accounting()["synthetic-work"].reserved == 1
     with pytest.raises(ValueError, match="unsupported"):
         module["unique_ids"](["rA", "ra"], "worker-defined-equality")
+
+
+def test_unapproved_revision_cannot_replace_the_pinned_contract(tmp_path):
+    root = tmp_path / "run"
+    assert invoke(root, "start").returncode == 0
+    module = runpy.run_path(str(SCRIPT))
+    with Ledger.open(root / "unchanged" / "ledger") as ledger:
+        host = module["Experiment"](ledger, ledger.start_session(), root / "unchanged")
+        before = len(ledger.history())
+        with pytest.raises(ValueError, match="approved"):
+            host.revise({}, {}, module["Interpretation"](definition="definition-v2"))
+        assert len(ledger.history()) == before
+        current, event = host.interpretation()
+        copied = host.read(module["Evidence"].captured(event, "revision.json"))
+        copied["current"]["definition"] = "definition-v2"
+        ledger.record(
+            host.session,
+            Origin("worker-revision", "revision", "worker", "1", {}),
+            {"revision.json": json.dumps(copied).encode()},
+        )
+        with pytest.raises((RuntimeError, ValueError), match="revision"):
+            host.decide(host.ref("candidate/correct"), None)
+
+
+def test_approved_revision_reassesses_a_rejected_candidate_without_erasing_failure(
+    tmp_path,
+):
+    module = runpy.run_path(str(SCRIPT))
+    root = tmp_path / "run"
+    root.mkdir()
+    with Ledger.create(
+        root / "ledger",
+        Manifest(
+            "m2-data-transformation",
+            "3",
+            "test",
+            "world",
+            module["environment"]("offset"),
+            {"synthetic-work": 20},
+        ),
+        module["snapshots"](EXAMPLE / "fixture"),
+    ) as ledger:
+        host = module["Experiment"](ledger, ledger.start_session(), root)
+        target = host.ref("candidate/wrong-offset")
+        host.source_style()
+        first = host.check(target, module["Interpretation"]())
+        old_id = first.request.origin.operation_id
+        assert host.decide(target, old_id) == "rejected"
+        failure = next(
+            item for item in ledger.history() if item.origin.kind == "decision"
+        )
+        failure_bytes = ledger.read_artifact(failure.artifacts["decision.json"])
+        host.revise(
+            {"main": target},
+            {"main": old_id},
+            module["Interpretation"](offset="offset-v2"),
+        )
+    with Ledger.open(root / "ledger") as ledger:
+        host = module["Experiment"](ledger, ledger.start_session(), root)
+        assert host.decide(target, old_id) == "stale"
+        current, _ = host.interpretation()
+        fresh = host.check(target, current)
+        assert host.decide(target, fresh.request.origin.operation_id) == "accepted"
+        assert ledger.read_artifact(failure.artifacts["decision.json"]) == failure_bytes
+        assert json.loads(failure_bytes)["requirements"]["utc_timestamps"] == "rejected"
+        assert ledger.accounting()["synthetic-work"].spent == 3
 
 
 def _pause_after_revision(root, pipe):

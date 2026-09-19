@@ -45,8 +45,9 @@ uv run --locked python examples/m2/experiments.py start runs/m2
 uv run --locked python examples/m2/experiments.py resume runs/m2
 ```
 
-`start` captures initial results and commits the owner-authored revision at the
-first submission checkpoint. `resume` reads that event in a fresh process before
+`start` captures claims, results, and decisions under the initial contract. It
+commits the approved revision at the first submission checkpoint.
+`resume` reads that event in a fresh process before
 assessing acceptance through the [shared host boundary](m2-acceptance.md).
 Each condition uses its own ledger and the same 20-unit cap.
 The host pins the complete development fixture, including future revision files,
@@ -68,6 +69,10 @@ each candidate check binds the exact candidate, source, offset, definition, and
 reference. The project also pins the host, contract, and environment.
 Every decision binds the current revision and annotation. Reusing source facts
 does not transplant a check from one candidate to another.
+The [claims API](m2-claims.md) propagates staleness through declared parents.
+Reports separate a historical checker result from its current applicability.
+The offset condition retains passing historical validation while marking dependent
+claims stale. Rebuilding produces current claims and a new acceptance decision.
 
 ### Changed definitions with identical output
 
@@ -77,6 +82,9 @@ receipt remains historical evidence but cannot authorize the new decision.
 The two-ID witness `rA`, `ra` passes under version 1 and fails under version 2.
 This witness detects a checker that changes its label but retains the old meaning.
 It stays separate from the main candidate's acceptance obligations.
+All four candidate claims bind the inputs to the shared evaluator receipt.
+They conservatively become stale together after the definition revision.
+The transformation claims remain current because their dependencies do not change.
 
 ### Independent failures
 
@@ -119,6 +127,9 @@ that rejects the old candidate. Elapsed nanoseconds are recorded separately.
 These counts describe scripted work, not arbitrary worker computation or savings.
 Each condition adds one source-style check and reuses it after restart. Decisions
 and exceptions have empty usage, with separate elapsed time and operation counts.
+Claim capture and support reporting are uncharged host bookkeeping.
+Version 3 records decisions before and after the revision, so both sets remain
+in history. This adds no charged checker executions.
 Another `resume` repeats no charged operations. It rechecks current evidence and
 reuses identical decision and exception completions. Reports use new session IDs,
 and all earlier checks remain in the ledger.
@@ -126,7 +137,7 @@ and all earlier checks remain in the ledger.
 Each condition retains a ledger, an independent execution log, JSON reports, and
 selected evidence exports. CI keeps the logs, reports, and exports for 14 days.
 These are public development cases. Exports include their reference outputs and
-revisions, but exclude the host and acceptance source snapshots and authoritative database.
+revisions, but exclude host, acceptance, and claims source snapshots and the authoritative database.
 
 The [tests](../tests/test_m2_fixture.py) cover the matrix, missing and mismatched
 receipts, forged raw results, changed fixture files, and process termination.
@@ -135,12 +146,14 @@ The first case recovers the revision. The second retains an unknown operation an
 its reservation. Recovery never retries it. A run without a committed checkpoint
 fails explicitly and requires inspection.
 
-Fixture version 2 uses the shared boundary and pinned acceptance policy. It requires
-a new run directory because the host code and contract differ from version 1.
-This fixture demonstrates selected M2 behavior with one trusted writer.
-Its protected operation records local candidate acceptance. General claim graphs,
-owner authentication, external-effect authorization, worker isolation, Lean proofs,
-and replay remain separate work. M2 remains open.
+Fixture version 3 adds claim dependencies and checks revisions against pinned owner
+approvals. It requires a new run directory because its host and contract changed.
+The revision retains source links, affected obligations, known gaps, and prior outcomes.
+A focused test also retains a rejection before an approved offset revision and
+requires a fresh check before accepting the same candidate afterward.
+Its protected operation records local candidate acceptance with one trusted writer.
+Remote owner authentication, external-effect authorization, worker isolation, Lean
+proofs, and replay remain separate work.
 
 ## M1 scripted walkthrough
 

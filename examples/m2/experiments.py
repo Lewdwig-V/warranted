@@ -13,8 +13,9 @@ from pathlib import Path
 from time import perf_counter_ns
 from uuid import uuid4
 
-from warranted import acceptance
+from warranted import acceptance, claims
 from warranted.acceptance import Acceptance, AcceptanceContext, Evidence
+from warranted.claims import Claims
 from warranted.exports import export_evidence
 from warranted.ledger import (
     ArtifactRef,
@@ -37,6 +38,7 @@ FILES = (
     "references.json",
     "candidates.json",
     "acceptance.json",
+    "intent.json",
 )
 SCENARIOS = ("matrix", "unchanged", "annotation", "offset", "definition")
 
@@ -133,15 +135,18 @@ def snapshots(fixture: Path) -> dict[str, Snapshot]:
         name: Snapshot(
             (fixture / name).read_bytes(),
             f"m2/{name}",
-            "2" if name == "contract.md" else "1",
+            "3" if name == "contract.md" else "1",
         )
         for name in FILES
     }
     captured["host.py"] = Snapshot(
-        Path(__file__).read_bytes(), "m2/experiments.py", "2"
+        Path(__file__).read_bytes(), "m2/experiments.py", "3"
     )
     captured["acceptance.py"] = Snapshot(
         Path(acceptance.__file__).read_bytes(), "warranted/acceptance.py", "1"
+    )
+    captured["claims.py"] = Snapshot(
+        Path(claims.__file__).read_bytes(), "warranted/claims.py", "1"
     )
     for name, value in decode(captured["versions.json"].data).items():
         captured[name] = Snapshot(
@@ -163,7 +168,7 @@ def environment(scenario: str) -> dict[str, str]:
     return {
         "python": platform.python_version(),
         "platform": platform.platform(),
-        "policy": "fixed-m2-script-v2",
+        "policy": "fixed-m2-script-v3",
         "evaluator": "four-obligations-v1",
         "model": "none",
         "split": "development",
@@ -176,6 +181,8 @@ class Experiment:
 
     def __init__(self, ledger: Ledger, session: str, root: Path):
         self.ledger, self.session, self.root = ledger, session, root
+        self.claims = Claims(ledger, session)
+        self.claim_refs = {}
 
     def ref(self, name: str) -> Evidence:
         return Evidence(name, self.ledger.project.snapshots[name].artifact)
@@ -251,6 +258,60 @@ class Experiment:
             {f"{kind}.json": encode(value)},
         )
 
+    def approval(self) -> dict:
+        intent = self.read(self.ref("intent.json"))
+        policy = self.read(self.ref("acceptance.json"))
+        if (
+            type(intent["version"]) is not int
+            or intent["version"] != 1
+            or intent["owner"] != policy["owner"]
+            or intent["obligations"].keys() != policy["requirements"].keys()
+            or intent["initial"] != asdict(Interpretation())
+        ):
+            raise ValueError("unsupported owner approval")
+        selected = intent["approvals"][
+            self.ledger.project.manifest.environment["scenario"]
+        ]
+        current = replace(Interpretation(), **selected["changes"])
+        return {
+            "checkpoint": "first-submission-before-final-acceptance",
+            "owner": intent["owner"],
+            "approval": asdict(self.ref("intent.json")),
+            "sources": {name: asdict(self.ref(name)) for name in intent["sources"]},
+            "previous": intent["initial"],
+            "current": asdict(current),
+            "reason": selected["reason"],
+            "affected": selected["affected"],
+            "obligations": intent["obligations"],
+            "known_gaps": intent["known_gaps"],
+        }
+
+    def revise(self, candidates, receipts, proposed: Interpretation) -> Observation:
+        approved = self.approval()
+        if asdict(proposed) != approved["current"]:
+            raise ValueError("revision is not approved by the pinned fixture owner")
+        if any(item.origin.kind == "revision" for item in self.ledger.history()):
+            raise ValueError("revision checkpoint already committed")
+        refs = {
+            **candidates,
+            **{f"claim/{name}": ref for name, ref in self.claim_refs.items()},
+            **{
+                name: self.ref(name)
+                for name in self.read(self.ref("intent.json"))["sources"]
+            },
+            "approval": self.ref("intent.json"),
+        }
+        return self.record(
+            "revision",
+            refs,
+            {
+                **approved,
+                "receipts": receipts,
+                "candidates": {name: asdict(ref) for name, ref in candidates.items()},
+                "claims": {name: asdict(ref) for name, ref in self.claim_refs.items()},
+            },
+        )
+
     def interpretation(self) -> tuple[Interpretation, Observation]:
         events = [
             item for item in self.ledger.history() if item.origin.kind == "revision"
@@ -258,9 +319,52 @@ class Experiment:
         if len(events) != 1:
             raise RuntimeError("missing committed revision checkpoint")
         event = events[0]
-        return Interpretation(
-            **self.read(Evidence.captured(event, "revision.json"))["current"]
-        ), event
+        body = self.read(Evidence.captured(event, "revision.json"))
+        approved = self.approval()
+        if (
+            set(body) != approved.keys() | {"receipts", "candidates", "claims"}
+            or any(body[name] != value for name, value in approved.items())
+            or event.origin.producer != "m2-fixture"
+            or event.origin.inputs.get("intent.json")
+            != self.ref("intent.json").artifact
+        ):
+            raise ValueError("revision does not match the pinned owner approval")
+        self.ledger.lookup(Request(event.origin, self.ledger.project))
+        return Interpretation(**body["current"]), event
+
+    def support(self, refs, current: Interpretation) -> dict:
+        versions = {
+            "source": self.ref("input.csv"),
+            "offset": self.ref(current.offset),
+            "definition": self.ref(current.definition),
+            "reference": self.ref(f"reference/{current.offset}"),
+        }
+        reports = {}
+        for name, ref in refs.items():
+            assessment = self.claims.assess(ref, versions)
+            reports[name] = {
+                "validation": assessment.validation,
+                "applicability": assessment.applicability,
+                "dependencies": dict(assessment.dependencies),
+            }
+        return reports
+
+    def claim_checks(self, name, candidate, current):
+        inputs = self.check_inputs(candidate, current)
+        request = self.request("evaluate", inputs)
+        assumptions = {key: ref for key, ref in inputs.items() if key != "candidate"}
+        parents = (self.claim_refs["candidate"],) if name == "main" else ()
+        for field in self.read(self.ref("acceptance.json"))["requirements"]:
+            if field == "explicit_source_offsets":
+                continue
+            self.claim_refs[f"{name}/{field}"] = self.claims.record(
+                f"Candidate satisfies {field} under the recorded interpretation.",
+                candidate,
+                assumptions,
+                parents=parents,
+                validation=(request, field),
+                complete=True,
+            )
 
     def pipeline(self, current: Interpretation) -> tuple[Evidence, list[str]]:
         before = {op.request.origin.operation_id for op in self.ledger.operations()}
@@ -309,6 +413,33 @@ class Experiment:
                 "totals": self.result_ref(totals),
             },
             {"rows": self.result(normalized), "totals": self.result(totals)},
+        )
+        self.claim_refs["source-facts"] = self.claims.record(
+            "These are the parsed source records.",
+            self.result_ref(facts),
+            {"source": self.ref("input.csv")},
+            complete=True,
+        )
+        self.claim_refs["normalize"] = self.claims.record(
+            "These rows apply the recorded offset.",
+            self.result_ref(normalized),
+            {"offset": offset},
+            parents=(self.claim_refs["source-facts"],),
+            complete=True,
+        )
+        self.claim_refs["aggregate"] = self.claims.record(
+            "These totals use the normalized UTC dates.",
+            self.result_ref(totals),
+            {},
+            parents=(self.claim_refs["normalize"],),
+            complete=True,
+        )
+        self.claim_refs["candidate"] = self.claims.record(
+            "The candidate combines normalized rows and their totals.",
+            Evidence.captured(candidate, "candidate.json"),
+            {},
+            parents=(self.claim_refs["normalize"], self.claim_refs["aggregate"]),
+            complete=True,
         )
         reused = [
             op.request.origin.kind
@@ -366,10 +497,15 @@ class Experiment:
         )
 
     def acceptance_context(self, candidate: Evidence) -> AcceptanceContext:
-        current, event = self.interpretation()
+        if any(item.origin.kind == "revision" for item in self.ledger.history()):
+            current, event = self.interpretation()
+            revision = Evidence.captured(event, "revision.json")
+        else:
+            self.approval()
+            current, revision = Interpretation(), self.ref("intent.json")
         return AcceptanceContext(
             self.ref("acceptance.json"),
-            Evidence.captured(event, "revision.json"),
+            revision,
             {
                 "evaluate": self.request(
                     "evaluate", self.check_inputs(candidate, current)
@@ -408,7 +544,7 @@ def run_scenario(
             root / "ledger",
             Manifest(
                 "m2-data-transformation",
-                "2",
+                "3",
                 str(uuid4()),
                 str(uuid4()),
                 environment(scenario),
@@ -466,6 +602,13 @@ def run_scenario(
                 name: host.check(ref, initial).request.origin.operation_id
                 for name, ref in candidates.items()
             }
+            for name, candidate in candidates.items():
+                host.claim_checks(name, candidate, initial)
+            report["support"] = host.support(host.claim_refs, initial)
+            report["decisions"] = {
+                name: host.decide(candidate, receipts[name])
+                for name, candidate in candidates.items()
+            }
             if scenario == "definition":
                 report["witness_before"] = host.result(host.witness(initial))
             current = replace(
@@ -476,27 +619,7 @@ def run_scenario(
                     else {}
                 ),
             )
-            host.record(
-                "revision",
-                candidates,
-                {
-                    "checkpoint": "first-submission-before-final-acceptance",
-                    "owner": "fixture-owner",
-                    "previous": asdict(initial),
-                    "current": asdict(current),
-                    "receipts": receipts,
-                    "candidates": {
-                        name: asdict(ref) for name, ref in candidates.items()
-                    },
-                    "reason": {
-                        "matrix": "Retain independent failures across restart.",
-                        "unchanged": "Restart without revision.",
-                        "annotation": "Clarify the source annotation only.",
-                        "offset": "Correct the documented fixed offset to +00:00.",
-                        "definition": "Ignore ASCII letter case; preserve ID spelling.",
-                    }[scenario],
-                },
-            )
+            host.revise(candidates, receipts, current)
         else:
             current, event = host.interpretation()
             revision = host.read(Evidence.captured(event, "revision.json"))
@@ -505,6 +628,10 @@ def run_scenario(
                 name: Evidence.restored(ref)
                 for name, ref in revision["candidates"].items()
             }
+            original_claims = {
+                name: Evidence.restored(ref) for name, ref in revision["claims"].items()
+            }
+            report["support_before"] = host.support(original_claims, current)
             if scenario == "matrix":
                 empty = candidates["empty"]
                 narrow = host.perform(
@@ -536,6 +663,8 @@ def run_scenario(
                         old_candidate, old_check.request.origin.operation_id
                     )
                 check = host.check(candidate, current)
+                host.claim_checks("main", candidate, current)
+                report["support_after"] = host.support(host.claim_refs, current)
                 report["decision"] = host.decide(
                     candidate, check.request.origin.operation_id
                 )
@@ -569,7 +698,7 @@ def run_scenario(
                 snapshots=tuple(
                     name
                     for name in ledger.project.snapshots
-                    if name not in ("host.py", "acceptance.py")
+                    if name not in ("host.py", "acceptance.py", "claims.py")
                 ),
                 observations={
                     item.sequence: tuple(item.artifacts) for item in ledger.history()
