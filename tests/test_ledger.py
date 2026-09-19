@@ -15,6 +15,7 @@ from warranted.ledger import (
     InvalidProject,
     Ledger,
     Manifest,
+    OperationConflict,
     Origin,
     Outcome,
     Request,
@@ -99,6 +100,45 @@ def test_invalid_capture_leaves_history_and_artifacts_unchanged(ledger):
             ledger.record(**request)
         assert ledger.history() == (baseline,)
         assert set((ledger.root / "artifacts" / "sha256").iterdir()) == before
+
+
+def test_operation_inputs_can_cite_exact_prior_observation_channels(ledger):
+    session = ledger.start_session()
+    first = ledger.record(session, origin(ledger), {"output.csv": b"derived input"})
+    ref = first.artifacts["output.csv"]
+    name = f"observation/{first.sequence}/output.csv"
+    req = Request(
+        replace(origin(ledger, "derived"), inputs={name: ref}), ledger.project
+    )
+    for bad_name, bad_ref in (
+        ("observation/999/output.csv", ref),
+        (f"observation/{first.sequence}/absent", ref),
+        (name, replace(ref, size_bytes=ref.size_bytes + 1)),
+        ("observation/01/output.csv", ref),
+        ("output.csv", ref),
+    ):
+        bad = replace(req, origin=replace(req.origin, inputs={bad_name: bad_ref}))
+        with pytest.raises(ValueError):
+            ledger.reserve(session, bad, {"synthetic-work": 1})
+    assert ledger.operations() == ()
+    ledger.reserve(session, req, {"synthetic-work": 1})
+    assert ledger.begin(session, req)
+    completion = ledger.complete(session, req, result(units=1), {"stdout": b"done"})
+    second = ledger.record(
+        session, origin(ledger, "same-bytes"), {"output.csv": b"derived input"}
+    )
+    changed_origin = replace(
+        req.origin, inputs={f"observation/{second.sequence}/output.csv": ref}
+    )
+    with pytest.raises(OperationConflict):
+        ledger.lookup(replace(req, origin=changed_origin))
+    with Ledger.open(ledger.root) as reopened:
+        assert reopened.lookup(req).completion == completion
+        assert reopened.read_artifact(req.origin.inputs[name]) == b"derived input"
+    # Cached downstream success cannot hide a damaged input artifact.
+    (ledger.root / "artifacts" / "sha256" / ref.digest).unlink()
+    with pytest.raises(FileNotFoundError):
+        ledger.lookup(req)
 
 
 @pytest.mark.parametrize("damage", ["missing", "changed", "wrong-size"])

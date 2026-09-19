@@ -627,8 +627,23 @@ class Ledger:
     def _check_origin(self, origin: Origin) -> None:
         for name, ref in origin.inputs.items():
             snapshot = self.project.snapshots.get(name)
-            if snapshot is None or snapshot.artifact != ref:
-                raise ValueError(f"input is not a project snapshot: {name}")
+            expected = snapshot.artifact if snapshot is not None else None
+            if snapshot is None and (
+                match := re.fullmatch(
+                    r"observation/([1-9][0-9]*)/(.+)", name, re.DOTALL
+                )
+            ):
+                sequence, channel = match.groups()
+                # Bind to the committed capture and channel, not just equal bytes.
+                row = self._connection.execute(
+                    "SELECT artifacts FROM observations WHERE sequence = ?", (sequence,)
+                ).fetchone()
+                if row is not None:
+                    expected = _load(row[0], _refs).get(channel)
+            if expected != ref:
+                raise ValueError(
+                    f"input is not a matching snapshot or observation: {name}"
+                )
             self.read_artifact(ref)
 
     def _publish_raw(self, raw: Mapping[str, bytes]) -> Mapping[str, ArtifactRef]:

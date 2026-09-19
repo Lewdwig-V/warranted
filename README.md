@@ -20,7 +20,9 @@ Reservations survive restart. Repeated requests reuse completed results without
 another charge, and uncertain executions remain blocked. Worker isolation, gates,
 Lean verification, and replay remain planned. M1 is complete for a local filesystem
 with one trusted writer. A scripted CSV walkthrough demonstrates restart, result
-reuse, accounting, and selected evidence exports.
+reuse, accounting, and selected evidence exports. The M2 fixture adds three
+scripted experiments for selective rebuilding, changed definitions, and independent
+acceptance obligations. M2 remains in progress.
 
 There are no model calls, external services, or runtime dependencies in the
 current package. The main CLI still provides help and version information only.
@@ -130,6 +132,25 @@ CI runs both commands and retains the exports, reports, and execution counter in
 the `m1-walkthrough` artifact for 14 days. The [pilot](docs/pilot.md#m1-scripted-walkthrough)
 defines the fixed outputs and the limits of this demonstration.
 
+## Run the M2 fixture experiments
+
+Use a new destination and run the two commands in separate processes:
+
+```bash
+uv run --locked python examples/m2/experiments.py start runs/m2
+uv run --locked python examples/m2/experiments.py resume runs/m2
+```
+
+The fixture compares harmless and meaningful revisions, changes a definition
+without changing the main output, and rejects five fixed failure candidates.
+The correct candidate passes. Each report links to copied evidence and shows
+charged operations, retained reservations, and an independent execution count.
+
+The [pilot](docs/pilot.md#m2-fixture-experiments) gives the expected results and
+operation counts. CI runs all three experiments and retains the public development
+evidence for 14 days. The host uses explicit dependencies and trusted revision
+events. General gates, owner authentication, and worker isolation remain planned.
+
 ## Local evidence API
 
 This example reserves three synthetic units, reads a snapshot, and charges two
@@ -224,9 +245,11 @@ Keep the authoritative project outside any untrusted worker's writable workspace
 | [tests/test_ledger.py](tests/test_ledger.py) | Evidence, operation recovery, and accounting cases |
 | [src/warranted/exports.py](src/warranted/exports.py) | Explicit selection and independent file copies |
 | [examples/m1](examples/m1) | Fixed CSV fixture and restart walkthrough |
+| [examples/m2](examples/m2) | Three fixed experiments for revisions and independent obligations |
 | [tests/test_exports.py](tests/test_exports.py) | Export disclosure and publication boundaries |
 | [tests/test_walkthrough.py](tests/test_walkthrough.py) | Success, failure, changed input, and interrupted CSV execution |
+| [tests/test_m2_fixture.py](tests/test_m2_fixture.py) | Selective work, changed definitions, independent failures, and restart |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | Persistence tests and package checks |
 
-The next milestone adds changed-premise handling, dependencies, and independent
-acceptance gates. See [M2 in the roadmap](docs/roadmap.md#m2--claims-applicability-and-gates).
+M2 continues with claims, rule exceptions, and gates at protected operations.
+See [M2 in the roadmap](docs/roadmap.md#m2--claims-applicability-and-gates).

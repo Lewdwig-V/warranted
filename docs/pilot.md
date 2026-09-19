@@ -1,8 +1,9 @@
 # Pilot and evaluation
 
-Status: proposed. No fixtures, evaluator, or benchmark results exist yet. Start
-with scripted deterministic runs, then add bounded agents. The task families
-below exercise the design without adopting another harness's interfaces.
+Status: the M1 walkthrough and the three M2 fixture experiments are implemented
+for a trusted local host. Agent trials and benchmark comparisons remain planned.
+The task families below exercise the design without adopting another harness's
+interfaces.
 
 ## First family: data transformation with revised assumptions
 
@@ -31,6 +32,103 @@ A later Lean obligation may prove that an injective mapping preserves uniqueness
 for unique input identifiers. Checks supporting those premises belong to the
 current input snapshot. The theorem does not by itself verify the separate
 transformation implementation or establish the source data's properties.
+
+## M2 fixture experiments
+
+The [M2 fixture contract](../examples/m2/fixture/contract.md) fixes the source
+interpretations, obligations, revisions, and limits. The original M1 fixture stays
+unchanged. M2 uses the same IDs, values, and local clock times, with a separately
+versioned offset. Run these commands with a new destination:
+
+```bash
+uv run --locked python examples/m2/experiments.py start runs/m2
+uv run --locked python examples/m2/experiments.py resume runs/m2
+```
+
+`start` captures initial results and commits the owner-authored revision at the
+first submission checkpoint. `resume` reads that event in a fresh process before
+assessing acceptance. Each condition uses its own ledger and the same 20-unit cap.
+The host pins the complete development fixture, including future revision files,
+in one immutable manifest. This script does not model new replay worlds or hide
+future fixture data from a worker. No worker runs in this slice.
+
+### Selective rebuilding
+
+Compare an unchanged restart, an annotation edit, and an offset correction from
++01:00 to +00:00. The unchanged and annotation conditions reuse all three
+transformation stages and the existing candidate check. The offset correction
+reuses source facts but repeats normalization, aggregation, and affected checks.
+It first blocks the old receipt as stale, then rejects the old candidate under
+the new interpretation. The rebuilt candidate passes with daily totals of 18
+on January 1 and 5 on January 2, 2026.
+
+Dependencies are explicit in this fixture. Source facts describe the input, while
+each candidate check binds the exact candidate, source, offset, definition, and
+reference. The project also pins the host, contract, and environment.
+Every decision binds the current revision and annotation. Reusing source facts
+does not transplant a check from one candidate to another.
+
+### Changed definitions with identical output
+
+The owner changes identifier equality from exact to ASCII case-insensitive.
+The main candidate bytes remain identical and satisfy both versions. The old
+receipt remains historical evidence but cannot authorize the new decision.
+The two-ID witness `rA`, `ra` passes under version 1 and fails under version 2.
+This witness detects a checker that changes its label but retains the old meaning.
+It stays separate from the main candidate's acceptance obligations.
+
+### Independent failures
+
+The matrix uses literal candidates and reference outputs. Each check retains its
+own result. Passing a narrow uniqueness check after restart cannot erase another
+required check's failure.
+
+| Candidate | Unique IDs | Preserved rows | UTC timestamps | Daily totals | Decision |
+| --- | --- | --- | --- | --- | --- |
+| Correct | Pass | Pass | Pass | Pass | Accept |
+| Wrong offset | Pass | Pass | Fail | Fail | Reject |
+| Dropped row | Pass | Fail | Pass | Fail | Reject |
+| Dropped row and wrong offset | Pass | Fail | Fail | Fail | Reject |
+| Empty | Pass | Fail | Pass | Fail | Reject |
+| Swapped timestamps on the same UTC date | Pass | Pass | Fail | Pass | Reject |
+
+The timestamp obligation examines each emitted row, so empty output satisfies it
+without establishing preservation. The totals obligation independently sums the
+emitted rows and compares both those sums and reported totals with the reference.
+
+### Evidence and limits
+
+After one `start` and one `resume`, these are the expected charged operation counts:
+
+| Condition | Initial operations | New operations after restart | Total |
+| --- | --- | --- | --- |
+| Failure matrix | 6 | 1 | 7 |
+| Unchanged | 4 | 0 | 4 |
+| Annotation | 4 | 0 | 4 |
+| Offset | 4 | 4 | 8 |
+| Definition | 5 | 2 | 7 |
+
+One operation costs one synthetic unit. The offset condition includes a new check
+that rejects the old candidate. Elapsed nanoseconds are recorded separately.
+These counts describe scripted work, not arbitrary worker computation or savings.
+Another `resume` repeats no charged operations. Decisions and reports are new
+records, and all earlier checks remain in the ledger.
+
+Each condition retains a ledger, an independent execution log, JSON reports, and
+selected evidence exports. CI keeps the logs, reports, and exports for 14 days.
+These are public development cases. Exports include their reference outputs and
+revisions, but exclude the host source snapshot and authoritative database.
+
+The [tests](../tests/test_m2_fixture.py) cover the matrix, missing and mismatched
+receipts, forged raw results, changed fixture files, and process termination.
+They kill the host after a committed revision and before an operation completion.
+The first case recovers the revision. The second retains an unknown operation and
+its reservation. Recovery never retries it. A run without a committed checkpoint
+fails explicitly and requires inspection.
+
+This fixture demonstrates selected M2 behavior with one trusted writer.
+It does not provide a general claim graph, owner authentication, rule exceptions,
+protected operations, worker isolation, Lean proofs, or replay. M2 remains open.
 
 ## M1 scripted walkthrough
 

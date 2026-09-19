@@ -135,6 +135,39 @@ def test_exports_are_copies_and_default_selection_exposes_no_evidence(
     assert (ledger.root / "ledger.sqlite3").read_bytes() == before
 
 
+def test_derived_input_links_require_the_exact_source_channel_selection(
+    captured, tmp_path
+):
+    ledger, _, completion = captured
+    source = completion.observation
+    inputs = {
+        f"observation/{source.sequence}/{channel}": ref
+        for channel, ref in source.artifacts.items()
+    }
+    derived = ledger.record(
+        ledger.start_session(),
+        Origin("derived", "check", "fixture", "1", inputs),
+        {"result": b"public derived result"},
+    )
+    for selected in (False, True):
+        selection = {derived.sequence: ("result",)}
+        if selected:
+            selection[source.sequence] = ("../../public",)
+        index = export_evidence(
+            ledger, tmp_path / str(selected), observations=selection
+        )
+        data = json.loads(index.read_text())
+        view = next(
+            item
+            for item in data["observations"]
+            if item["sequence"] == derived.sequence
+        )
+        assert set(view["origin"]["inputs"]) == (
+            {f"observation/{source.sequence}/../../public"} if selected else set()
+        )
+        assert "private-channel" not in index.read_text()
+
+
 @pytest.mark.parametrize(
     "selection",
     [
