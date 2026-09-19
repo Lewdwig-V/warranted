@@ -126,8 +126,10 @@ versions at integration time. Keep the adapter replaceable and model access opti
 The [adoption plan](m3-adoption.md) divides M3 into four focused PRs. The first
 slice pins mini-swe-agent 2.4.6, LangGraph 1.2.11, and its SQLite checkpointer 3.1.1.
 Real framework tests demonstrate completed-result reuse and unknown-outcome
-blocking with scripted boundaries. Worker containment and the full milestone
-demonstration remain unfinished.
+blocking. The rootless Podman adapter passes native containment tests. A separate
+fake HTTP service demonstrates attributable receipt recovery, billed failures,
+and retained reservations through repeated host deaths. The full changed-premise
+demonstration remains unfinished.
 
 - [ ] Give the worker shell/files, an objective, permitted context, and a bounded
   workspace; capture mechanical provenance in the host.

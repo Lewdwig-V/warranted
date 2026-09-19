@@ -37,6 +37,11 @@ Its native tests run in a separate CI job. The main CLI still provides help and
 version information only. The [M3 adoption plan](docs/m3-adoption.md) describes
 the four implementation PRs and their evidence requirements.
 
+A local fake HTTP service now tests lost model responses. Exact operation
+receipts can settle known usage after restart. Missing receipts and unknown
+usage remain blocked. Malformed responses and known failures retain their costs.
+The adapter performs one request per attempt and disables redirects and retries.
+
 ## What we are building
 
 Warranted is a proposed build system for knowledge. Observations, assumptions,

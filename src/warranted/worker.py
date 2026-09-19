@@ -55,6 +55,9 @@ class Episode:
     model: str = "scripted-v1"
     environment: str = "scripted-v1"
     max_steps: int = 4
+    model_reservation: int = 1
+    tool_reservation: int = 1
+    model_service: str | None = None
 
     def __post_init__(self):
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", self.episode_id):
@@ -68,6 +71,15 @@ class Episode:
             raise ValueError("episode inputs must be distinct snapshot names")
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("episode step limit must be between 1 and 100")
+        if self.model_service is not None and (
+            type(self.model_service) is not str or not self.model_service.strip()
+        ):
+            raise ValueError("model service identity must be nonempty")
+        if any(
+            type(n) is not int or n < 1
+            for n in (self.model_reservation, self.tool_reservation)
+        ):
+            raise ValueError("attempt reservations must be positive integers")
 
 
 def record_once(
@@ -158,13 +170,16 @@ class Journal:
             Origin(
                 operation_id,
                 kind,
-                "warranted-worker",
+                (self.episode.model_service or "warranted-worker")
+                if kind == "model"
+                else "warranted-worker",
                 "1",
                 {**self.inputs, evidence.name: evidence.artifact},
             ),
             self.ledger.project,
         )
-        op = self.ledger.reserve(self.session, request, {kind: 1})
+        reservation = getattr(self.episode, kind + "_reservation")
+        op = self.ledger.reserve(self.session, request, {kind: reservation})
         if op.completion is not None:
             return op.completion
         unresolved(self.ledger)
@@ -322,11 +337,21 @@ def run_workflow(
     *,
     model: Boundary,
     environment: Boundary,
+    reconcile: Callable[[Request], AttemptResult | None] | None = None,
 ) -> dict:
     """Run or resume one bounded episode. Checkpoint state grants no authority."""
     if checkpoint_path.resolve().is_relative_to(ledger_root.resolve()):
         raise ValueError("checkpoint database must be separate from the ledger")
     with Ledger.open(ledger_root) as ledger:
+        if reconcile is not None:
+            session = ledger.start_session()
+            for operation in ledger.operations():
+                if operation.state == "unknown":
+                    response = reconcile(operation.request)
+                    if response is not None:
+                        ledger.complete(
+                            session, operation.request, response.result, response.raw
+                        )
         unresolved(ledger)
         journal = Journal(ledger, episode)
         project_id = ledger.project.project_id
