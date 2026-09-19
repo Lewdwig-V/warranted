@@ -1,6 +1,6 @@
 """One rootless Podman container per episode, with no host filesystem mounts.
 
-The trusted container supervisor alone retains CAP_KILL. Worker execs use UID
+The trusted supervisor can drop worker credentials and kill workers. Workers use UID
 1000, no effective capabilities, and no-new-privileges. The supervisor kills
 workers before reading candidates. Kernel/runtime/host compromise is out of scope.
 """
@@ -27,17 +27,27 @@ IMAGE = (
     "docker.io/library/python@sha256:"
     "72d3d75f2639ab82b34b29390ad3d6e0827c775befee94edda8e9976818f488d"
 )
-SANDBOX_ID = "podman-rootless-v1/" + IMAGE
+SANDBOX_ID = "podman-rootless-v2/" + IMAGE
 OUTPUT_LIMIT = 2 * 1024 * 1024
 CANDIDATE_LIMIT = 1024 * 1024
 
 # This code comes from the host, never the worker's workspace or environment.
 _LOAD = """
 import base64, json, os, sys
+os.mkdir('/tmp/warranted-host', 0o700)
 for name, encoded in json.load(sys.stdin).items():
     with open('/work/' + name, 'xb') as file:
         file.write(base64.b64decode(encoded, validate=True))
     os.chmod('/work/' + name, 0o444)
+"""
+_EXECUTE = """
+import subprocess, sys
+from pathlib import Path
+status = Path('/tmp/warranted-host/status')
+status.write_text('')
+code = subprocess.run(['/bin/sh', '-c', sys.argv[1]],
+                      user=1000, group=1000, extra_groups=[]).returncode
+status.write_text(str(128 - code if code < 0 else code))
 """
 _CAPTURE = """
 import base64, json, os, signal, stat, time
@@ -155,7 +165,7 @@ class Sandbox:
             raise ValueError("episode must pin the container environment")
         if any(
             not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}", name)
-            or name == "context.json"
+            or name in {"context.json", "result.json"}
             for name in episode.inputs
         ):
             raise ValueError("worker input names must be safe, distinct basenames")
@@ -203,6 +213,7 @@ class Sandbox:
                 self.name,
                 "--pull=never",
                 "--network=none",
+                "--http-proxy=false",
                 "--pid=private",
                 "--ipc=private",
                 "--uts=private",
@@ -211,6 +222,8 @@ class Sandbox:
                 "--read-only-tmpfs=false",
                 "--cap-drop=ALL",
                 "--cap-add=KILL",
+                "--cap-add=SETUID",
+                "--cap-add=SETGID",
                 "--security-opt=no-new-privileges",
                 "--pids-limit=32",
                 "--memory=128m",
@@ -279,24 +292,36 @@ class Sandbox:
             result = _run(
                 [
                     "exec",
-                    "--user=1000:1000",
+                    "--user=0:0",
                     "--workdir=/work",
                     self.name,
-                    "/bin/sh",
+                    "python",
+                    "-I",
                     "-c",
+                    _EXECUTE,
                     action["command"],
                 ]
             )
             raw = {"stdout": result.stdout, "stderr": result.stderr}
-            code = result.returncode
-            outcome = Outcome.SUCCEEDED if code == 0 else Outcome.FAILED
-            if code >= 125 or code < 0:
+            if result.returncode != 0:
                 raise SandboxFailure(
                     "runtime or worker transport failed", result.stdout, result.stderr
                 )
-            if code == 0 and result.stdout.splitlines()[:1] == [
-                b"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
-            ]:
+            # Only the trusted supervisor can write this status. Worker streams
+            # and Podman's reserved exit codes cannot impersonate it.
+            status = self._checked(
+                ["exec", "--user=0:0", self.name, "cat", "/tmp/warranted-host/status"]
+            )
+            if not status.isdigit() or not 0 <= int(status) <= 255:
+                raise SandboxFailure("missing worker exit status", **raw)
+            code = int(status)
+            outcome = Outcome.SUCCEEDED if code == 0 else Outcome.FAILED
+            lines = result.stdout.splitlines()
+            if (
+                code == 0
+                and lines
+                and lines[0].strip() == b"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+            ):
                 captured = _run(
                     ["exec", "--user=0:0", self.name, "python", "-I", "-c", _CAPTURE]
                 )
