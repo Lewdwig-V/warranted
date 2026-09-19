@@ -115,10 +115,15 @@ Keep process execution, proof status, and application support separate:
 | --- | --- |
 | Exact theorem and policy pass | The conditional theorem is proved |
 | Incomplete proof or a known timeout | Unproved, with costs retained |
-| Weakened target, forbidden axiom, or forged receipt | Rejected or unsupported, with a recorded reason |
+| Attributable verifier finds a target mismatch or forbidden axiom | `REJECTED`: the submitted proof violates the pinned contract |
+| Forged or unattributable receipt | `UNSUPPORTED`: the evidence cannot establish a verifier decision |
 | Verifier unavailable or runtime failure | Infrastructure failure |
 | Host interruption without an attributable completion | Unknown and reserved |
 | A premise changes or loses support | Application blocked, historical theorem still valid |
+
+`REJECTED` requires a verifier decision bound to the exact artifact and policy.
+`UNSUPPORTED` evidence cannot settle an unknown operation or release its reservation.
+Neither status establishes that the target theorem is false.
 
 `Claims.assess()` currently distinguishes validation from version applicability.
 Its `CURRENT` result establishes current versions, not the truth of an assumption.
@@ -165,6 +170,7 @@ Timestamp proofs, case-insensitive equality, and repository migrations remain la
    to trusted files. Establish native CI coverage before claiming this boundary.
 2. Durable proof receipts. Connect the verifier to host operations and claims.
    Bind exact identities, retain costs, and distinguish all outcomes above.
+   Assert the specified `REJECTED` and `UNSUPPORTED` statuses before and after restart.
    Test wrong-target receipt reuse, corrupt bytes, budget exhaustion, unknown
    attempts, and host deaths before and after completion. Use an execution witness
    outside the ledger to detect duplicate work.
