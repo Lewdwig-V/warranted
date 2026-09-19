@@ -241,6 +241,11 @@ under an injective identifier mapping. Reuse it for the incomplete-target case;
 defer timestamp formalisation to M5. Keep empirical premises and the independent
 task evaluator outside the theorem.
 
+The [M4 implementation plan](m4-proof-boundary.md) defines the exact target and
+three PRs: verification, durable proof receipts, and fixture recovery. It selects
+Comparator for independent verification, subject to a pinned, tested integration.
+M4 remains unimplemented. M3a remains a separate optional experiment.
+
 - [ ] Pin Lean, the allowed library/axioms, and a reviewed target declaration.
 - [ ] Isolate proof generation; independently check the resulting artifact and
   transitive dependencies under the pinned verification policy.
