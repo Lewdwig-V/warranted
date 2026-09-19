@@ -4,6 +4,7 @@ import json
 import multiprocessing
 import os
 import subprocess
+from dataclasses import replace
 
 import pytest
 
@@ -40,12 +41,16 @@ def setup(root):
 
 
 def run(root, episode, command):
+    commands = iter(
+        command if isinstance(command, tuple) else [command] * episode.max_steps
+    )
+
     def model(*_):
         with (root / "model-calls.log").open("ab") as witness:
             witness.write(b"called\n")
         return AttemptResult(
             Result(Outcome.SUCCEEDED, 0, {"model": 1}, 1),
-            {"response": json.dumps({"command": command}).encode()},
+            {"response": json.dumps({"command": next(commands)}).encode()},
         )
 
     with Sandbox(root / "ledger", episode) as sandbox:
@@ -80,6 +85,9 @@ def test_worker_cannot_read_host_state_or_credentials_and_capture_is_immutable(
     secret = tmp_path / "credentials"
     secret.write_text("HOST SECRET")
     monkeypatch.setenv("WARRANTED_TEST_SECRET", "HOST SECRET")
+    for name in ("http_proxy", "https_proxy", "ftp_proxy", "no_proxy", "all_proxy"):
+        monkeypatch.setenv(name, "http://user:HOST_SECRET@127.0.0.1:9")
+        monkeypatch.setenv(name.upper(), "http://user:HOST_SECRET@127.0.0.1:9")
     command = f"""python - <<'PY'
 import json, os, socket
 from pathlib import Path
@@ -89,6 +97,7 @@ assert not Path({str(secret)!r}).exists()
 assert not Path({str(tmp_path / "ledger" / "ledger.sqlite3")!r}).exists()
 assert not Path({str(tmp_path / "graph.sqlite3")!r}).exists()
 assert 'WARRANTED_TEST_SECRET' not in os.environ
+assert not any(name.lower().endswith('_proxy') for name in os.environ)
 try:
     assert b'HOST SECRET' not in Path('/proc/1/environ').read_bytes()
 except PermissionError:
@@ -96,6 +105,12 @@ except PermissionError:
 assert not Path('/run/podman/podman.sock').exists()
 assert not Path('/var/run/docker.sock').exists()
 assert 'CapEff:\\t0000000000000000' in Path('/proc/self/status').read_text()
+try:
+    Path('/tmp/warranted-host/status').write_text('0')
+except PermissionError:
+    pass
+else:
+    raise AssertionError('worker forged supervisor status')
 assert Path('/sys/fs/cgroup/memory.max').read_text().strip() == '134217728'
 assert Path('/sys/fs/cgroup/pids.max').read_text().strip() == '32'
 assert Path('/sys/fs/cgroup/cpu.max').read_text().split() == ['100000', '100000']
@@ -160,7 +175,7 @@ def test_raw_invalid_utf8_survives_capture(tmp_path):
         tmp_path,
         episode,
         "printf '{}' > result.json; printf '\\377' >&2; "
-        "printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'",
+        "printf '  COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT \\t\\n'",
     )
     assert result["exit_status"] == "Submitted"
     assert raw["stderr"] == b"\xff"
@@ -227,3 +242,68 @@ def test_native_capture_crash_keeps_exact_evidence_or_blocks(tmp_path, when):
             assert ledger.accounting()["tool"].reserved == 1
     assert (tmp_path / "model-calls.log").read_bytes() == b"called\n"
     assert (tmp_path / "tool-calls.log").read_bytes() == b"called\n"
+    assert raw["candidate/result.json"] == b"{}"
+
+
+@pytest.mark.parametrize("name", ["context.json", "result.json"])
+def test_reserved_workspace_paths_cannot_be_inputs(tmp_path, name):
+    episode = replace(setup(tmp_path), inputs=(name,))
+    with pytest.raises(ValueError, match="input names"):
+        Sandbox(tmp_path / "ledger", episode)
+
+
+@pytest.mark.parametrize(
+    ("command", "code"),
+    [
+        ("exit 125", 125),
+        ("exit 126", 126),
+        ("missing-executable", 127),
+        ("exit 200", 200),
+        ("kill -TERM $$", 143),
+    ],
+)
+def test_shell_failure_keeps_workspace_for_correction(tmp_path, command, code):
+    episode = replace(setup(tmp_path), max_steps=2)
+    result, _ = run(
+        tmp_path,
+        episode,
+        (
+            "printf '{}' > result.json; " + command,
+            "test -f result.json && printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'",
+        ),
+    )
+    assert result["exit_status"] == "Submitted"
+    with Ledger.open(tmp_path / "ledger") as ledger:
+        attempts = [
+            op for op in ledger.operations() if op.request.origin.kind == "tool"
+        ]
+        assert attempts[0].completion.result.outcome is Outcome.FAILED
+        assert attempts[0].completion.result.exit_code == code
+        assert (
+            ledger.read_artifact(
+                attempts[1].completion.observation.artifacts["candidate/result.json"]
+            )
+            == b"{}"
+        )
+
+
+def test_runtime_exec_failure_remains_infrastructure_failure(tmp_path, monkeypatch):
+    from warranted import sandbox
+
+    episode = setup(tmp_path)
+    execute = sandbox._run
+
+    def missing_supervisor(args, *a, **kw):
+        if sandbox._EXECUTE in args:
+            args = args[: args.index("python")] + ["missing-supervisor"]
+        return execute(args, *a, **kw)
+
+    monkeypatch.setattr(sandbox, "_run", missing_supervisor)
+    with pytest.raises(RuntimeError, match="infrastructure failure"):
+        run(tmp_path, episode, "exit 0")
+    with Ledger.open(tmp_path / "ledger") as ledger:
+        tool = next(
+            op for op in ledger.operations() if op.request.origin.kind == "tool"
+        )
+        assert tool.completion.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
+        assert tool.completion.result.exit_code is None

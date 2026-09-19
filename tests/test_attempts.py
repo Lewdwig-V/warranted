@@ -80,6 +80,7 @@ def run(root, client, reservation=1):
             "Submit",
             ("task",),
             model="fixture-v1",
+            model_service="fixture-v1",
             model_reservation=reservation,
         ),
         model=client,
@@ -176,6 +177,39 @@ def test_receipt_from_different_operation_cannot_settle_unknown(tmp_path):
         receipt.write_text(json.dumps(value) + "\n")
         with pytest.raises(ValueError, match="identity"):
             run(tmp_path, client)
+    assert len(requests(tmp_path)) == 1
+
+
+@pytest.mark.parametrize("action", ["dispatch", "reconcile", "resume"])
+def test_different_service_cannot_dispatch_or_settle_recorded_attempt(tmp_path, action):
+    project(tmp_path)
+    with service(tmp_path / "service", drop_response=True) as original:
+        with pytest.raises(RemoteDisconnected):
+            run(tmp_path, original)
+        with Ledger.open(tmp_path / "ledger") as ledger:
+            request = ledger.operations()[0].request
+        receipt = json.loads((tmp_path / "service/receipts.jsonl").read_text())
+        receipt["identity"]["service"] = "replacement-v1"
+        with service(tmp_path / "replacement", service_id="replacement-v1") as endpoint:
+            replacement = ReceiptService(endpoint.url, "replacement-v1")
+            (tmp_path / "replacement/receipts.jsonl").write_text(
+                json.dumps(receipt) + "\n"
+            )
+            with pytest.raises(ValueError, match="service"):
+                if action == "dispatch":
+                    replacement(request, b'{"messages":[]}')
+                elif action == "reconcile":
+                    replacement.reconcile(request)
+                else:
+                    run(tmp_path, replacement)
+        assert not (tmp_path / "replacement/requests.jsonl").exists()
+        assert not (tmp_path / "replacement/lookups.jsonl").exists()
+        with Ledger.open(tmp_path / "ledger") as ledger:
+            assert ledger.operations()[0].state == "unknown"
+            assert ledger.accounting()["model"].reserved == 1
+            assert ledger.accounting()["model"].spent == 0
+        assert not (tmp_path / "tools.log").exists()
+        assert run(tmp_path, original)["exit_status"] == "Submitted"
     assert len(requests(tmp_path)) == 1
 
 

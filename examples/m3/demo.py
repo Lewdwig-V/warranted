@@ -147,6 +147,7 @@ def candidate(root: Path, current, client: ReceiptService) -> Evidence:
         "Read worker-task.md and the current offset. Write result.json, then submit.",
         ("input.csv", current.offset, "worker-task.md"),
         model=MODEL,
+        model_service=MODEL,
         environment=SANDBOX_ID,
         max_steps=2,
         continues=None if current.offset == "offset-v1" else "initial",

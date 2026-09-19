@@ -48,14 +48,18 @@ class ReceiptService:
         self.opener = build_opener(ProxyHandler({}), _NoRedirect())
 
     def _identity(self, request: Request) -> dict:
+        service = request.origin.producer
+        if service != self.service_id:
+            raise ValueError("service identity differs from the recorded request")
         return {
-            "service": self.service_id,
+            "service": service,
             "project": request.context.project_id,
             "operation": request.origin.operation_id,
             "request": _digest(request),
         }
 
     def _read(self, request: Request, path: str, data: bytes | None) -> AttemptResult:
+        identity = self._identity(request)
         query = HTTPRequest(
             self.url + path, data=data, headers={"Content-Type": "application/json"}
         )
@@ -67,7 +71,7 @@ class ReceiptService:
         if (
             type(receipt) is not dict
             or set(receipt) != {"identity", "result", "channels"}
-            or receipt["identity"] != self._identity(request)
+            or receipt["identity"] != identity
         ):
             raise ValueError("receipt identity differs from the exact request")
         result = receipt["result"]
