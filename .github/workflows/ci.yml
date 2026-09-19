@@ -70,9 +70,10 @@ jobs:
         run: |
           uv build --no-sources
           uv venv .venv-wheel
-          uv pip install --python .venv-wheel/bin/python --no-deps dist/*.whl
+          uv pip install --python .venv-wheel/bin/python dist/*.whl
           .venv-wheel/bin/warranted --version
           .venv-wheel/bin/python -c "from warranted.ledger import Ledger, Request, Result"
           .venv-wheel/bin/python -c "from warranted.exports import export_evidence"
           .venv-wheel/bin/python -c "from warranted.acceptance import Acceptance, AcceptanceContext, Evidence"
           .venv-wheel/bin/python -c "from warranted.claims import Claims, Assessment, Applicability"
+          .venv-wheel/bin/python -c "from warranted.worker import Episode, run_workflow"

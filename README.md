@@ -28,8 +28,12 @@ Current support reports propagate staleness through declared dependencies.
 The fixture checks contract revisions against pinned local owner approvals.
 M2 is complete within this trusted local scope.
 
-There are no model calls, external services, or runtime dependencies in the
-current package. The main CLI still provides help and version information only.
+M3 now integrates mini-swe-agent 2.4.6 and LangGraph 1.2.11 with the SQLite
+checkpointer 3.1.1. Scripted boundary tests exercise real framework recovery,
+completed-result reuse, and unknown-outcome blocking. This first slice executes
+no generated shell or live model requests. The main CLI still provides help and
+version information only. The [M3 adoption plan](docs/m3-adoption.md) describes
+the four implementation PRs and their evidence requirements.
 
 ## What we are building
 
@@ -263,5 +267,6 @@ Keep the authoritative project outside any untrusted worker's writable workspace
 | [tests/test_acceptance.py](tests/test_acceptance.py) | Gate bypass attempts, rule exceptions, and acceptance recovery |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | Persistence tests and package checks |
 
-M2 continues with claims, current support, and owner-authorized contract revisions.
-See [M2 in the roadmap](docs/roadmap.md#m2--claims-applicability-and-gates).
+M2 is complete in its trusted local scope. M3 continues with worker containment,
+external-attempt reconciliation, and a changed-premise demonstration.
+See [M3 in the roadmap](docs/roadmap.md#m3--bounded-worker-and-execution-recovery).

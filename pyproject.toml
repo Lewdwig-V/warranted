@@ -4,7 +4,11 @@ version = "0.1.0a0"
 description = "Durable, checkable knowledge for long-horizon agent work."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "langgraph==1.2.11",
+    "langgraph-checkpoint-sqlite==3.1.1",
+    "mini-swe-agent==2.4.6",
+]
 
 [project.scripts]
 warranted = "warranted.cli:main"
