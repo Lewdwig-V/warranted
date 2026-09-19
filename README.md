@@ -19,7 +19,7 @@ interruption. It uses SQLite and files with one trusted writer.
 Reservations survive restart. Repeated requests reuse completed results without
 another charge, and uncertain executions remain blocked. A trusted host boundary
 checks gates and scoped rule exceptions before recording candidate acceptance.
-Lean verification and replay remain planned. M1 is complete for
+Replay remains planned. M1 is complete for
 a local filesystem with one trusted writer. A scripted CSV walkthrough demonstrates restart, result
 reuse, accounting, and selected evidence exports. The M2 fixture adds three
 scripted experiments for selective rebuilding, changed definitions, and independent
@@ -48,6 +48,12 @@ the old candidate's failures, and independently accepts the corrected candidate.
 The fake model supplies a fixed program. This establishes local integration
 behavior, not model quality or a live provider integration.
 M3 is complete for this local scripted-model fixture.
+
+M4 adds a [bounded Lean verification boundary](docs/m4-verification.md).
+It uses pinned Comparator and Landrun tools to compare the exact uniqueness target,
+enforce the axiom policy, and replay the proof in Lean's kernel.
+Native tests run in a separate CI job. Durable proof receipts, claim integration,
+fixture applications, and proof recovery remain planned.
 
 ## What we are building
 

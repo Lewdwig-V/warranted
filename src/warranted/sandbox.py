@@ -10,15 +10,12 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 import re
-import selectors
-import signal
-import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from time import monotonic, perf_counter_ns
+from time import perf_counter_ns
 
+from warranted.containers import SandboxFailure, _run, require_runtime
 from warranted.exports import export_evidence
 from warranted.ledger import Ledger, Outcome, Request, Result
 from warranted.worker import AttemptResult, Episode
@@ -28,7 +25,6 @@ IMAGE = (
     "72d3d75f2639ab82b34b29390ad3d6e0827c775befee94edda8e9976818f488d"
 )
 SANDBOX_ID = "podman-rootless-v2/" + IMAGE
-OUTPUT_LIMIT = 2 * 1024 * 1024
 CANDIDATE_LIMIT = 1024 * 1024
 
 # This code comes from the host, never the worker's workspace or environment.
@@ -84,79 +80,6 @@ print(json.dumps({'result.json': base64.b64encode(data).decode()}))
 """
 
 
-class SandboxFailure(RuntimeError):
-    def __init__(self, message: str, stdout: bytes = b"", stderr: bytes = b""):
-        super().__init__(message)
-        self.stdout, self.stderr = stdout, stderr
-
-
-def _run(
-    args: list[str], data: bytes = b"", *, seconds: int = 20
-) -> subprocess.CompletedProcess:
-    """Bound client time and captured bytes without buffering unbounded output."""
-    output = {"stdout": bytearray(), "stderr": bytearray()}
-    with (
-        subprocess.Popen(
-            ["podman", *args],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True,
-        ) as process,
-        selectors.DefaultSelector() as selector,
-    ):
-        remaining = memoryview(data)
-        for stream, event, name in (
-            (process.stdout, selectors.EVENT_READ, "stdout"),
-            (process.stderr, selectors.EVENT_READ, "stderr"),
-            (process.stdin, selectors.EVENT_WRITE, "stdin"),
-        ):
-            os.set_blocking(stream.fileno(), False)
-            selector.register(stream, event, name)
-        deadline = monotonic() + seconds
-        try:
-            while selector.get_map():
-                if monotonic() >= deadline:
-                    raise SandboxFailure("runtime timeout")
-                for key, _ in selector.select(min(0.1, max(0, deadline - monotonic()))):
-                    if key.data == "stdin":
-                        if remaining:
-                            try:
-                                remaining = remaining[
-                                    os.write(key.fd, remaining[:65536]) :
-                                ]
-                            except BrokenPipeError:
-                                remaining = memoryview(b"")
-                        if not remaining:
-                            selector.unregister(key.fileobj)
-                            key.fileobj.close()
-                    else:
-                        chunk = os.read(key.fd, 65536)
-                        if not chunk:
-                            selector.unregister(key.fileobj)
-                            key.fileobj.close()
-                        else:
-                            room = OUTPUT_LIMIT - sum(map(len, output.values()))
-                            output[key.data].extend(chunk[:room])
-                            if len(chunk) > room:
-                                raise SandboxFailure(
-                                    "runtime output limit; raw streams are prefixes"
-                                )
-            code = process.wait(timeout=max(0.01, deadline - monotonic()))
-        except (SandboxFailure, subprocess.TimeoutExpired) as error:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.wait()
-            raise SandboxFailure(
-                str(error), bytes(output["stdout"]), bytes(output["stderr"])
-            ) from error
-    return subprocess.CompletedProcess(
-        args, code, bytes(output["stdout"]), bytes(output["stderr"])
-    )
-
-
 class Sandbox:
     """Trusted callable for WorkerEnvironment. Use as a context manager."""
 
@@ -184,17 +107,7 @@ class Sandbox:
         return result.stdout
 
     def _prepare(self, first: bool) -> None:
-        info = json.loads(self._checked(["info", "--format", "json"]))["host"]
-        if (
-            not info["security"]["rootless"]
-            or not info["security"]["seccompEnabled"]
-            or info["serviceIsRemote"]
-            or info["cgroupVersion"] != "v2"
-            or not {"cpu", "memory", "pids"} <= set(info["cgroupControllers"])
-        ):
-            raise SandboxFailure(
-                "rootless local Podman, seccomp, and cgroup v2 limits are required"
-            )
+        require_runtime()
         exists = _run(["container", "exists", self.name]).returncode
         if exists == 0:
             state = json.loads(self._checked(["inspect", self.name]))[0]["State"]

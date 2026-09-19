@@ -1,7 +1,8 @@
 # M4: Lean proof boundary
 
 Implementation plan, 2026-09-19. M3 is complete for the local scripted fixture.
-M4 remains unimplemented. This plan defines three implementation PRs.
+The [verification boundary](m4-verification.md) implements the first of three PRs.
+Durable proof receipts and fixture applications remain planned.
 The optional M3a Jev experiment remains separate.
 
 ## Target and scope
@@ -50,8 +51,9 @@ Adopt [Lean FRO's Comparator](https://github.com/leanprover/comparator) for theo
 comparison, axiom enforcement, and proof replay through the kernel.
 Comparator compares a solution with a trusted challenge, the required theorem statement.
 Its exporter produces serialized declarations for independent checking.
-This is an intended integration. Warranted adds operation identity, containment,
-evidence storage, applicability, and acceptance.
+The [first implementation](m4-verification.md) pins and tests this integration.
+Warranted supplies containment and artifact identity. Durable proof evidence,
+applicability, and acceptance integration remain later slices.
 
 PR 1 must pin compatible Lean, Comparator, exporter, and Landrun revisions.
 Landrun restricts the files and actions available during proof processing.
