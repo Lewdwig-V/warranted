@@ -47,9 +47,15 @@ without adding a world registry or branch executor. Model configuration is not
 applicable. PR2 enforces allowances and records actual usage.
 
 An `Origin` contains the host's operation ID and kind, producer name and version,
-and the exact named input snapshot references. It refers to the project's manifest
-for the environment and context. Validate that referenced snapshots exist and
-match their recorded bytes. PR1 records this source description. PR2 binds an
+and exact input references. An input name selects a project snapshot or a committed
+channel through `observation/<sequence>/<channel>`. Snapshot names take precedence
+if both forms match. Channel names remain labels, not filesystem paths.
+The host checks the selected record, digest, length, and bytes before use.
+This M2 extension lets one operation consume another operation's output.
+It adds no tables or fields to storage format 2. Older readers cannot use the new
+input names, and existing snapshot references retain their meaning.
+The origin refers to the project's manifest for the environment and context.
+PR1 records this source description. PR2 binds an
 operation ID to one request identity and rejects conflicting reuse.
 
 Store each capture's raw channels separately. For a script result, these include
@@ -283,6 +289,9 @@ input references, and unselected channel names and bytes are excluded. Selecting
 an operation does not implicitly select its raw evidence. No project-wide totals
 are exported because those totals can disclose unselected work. The host can
 inspect totals with `ledger.accounting()`.
+
+An input link to an observation appears only when that exact source channel is
+selected. Selecting a derived result does not disclose its unselected inputs.
 
 Approving a field or raw channel approves its complete value or bytes. The function
 does not scrub secrets embedded in approved text. The host must select disclosures

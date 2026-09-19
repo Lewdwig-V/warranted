@@ -74,6 +74,13 @@ def export_evidence(
         if not set(channels) <= known_observations[sequence].artifacts.keys():
             raise ValueError("selection names an unknown raw channel")
 
+    selected_inputs = set(snapshots) | {
+        name
+        for sequence, channels in observations.items()
+        for channel in channels
+        if (name := f"observation/{sequence}/{channel}") not in known_snapshots
+    }
+
     artifacts: dict[str, ArtifactRef] = {}
 
     def include(ref: ArtifactRef) -> ArtifactRef:
@@ -87,7 +94,9 @@ def export_evidence(
             "producer": origin.producer,
             "producer_version": origin.producer_version,
             "inputs": {
-                name: ref for name, ref in origin.inputs.items() if name in snapshots
+                name: ref
+                for name, ref in origin.inputs.items()
+                if name in selected_inputs
             },
         }
 

@@ -27,7 +27,7 @@ jobs:
         run: |
           uv run --locked ruff check .
           uv run --locked ruff format --check .
-      - name: Test M1 persistence, exports, and walkthrough
+      - name: Test persistence, exports, and fixtures
         run: uv run --locked pytest -q tests
       - name: Run the CSV walkthrough across two processes
         id: walkthrough
@@ -43,6 +43,22 @@ jobs:
             runs/m1-ci/exports/
             runs/m1-ci/reports/
             runs/m1-ci/candidate/executions.log
+          if-no-files-found: error
+          retention-days: 14
+      - name: Run all three M2 experiments across two processes
+        id: m2
+        run: |
+          uv run --locked python examples/m2/experiments.py start runs/m2-ci
+          uv run --locked python examples/m2/experiments.py resume runs/m2-ci
+      - name: Retain M2 development fixture evidence
+        if: ${{ always() && steps.m2.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: m2-experiments
+          path: |
+            runs/m2-ci/*/exports/
+            runs/m2-ci/*/reports/
+            runs/m2-ci/*/executions.jsonl
           if-no-files-found: error
           retention-days: 14
       - name: Check entry points

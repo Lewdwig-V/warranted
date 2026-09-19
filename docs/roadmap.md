@@ -9,7 +9,7 @@ exposes a simpler way to meet the requirements; preserve the independent compari
 | --- | --- | --- | --- |
 | M0 | Reproducible repository scaffold | — | Complete |
 | M1 | Inspectable evidence that survives restart | M0 | Complete |
-| M2 | Changed-premise recovery with explicit gates | M1 | Planned |
+| M2 | Changed-premise recovery with explicit gates | M1 | In progress: three fixture experiments |
 | M3 | Bounded worker and trustworthy operation recovery | M2 | Planned |
 | M3a | Jev as a System 1 classifier and judge | M3; second-family evaluation in M5 | Planned, optional |
 | M4 | Independently checked Lean obligations | M2; M3 for agent trials | Planned |
@@ -76,17 +76,24 @@ claim/dependency representation that can recover after one changed premise.
 - [ ] Represent rules and gates distinctly; permit a recorded rule exception.
 - [ ] Enforce gates against exact versions at the protected operation, including
   missing evidence, unknown applicability, and attempted bypass cases.
-- [ ] Apply an independent deterministic completion check to the fixture.
+- [x] Apply an independent deterministic completion check to the fixture.
 - [ ] Preserve the request, clarifications, examples, and formal interpretations
   as linked versions; identify the contract owner, acceptance obligations, and
   known gaps as described in [the design](design.md#intent-contracts-and-acceptance).
-- [ ] Exercise the data-transformation [specification failures](pilot.md#specification-and-behavioral-failures)
+- [x] Exercise the data-transformation [specification failures](pilot.md#specification-and-behavioral-failures)
   with executable checks: narrow success cannot override a failed behavioral
   obligation, including after restart. Include a successful control.
 - [ ] Retain contract revision provenance and prior outcomes; require reassessment
   against changed definitions and reject worker-authored weakening under an old
   contract identity.
-- [ ] Resume after a forced fresh-process restart and revised input interpretation.
+- [x] Resume after a forced fresh-process restart and revised input interpretation.
+
+The [three fixture experiments](pilot.md#m2-fixture-experiments) supply completion
+evidence for these checked items. They retain independent failures, compare
+annotation and offset revisions, and reassess a changed definition with unchanged
+candidate bytes. Their deterministic checker and explicit dependencies belong to
+the trusted example host. General claims, owner authorization, distinct rules and
+gates, and enforcement at protected operations remain unimplemented.
 
 **Completion evidence:** a scripted run initially reaches a justified result,
 receives contrary evidence, blocks stale reuse, and rebuilds only the affected

@@ -1,0 +1,8 @@
+{
+  "offset-v1": {"version": "1", "minutes": 60},
+  "offset-v2": {"version": "2", "minutes": 0},
+  "definition-v1": {"version": "1", "equality": "exact"},
+  "definition-v2": {"version": "2", "equality": "ascii-case-insensitive"},
+  "annotation-v1": {"version": "1", "text": "Three source records."},
+  "annotation-v2": {"version": "2", "text": "Three source records, supplied for the M2 experiment."}
+}
