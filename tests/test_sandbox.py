@@ -179,6 +179,7 @@ def test_raw_invalid_utf8_survives_capture(tmp_path):
     )
     assert result["exit_status"] == "Submitted"
     assert raw["stderr"] == b"\xff"
+    assert raw["candidate/result.json"] == b"{}"
 
 
 SUBMIT = "printf '{}' > result.json; printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'"
@@ -242,7 +243,6 @@ def test_native_capture_crash_keeps_exact_evidence_or_blocks(tmp_path, when):
             assert ledger.accounting()["tool"].reserved == 1
     assert (tmp_path / "model-calls.log").read_bytes() == b"called\n"
     assert (tmp_path / "tool-calls.log").read_bytes() == b"called\n"
-    assert raw["candidate/result.json"] == b"{}"
 
 
 @pytest.mark.parametrize("name", ["context.json", "result.json"])
