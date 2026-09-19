@@ -9,7 +9,7 @@ exposes a simpler way to meet the requirements; preserve the independent compari
 | --- | --- | --- | --- |
 | M0 | Reproducible repository scaffold | — | Complete |
 | M1 | Inspectable evidence that survives restart | M0 | Complete |
-| M2 | Changed-premise recovery with explicit gates | M1 | In progress: three fixture experiments |
+| M2 | Changed-premise recovery with explicit gates | M1 | In progress: fixtures and local acceptance boundary |
 | M3 | Bounded worker and trustworthy operation recovery | M2 | Planned |
 | M3a | Jev as a System 1 classifier and judge | M3; second-family evaluation in M5 | Planned, optional |
 | M4 | Independently checked Lean obligations | M2; M3 for agent trials | Planned |
@@ -73,8 +73,8 @@ claim/dependency representation that can recover after one changed premise.
 
 - [ ] Separate observations, assumptions, validation results, and current support.
 - [ ] Propagate staleness to dependent applications while preserving unaffected work.
-- [ ] Represent rules and gates distinctly; permit a recorded rule exception.
-- [ ] Enforce gates against exact versions at the protected operation, including
+- [x] Represent rules and gates distinctly; permit a recorded rule exception.
+- [x] Enforce gates against exact versions at the protected operation, including
   missing evidence, unknown applicability, and attempted bypass cases.
 - [x] Apply an independent deterministic completion check to the fixture.
 - [ ] Preserve the request, clarifications, examples, and formal interpretations
@@ -91,9 +91,11 @@ claim/dependency representation that can recover after one changed premise.
 The [three fixture experiments](pilot.md#m2-fixture-experiments) supply completion
 evidence for these checked items. They retain independent failures, compare
 annotation and offset revisions, and reassess a changed definition with unchanged
-candidate bytes. Their deterministic checker and explicit dependencies belong to
-the trusted example host. General claims, owner authorization, distinct rules and
-gates, and enforcement at protected operations remain unimplemented.
+candidate bytes. The [shared acceptance boundary](m2-acceptance.md) checks exact
+versions and records scoped rule exceptions. Its protected operation is local
+candidate acceptance, with one trusted, serialized host. Fixture dependencies
+remain explicit. General claims, owner authentication, external-effect
+authorization, and worker isolation remain separate work.
 
 **Completion evidence:** a scripted run initially reaches a justified result,
 receives contrary evidence, blocks stale reuse, and rebuilds only the affected

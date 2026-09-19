@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "owner": "fixture-owner",
+  "transition": "accept-candidate",
+  "requirements": {
+    "unique_ids": {"kind": "gate", "check": "evaluate", "field": "unique_ids"},
+    "preserved_rows": {"kind": "gate", "check": "evaluate", "field": "preserved_rows"},
+    "utc_timestamps": {"kind": "gate", "check": "evaluate", "field": "utc_timestamps"},
+    "daily_totals": {"kind": "gate", "check": "evaluate", "field": "daily_totals"},
+    "explicit_source_offsets": {"kind": "rule", "check": "source-style", "field": "explicit_offsets"}
+  }
+}

@@ -9,8 +9,8 @@ def main() -> None:
         prog="warranted",
         description="Durable, checkable knowledge for long-horizon agent work.",
         epilog=(
-            "The CLI provides help/version only. The local evidence ledger uses "
-            "a Python API. Gates, workers, and replay are not implemented yet. "
+            "The CLI provides help/version only. The local ledger and acceptance "
+            "boundary use Python APIs. Worker isolation and replay remain planned. "
             "See docs/roadmap.md."
         ),
     )

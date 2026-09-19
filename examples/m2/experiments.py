@@ -1,4 +1,4 @@
-"""Three fixed M2 experiments on the M1 ledger; no worker or general gate API."""
+"""Three fixed M2 experiments using the trusted local acceptance boundary."""
 
 import argparse
 import csv
@@ -13,6 +13,8 @@ from pathlib import Path
 from time import perf_counter_ns
 from uuid import uuid4
 
+from warranted import acceptance
+from warranted.acceptance import Acceptance, AcceptanceContext, Evidence
 from warranted.exports import export_evidence
 from warranted.ledger import (
     ArtifactRef,
@@ -34,8 +36,8 @@ FILES = (
     "versions.json",
     "references.json",
     "candidates.json",
+    "acceptance.json",
 )
-OBLIGATIONS = ("unique_ids", "preserved_rows", "utc_timestamps", "daily_totals")
 SCENARIOS = ("matrix", "unchanged", "annotation", "offset", "definition")
 
 
@@ -126,30 +128,20 @@ class Interpretation:
     annotation: str = "annotation-v1"
 
 
-@dataclass(frozen=True)
-class Evidence:
-    name: str
-    artifact: ArtifactRef
-
-    @classmethod
-    def captured(cls, observation: Observation, channel: str):
-        return cls(
-            f"observation/{observation.sequence}/{channel}",
-            observation.artifacts[channel],
-        )
-
-    @classmethod
-    def restored(cls, value: dict):
-        return cls(value["name"], ArtifactRef(**value["artifact"]))
-
-
 def snapshots(fixture: Path) -> dict[str, Snapshot]:
     captured = {
-        name: Snapshot((fixture / name).read_bytes(), f"m2/{name}", "1")
+        name: Snapshot(
+            (fixture / name).read_bytes(),
+            f"m2/{name}",
+            "2" if name == "contract.md" else "1",
+        )
         for name in FILES
     }
     captured["host.py"] = Snapshot(
-        Path(__file__).read_bytes(), "m2/experiments.py", "1"
+        Path(__file__).read_bytes(), "m2/experiments.py", "2"
+    )
+    captured["acceptance.py"] = Snapshot(
+        Path(acceptance.__file__).read_bytes(), "warranted/acceptance.py", "1"
     )
     for name, value in decode(captured["versions.json"].data).items():
         captured[name] = Snapshot(
@@ -171,7 +163,7 @@ def environment(scenario: str) -> dict[str, str]:
     return {
         "python": platform.python_version(),
         "platform": platform.platform(),
-        "policy": "fixed-m2-script-v1",
+        "policy": "fixed-m2-script-v2",
         "evaluator": "four-obligations-v1",
         "model": "none",
         "split": "development",
@@ -359,50 +351,52 @@ class Experiment:
             ),
         )
 
-    def decide(self, candidate: Evidence, receipt_id: str | None) -> str:
-        # The host reads current versions at this boundary; callers cannot supply them.
-        current, event = self.interpretation()
-        inputs = self.check_inputs(candidate, current)
-        req = self.request("evaluate", inputs)
-        operation = self.ledger.lookup(req)
-        checks = None
-        if receipt_id is None:
-            status = "missing"
-        elif receipt_id != req.origin.operation_id:
-            known = {op.request.origin.operation_id for op in self.ledger.operations()}
-            status = "stale" if receipt_id in known else "unsupported"
-        elif operation is None:
-            status = "missing"
-        elif operation.completion is None:
-            status = "unknown"
-        elif operation.completion.result.outcome is not Outcome.SUCCEEDED:
-            status = "unsupported"
-        else:
-            checks = self.result(operation)
-            if (
-                type(checks) is not dict
-                or set(checks) != set(OBLIGATIONS)
-                or any(type(value) is not bool for value in checks.values())
-            ):
-                status = "unsupported"
-            else:
-                status = "accepted" if all(checks.values()) else "rejected"
-            inputs["receipt"] = self.result_ref(operation)
-        self.record(
-            "decision",
-            {
-                **inputs,
-                "revision": Evidence.captured(event, "revision.json"),
-                "annotation": self.ref(current.annotation),
-            },
-            {
-                "status": status,
-                "checks": checks,
-                "receipt_id": receipt_id,
-                "current": asdict(current),
+    def source_style(self) -> Operation:
+        return self.perform(
+            "source-style",
+            {"source": self.ref("input.csv")},
+            lambda: {
+                "explicit_offsets": all(
+                    datetime.fromisoformat(row[1]).tzinfo is not None
+                    for row in read_rows(
+                        self.ledger.read_artifact(self.ref("input.csv").artifact)
+                    )
+                )
             },
         )
-        return status
+
+    def acceptance_context(self, candidate: Evidence) -> AcceptanceContext:
+        current, event = self.interpretation()
+        return AcceptanceContext(
+            self.ref("acceptance.json"),
+            Evidence.captured(event, "revision.json"),
+            {
+                "evaluate": self.request(
+                    "evaluate", self.check_inputs(candidate, current)
+                ),
+                "source-style": self.request(
+                    "source-style", {"source": self.ref("input.csv")}
+                ),
+            },
+        )
+
+    def decide(self, candidate: Evidence, receipt_id: str | None) -> str:
+        boundary = Acceptance(self.ledger, self.session, self.acceptance_context)
+        exception = boundary.record_exception(
+            candidate,
+            "explicit_source_offsets",
+            "The fixture owner supplies a separately versioned fixed offset.",
+        )
+        return boundary.accept(
+            candidate,
+            {
+                "evaluate": receipt_id,
+                "source-style": self.request(
+                    "source-style", {"source": self.ref("input.csv")}
+                ).origin.operation_id,
+            },
+            {"explicit_source_offsets": exception},
+        ).status
 
 
 def run_scenario(
@@ -414,7 +408,7 @@ def run_scenario(
             root / "ledger",
             Manifest(
                 "m2-data-transformation",
-                "1",
+                "2",
                 str(uuid4()),
                 str(uuid4()),
                 environment(scenario),
@@ -448,7 +442,7 @@ def run_scenario(
             raise RuntimeError(
                 "pending or unknown operation; reservation retained, no retry"
             )
-        before = len(ledger.operations())
+        before = sum(bool(op.reservation) for op in ledger.operations())
         host = Experiment(ledger, ledger.start_session(), root)
         initial = Interpretation()
         report = {
@@ -458,6 +452,7 @@ def run_scenario(
             "environment": dict(ledger.project.manifest.environment),
         }
         if command == "start":
+            host.source_style()
             if scenario == "matrix":
                 candidates = {
                     name: host.ref(f"candidate/{name}")
@@ -549,7 +544,14 @@ def run_scenario(
                     report["witness_after"] = host.result(host.witness(current))
         balance = ledger.accounting()["synthetic-work"]
         report.update(
-            new_operations=len(ledger.operations()) - before,
+            new_operations=sum(bool(op.reservation) for op in ledger.operations())
+            - before,
+            decision_operations=sum(
+                op.request.origin.kind == "decision" for op in ledger.operations()
+            ),
+            rule_exceptions=sum(
+                op.request.origin.kind == "rule-exception" for op in ledger.operations()
+            ),
             limit=balance.limit,
             spent=balance.spent,
             reserved=balance.reserved,
@@ -565,7 +567,9 @@ def run_scenario(
                 ledger,
                 exports / host.session,
                 snapshots=tuple(
-                    name for name in ledger.project.snapshots if name != "host.py"
+                    name
+                    for name in ledger.project.snapshots
+                    if name not in ("host.py", "acceptance.py")
                 ),
                 observations={
                     item.sequence: tuple(item.artifacts) for item in ledger.history()

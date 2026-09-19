@@ -72,11 +72,11 @@ def test_all_experiments_survive_restart_with_selective_work(tmp_path):
         "definition": 2,
     }
     expected_total = {
-        "matrix": 7,
-        "unchanged": 4,
-        "annotation": 4,
-        "offset": 8,
-        "definition": 7,
+        "matrix": 8,
+        "unchanged": 5,
+        "annotation": 5,
+        "offset": 9,
+        "definition": 8,
     }
     for name, report in resumed.items():
         assert report["session_id"] != initial[name]["session_id"]
@@ -139,11 +139,16 @@ def test_all_experiments_survive_restart_with_selective_work(tmp_path):
             for item in ledger.history()
             if item.origin.kind == "decision"
         ]
-        assert sum(item["status"] == "rejected" for item in decisions) >= 10
+        assert sum(item["status"] == "rejected" for item in decisions) == 5
+        assert all(
+            item["requirements"]["explicit_source_offsets"] == "excepted"
+            for item in decisions
+        )
 
 
 @pytest.mark.parametrize(
-    "changed", ["contract.md", "versions.json", "references.json", "input.csv"]
+    "changed",
+    ["contract.md", "versions.json", "references.json", "input.csv", "acceptance.json"],
 )
 def test_changed_fixture_fails_before_reuse_or_charges(tmp_path, changed):
     fixture = tmp_path / "fixture"
@@ -158,7 +163,7 @@ def test_changed_fixture_fails_before_reuse_or_charges(tmp_path, changed):
     assert "context" in second.stderr
     with Ledger.open(root / "matrix" / "ledger") as ledger:
         assert len(ledger.sessions()) == 1
-        assert ledger.accounting()["synthetic-work"].spent == 6
+        assert ledger.accounting()["synthetic-work"].spent == 7
 
 
 def test_missing_forged_wrong_target_and_unfinished_receipts_block_acceptance(tmp_path):
