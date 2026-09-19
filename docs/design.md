@@ -40,7 +40,8 @@ its small, shell-based agent loop fits bounded investigation sessions.
 [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) supplies
 workflow persistence and resumption. We intend to build on those projects'
 execution infrastructure while the Warranted host owns evidence semantics.
-Add and pin their dependencies when integrating them.
+The [M3 adoption plan](m3-adoption.md) records the integration boundary and pinned
+versions. The initial integration uses scripted boundaries to test recovery.
 
 The preference for a small worker interface also draws directly on
 [Vercel's d0 case study](https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools).

@@ -123,6 +123,12 @@ Integrate an existing worker and workflow runner around the working host. Start
 with mini-swe-agent and LangGraph, checking their current interfaces and pinning
 versions at integration time. Keep the adapter replaceable and model access optional.
 
+The [adoption plan](m3-adoption.md) divides M3 into four focused PRs. The first
+slice pins mini-swe-agent 2.4.6, LangGraph 1.2.11, and its SQLite checkpointer 3.1.1.
+Real framework tests demonstrate completed-result reuse and unknown-outcome
+blocking with scripted boundaries. Worker containment and the full milestone
+demonstration remain unfinished.
+
 - [ ] Give the worker shell/files, an objective, permitted context, and a bounded
   workspace; capture mechanical provenance in the host.
 - [ ] Enforce workspace/process isolation from the ledger writer and private checker.
