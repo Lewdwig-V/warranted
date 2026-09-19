@@ -77,3 +77,25 @@ jobs:
           .venv-wheel/bin/python -c "from warranted.acceptance import Acceptance, AcceptanceContext, Evidence"
           .venv-wheel/bin/python -c "from warranted.claims import Claims, Assessment, Applicability"
           .venv-wheel/bin/python -c "from warranted.worker import Episode, run_workflow"
+  containment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      WARRANTED_CONTAINER_TESTS: "1"
+      MSWEA_SILENT_STARTUP: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.15"
+          enable-cache: true
+      - name: Prepare native rootless isolation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y podman
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          uv python install
+          uv sync --locked
+          podman pull "$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
+      - name: Exercise the actual container boundary
+        run: uv run --locked pytest -q -m container tests

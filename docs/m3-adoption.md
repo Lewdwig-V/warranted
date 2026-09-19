@@ -99,6 +99,40 @@ without following links, then run the independent checker on the captured bytes.
 Acceptance resolves current inputs and obligations again at the transition.
 An empty output, forged receipt, or passing narrow check cannot waive other gates.
 
+The containment slice uses local rootless Podman with cgroup v2 and seccomp.
+`Sandbox` pins a Python image by digest and gives each episode an 8 MiB workspace,
+128 MiB memory, one CPU, 32 processes, and a 120-second container lifetime.
+Each command has a 20-second deadline and at most 2 MiB of combined output.
+The root filesystem is read-only. No host directory or runtime socket is mounted.
+`export_evidence` supplies an explicit selection of public input snapshots.
+
+The worker runs as UID 1000 with no effective capabilities. A trusted supervisor
+inside the container retains only `CAP_KILL`. On submission, it kills worker
+descendants and waits until none remain live. It then opens `result.json` without
+following links and accepts only a regular file with one link and at most 1 MiB.
+The host removes the container before recording those bytes in the tool receipt.
+The checker must use that captured artifact, never a mutable workspace path.
+Neither runtime archive copies nor worker-authored capture scripts grant evidence.
+
+A runtime timeout or output limit terminates the container. If cleanup succeeds,
+the receipt records infrastructure failure and the captured stream prefixes.
+If cleanup cannot be established, the attempt remains unknown and reserved.
+A missing workspace cannot be silently recreated halfway through an episode.
+Only a host-authorized fresh episode can start new work after resolved attempts.
+
+To run the native tests after installing rootless Podman:
+
+```bash
+MSWEA_SILENT_STARTUP=1 uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)'
+# Pull the printed image once with podman pull. Tests never pull images.
+WARRANTED_CONTAINER_TESTS=1 uv run --locked pytest -q -m container tests
+```
+
+The separate CI containment job installs the runtime and pulls that image before
+testing. Ubuntu's temporary runner permits unprivileged user namespaces for this
+job. Ordinary tests skip native cases unless explicitly enabled. The native job
+requires them to execute successfully and uses no model credentials.
+
 ## Evidence and limits
 
 Fast tests use scripted model responses and a local fake service, while exercising

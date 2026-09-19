@@ -10,7 +10,8 @@ def main() -> None:
         description="Durable, checkable knowledge for long-horizon agent work.",
         epilog=(
             "The CLI provides help/version only. The local ledger and acceptance "
-            "boundary use Python APIs. Worker isolation and replay remain planned. "
+            "boundary use Python APIs. M3 adds bounded worker integration. "
+            "Replay remains planned. "
             "See docs/roadmap.md."
         ),
     )
