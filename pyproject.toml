@@ -36,7 +36,10 @@ target-version = "py312"
 line-length = 88
 
 [tool.pytest.ini_options]
-markers = ["container: requires rootless Podman and the pinned local image"]
+markers = [
+    "container: requires rootless Podman and the pinned local image",
+    "proof: requires rootless Podman and the pinned Lean verifier bundle",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

@@ -1,0 +1,24 @@
+ARG BASE
+FROM ${BASE} AS build
+COPY lean/ /opt/lean/
+COPY go/ /opt/go/
+ENV PATH="/opt/lean/bin:/opt/go/bin:/usr/local/bin:/usr/bin:/bin"
+ENV LEAN_NUM_THREADS=2 GOTOOLCHAIN=local
+COPY landrun/ /build/landrun/
+WORKDIR /build/landrun
+RUN go mod download && go mod verify && CGO_ENABLED=0 go build -mod=readonly -trimpath -buildvcs=false -o /opt/bin/landrun ./cmd/landrun
+COPY comparator/ /build/comparator/
+WORKDIR /build/comparator
+RUN lake build lean4export comparator
+RUN cp .lake/build/bin/comparator /opt/bin/verify && cp .lake/packages/lean4export/.lake/build/bin/lean4export /opt/bin/lean4export
+
+FROM ${BASE}
+COPY --from=build /opt/lean/ /opt/lean/
+COPY --from=build /opt/bin/ /opt/bin/
+COPY proof/ /opt/proof/
+ENV PATH="/opt/bin:/opt/lean/bin:/usr/local/bin:/usr/bin:/bin"
+ENV HOME=/work LEAN_NUM_THREADS=2 LEAN_PATH=/work/.lake/build/lib/lean
+ENV COMPARATOR_LANDRUN=/opt/proof/landrun.py COMPARATOR_LEAN4EXPORT=/opt/bin/lean4export
+RUN chmod 755 /opt/proof/landrun.py && python /opt/proof/supervisor.py manifest
+WORKDIR /work
+CMD ["sleep", "180"]

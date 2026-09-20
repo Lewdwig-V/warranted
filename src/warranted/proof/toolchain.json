@@ -1,0 +1,28 @@
+{
+  "base": "docker.io/library/python@sha256:c90be507635af19768837aa7eeb2f4ce89a74d62962a335497b9df8edfb7f19d",
+  "lean": {
+    "version": "4.34.0",
+    "url": "https://github.com/leanprover/lean4/releases/download/v4.34.0/lean-4.34.0-linux.tar.zst",
+    "sha256": "caaa98356098c85dc0fcbbd28e1ec66f39eb6551829972b752ff20e1286b646b"
+  },
+  "comparator": {
+    "revision": "d03acab154d269c06e60e4de7e4cc85deebff94b",
+    "url": "https://codeload.github.com/leanprover/comparator/tar.gz/d03acab154d269c06e60e4de7e4cc85deebff94b",
+    "sha256": "9ccc1491fbf61fbbd45b40488a84e4700439c664de62b0e5a3cf146b28df458b"
+  },
+  "exporter": {
+    "revision": "076e8e57707e813375e8f9da8bf989799ace9680",
+    "url": "https://codeload.github.com/leanprover/lean4export/tar.gz/076e8e57707e813375e8f9da8bf989799ace9680",
+    "sha256": "6841a09bbb920432388c6f260e3c43db3b9f73589b20658e0341c3b65104eb29"
+  },
+  "landrun": {
+    "revision": "811cfff51ceaf3d9843708aa6d22e9b84ccac8b4",
+    "url": "https://codeload.github.com/Zouuup/landrun/tar.gz/811cfff51ceaf3d9843708aa6d22e9b84ccac8b4",
+    "sha256": "5c5f16a55e3ee87eb89bb909410d877501914a8d7ff9b96674e3c12af83ada71"
+  },
+  "go": {
+    "version": "1.26.1",
+    "url": "https://go.dev/dl/go1.26.1.linux-amd64.tar.gz",
+    "sha256": "031f088e5d955bab8657ede27ad4e3bc5b7c1ba281f05f245bcc304f327c987a"
+  }
+}
