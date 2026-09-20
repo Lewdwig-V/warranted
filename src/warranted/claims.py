@@ -52,9 +52,9 @@ class Claims:
     ) -> Evidence:
         """Capture a claim, not its truth; incomplete dependencies block reuse.
 
-        Validation names one boolean field of a pinned checker request. Omitting
-        it preserves an unchecked assertion. Parent edges propagate applicability,
-        not a logical inference from a parent's truth to this statement's truth.
+        Validation names a boolean checker field, or "proof" for a host proof
+        receipt. Omitting it preserves an unchecked assertion. Parent edges
+        propagate applicability, not logical inference from a parent's truth.
         """
         _text(statement)
         if not isinstance(assumptions, Mapping) or type(complete) is not bool:
@@ -177,6 +177,14 @@ class Claims:
             return Status.MISSING
         if _digest(operation.request) != check["request"]:
             return Status.UNSUPPORTED
+        if operation.request.origin.kind == "proof":
+            from warranted.proof_receipts import proof_status
+
+            if check["field"] != "proof":
+                return Status.UNSUPPORTED
+            return proof_status(
+                self.ledger, operation.request, Evidence.restored(body["target"])
+            )
         operation = self.ledger.lookup(operation.request)
         if operation.completion is None:
             return Status.UNKNOWN

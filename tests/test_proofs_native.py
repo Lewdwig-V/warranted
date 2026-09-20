@@ -3,10 +3,17 @@
 import json
 import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import pytest
 
-from warranted.proofs import ProofStatus, verify
+from warranted import proofs as verifier
+from warranted.acceptance import Evidence, Status, _encode
+from warranted.claims import Claims
+from warranted.ledger import Ledger, Manifest, Snapshot
+from warranted.proof_receipts import Proofs
+from warranted.proofs import ProofStatus
 
 pytestmark = [
     pytest.mark.proof,
@@ -33,11 +40,85 @@ end Warranted
 
 def run(source, *, seconds=120):
     bundle = Path(os.environ["WARRANTED_PROOF_BUNDLE"])
-    result = verify(source.encode(), bundle, seconds=seconds)
+    execute = verifier._verify
+    result = None
+    with TemporaryDirectory() as directory:
+        root = Path(directory) / "ledger"
+        witness = Path(directory) / "executions"
+
+        def witnessed(*args, **kwargs):
+            nonlocal result
+            with witness.open("ab") as stream:
+                stream.write(b"verification\n")
+            result = execute(*args, **kwargs)
+            return result
+
+        with (
+            Ledger.create(
+                root,
+                Manifest("native-proof", "1", "run", "world", {}, {"proof": 1}),
+                {"solution": Snapshot(source.encode(), "native development case", "1")},
+            ) as ledger,
+            patch.object(verifier, "_verify", witnessed),
+        ):
+            session = ledger.start_session()
+            proofs = Proofs(ledger, session, bundle, seconds=seconds)
+            solution = Evidence(
+                "solution", ledger.project.snapshots["solution"].artifact
+            )
+            request = proofs.check("verify", solution)
+            claim = Claims(ledger, session).record(
+                "The conditional uniqueness theorem.",
+                proofs.target,
+                {},
+                validation=(request, "proof"),
+                complete=True,
+            )
+            expected = (
+                Status.PASSED
+                if result.status is ProofStatus.PROVED
+                else Status(result.status.value)
+            )
+            assert Claims(ledger, session).assess(claim, {}).validation is expected
+            assert ledger.lookup(request).completion is not None
+        with (
+            Ledger.open(root) as ledger,
+            patch.object(
+                verifier,
+                "_verify",
+                side_effect=AssertionError("completed proof ran again"),
+            ),
+        ):
+            session = ledger.start_session()
+            proofs = Proofs(ledger, session, bundle, seconds=seconds)
+            for _ in range(2):
+                assert proofs.check("verify", solution) == request
+                assert Claims(ledger, session).assess(claim, {}).validation is expected
+            balance = ledger.accounting()["proof"]
+            assert (balance.spent, balance.reserved) == (1, 0)
+            execution_witness = witness.read_bytes()
+            assert execution_witness == b"verification\n"
     reports = Path(os.environ.get("WARRANTED_PROOF_REPORTS", "runs/m4-native"))
     reports.mkdir(parents=True, exist_ok=True)
     (reports / f"{result.identity['solution']}.json").write_text(
-        json.dumps(result.as_dict(), indent=2) + "\n"
+        json.dumps(
+            {
+                **result.as_dict(),
+                "recovery": {
+                    "request": json.loads(_encode(request)),
+                    "claim_status": expected.value,
+                    "spent_proof_units": balance.spent,
+                    "reserved_proof_units": balance.reserved,
+                    "executions": 1,
+                    "resumes": 2,
+                },
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    (reports / f"{result.identity['solution']}.executions").write_bytes(
+        execution_witness
     )
     return result
 

@@ -52,8 +52,11 @@ M3 is complete for this local scripted-model fixture.
 M4 adds a [bounded Lean verification boundary](docs/m4-verification.md).
 It uses pinned Comparator and Landrun tools to compare the exact uniqueness target,
 enforce the axiom policy, and replay the proof in Lean's kernel.
-Native tests run in a separate CI job. Durable proof receipts, claim integration,
-fixture applications, and proof recovery remain planned.
+Durable proof receipts bind exact inputs and retain verification costs.
+Claims preserve distinct proof outcomes, completed checks survive restart without
+another execution, and unknown attempts keep their reservations.
+Native tests run in a separate CI job. Supported fixture applications and the
+changed-premise demonstration remain planned.
 
 ## What we are building
 

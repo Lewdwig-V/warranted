@@ -244,13 +244,14 @@ task evaluator outside the theorem.
 The [M4 implementation plan](m4-proof-boundary.md) defines the exact target and
 three PRs: verification, durable proof receipts, and fixture recovery. It selects
 Comparator for independent verification, subject to a pinned, tested integration.
-The [verification boundary](m4-verification.md) implements the first slice.
-Durable receipts and fixture recovery remain planned. M3a remains a separate optional experiment.
+The [verification boundary](m4-verification.md) implements verification and durable receipts.
+Fixture applications and their recovery demonstration remain planned.
+M3a remains a separate optional experiment.
 
 - [x] Pin Lean, the allowed library/axioms, and a reviewed target declaration.
 - [ ] Isolate proof generation; independently check the resulting artifact and
   transitive dependencies under the pinned verification policy.
-- [ ] Bind receipts to exact artifacts/targets and reject weakened statements,
+- [x] Bind receipts to exact artifacts/targets and reject weakened statements,
   `sorryAx`, unapproved axioms, and forged success labels.
 - [ ] Keep a checked theorem valid when a premise becomes unsupported, while
   blocking its application to the changed input.
@@ -258,7 +259,7 @@ Durable receipts and fixture recovery remain planned. M3a remains a separate opt
   candidate drops records while its output remains provably unique. The independent
   record-preservation check blocks task acceptance. Preserve proof success and
   task failure separately, alongside a successful control using the same theorem.
-- [ ] Bound and account for proof work; record timeout/failure as unproved.
+- [x] Bound and account for proof work; record timeout/failure as unproved.
 
 **Completion evidence:** one accepted conditional theorem with supported
 applications to the incomplete-target case and its successful control, plus

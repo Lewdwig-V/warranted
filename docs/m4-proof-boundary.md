@@ -1,8 +1,9 @@
 # M4: Lean proof boundary
 
 Implementation plan, 2026-09-19. M3 is complete for the local scripted fixture.
-The [verification boundary](m4-verification.md) implements the first of three PRs.
-Durable proof receipts and fixture applications remain planned.
+The [verification boundary](m4-verification.md) implements the first two of three PRs,
+including durable proof receipts and claim integration.
+Fixture applications and their changed-premise demonstration remain planned.
 The optional M3a Jev experiment remains separate.
 
 ## Target and scope
@@ -52,8 +53,8 @@ comparison, axiom enforcement, and proof replay through the kernel.
 Comparator compares a solution with a trusted challenge, the required theorem statement.
 Its exporter produces serialized declarations for independent checking.
 The [first implementation](m4-verification.md) pins and tests this integration.
-Warranted supplies containment and artifact identity. Durable proof evidence,
-applicability, and acceptance integration remain later slices.
+Warranted supplies containment, artifact identity, and durable proof evidence.
+Supported fixture applications and acceptance integration remain the next slice.
 
 PR 1 must pin compatible Lean, Comparator, exporter, and Landrun revisions.
 Landrun restricts the files and actions available during proof processing.
@@ -127,12 +128,12 @@ Keep process execution, proof status, and application support separate:
 `UNSUPPORTED` evidence cannot settle an unknown operation or release its reservation.
 Neither status establishes that the target theorem is false.
 
-`Claims.assess()` currently distinguishes validation from version applicability.
+`Claims.assess()` distinguishes validation from version applicability.
 Its `CURRENT` result establishes current versions, not the truth of an assumption.
 Parent edges also do not infer truth from another claim.
 Require passing, current evidence for every application premise and the candidate
 correspondence check. Preserve `UNPROVED` for an unsuccessful proof attempt.
-Adapt result handling explicitly if the current boolean checker field cannot express it.
+The proof receipt path preserves these explicit outcomes alongside ordinary boolean checker fields.
 
 ## Fixture applications
 

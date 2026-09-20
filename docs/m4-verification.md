@@ -1,8 +1,9 @@
 # M4 verification boundary
 
-This implements PR 1 of the [M4 plan](m4-proof-boundary.md).
+This implements PRs 1 and 2 of the [M4 plan](m4-proof-boundary.md).
 The host can check captured Lean source against the fixed uniqueness theorem.
-Durable receipts, proof budgets across restarts, claims, and fixture applications remain planned.
+The ledger retains exact proof receipts, budgets, and claim outcomes across restarts.
+Supported fixture applications remain planned.
 The result cannot authorize task acceptance.
 
 ## Run the native checks
@@ -116,7 +117,93 @@ Cleanup failure raises an error because stopped execution is not established.
 Compiler output is diagnostic evidence. A printed success message cannot decide the result.
 The protected decision file and supervisor exit status supply that decision.
 An unsuccessful attempt does not prove the target false.
-This API does not reconcile interrupted operations. PR 2 will retain their reservations and distinguish unknown outcomes.
+The direct `verify()` API does not persist operations.
+Use the durable host adapter below to retain reservations across interruption.
+
+## Durable host API
+
+`Proofs` uses the existing ledger, with one trusted writer outside worker storage.
+It reserves one synthetic `proof` unit before verification starts.
+That unit covers one bounded compilation, export, and kernel replay attempt.
+Each attributable completion spends one unit, including rejection, unfinished proofs, timeouts, and infrastructure failures.
+Measured elapsed nanoseconds remain separate from these units.
+Proof generation and model costs belong to their M3 attempts and are not included here.
+
+After building the bundle, run this example once with a new ledger destination:
+
+```python
+from pathlib import Path
+
+from warranted.acceptance import Evidence
+from warranted.claims import Claims
+from warranted.ledger import Ledger, Manifest, Snapshot
+from warranted.proof_receipts import Proofs
+
+root = Path("runs/m4-receipts")
+root.parent.mkdir(parents=True, exist_ok=True)
+bundle = Path("runs/m4-tools/bundle.json")
+snapshots = {
+    "solution": Snapshot(
+        Path("examples/m4/Solution.lean").read_bytes(),
+        "reviewed development proof",
+        "1",
+    ),
+}
+with Ledger.create(
+    root,
+    Manifest("m4-proof", "1", "run-1", "world-1", {}, {"proof": 1}),
+    snapshots,
+) as ledger:
+    session = ledger.start_session()
+    proofs = Proofs(ledger, session, bundle)
+    solution = Evidence("solution", ledger.project.snapshots["solution"].artifact)
+    request = proofs.check("uniqueness-1", solution)
+    claim = Claims(ledger, session).record(
+        "The conditional uniqueness theorem.",
+        proofs.target,
+        {},
+        validation=(request, "proof"),
+        complete=True,
+    )
+    print(Claims(ledger, session).assess(claim, {}))
+
+with Ledger.open(root) as ledger:
+    session = ledger.start_session()
+    proofs = Proofs(ledger, session, bundle)
+    assert proofs.check("uniqueness-1", solution) == request
+    print(Claims(ledger, session).assess(claim, {}))
+    print(ledger.accounting()["proof"])
+```
+
+The valid example reports `passed`, then reuses the completion with one spent unit and no reservation.
+`check()` returns the operation request, not a success flag.
+Read the proof status through `Claims.assess()` or `proof_status(ledger, request, proofs.target)`.
+Use `Proofs.request()` to capture a claim reference before dispatch when needed.
+
+Requests bind the solution's captured origin and bytes, challenge and definitions, tool bundle, image, axiom policy, and actual limits.
+They also bind the project context, host kernel and Python versions, and Podman executable digest.
+The completion records Podman's reported version as execution evidence.
+The host captures bundle bytes once, so later edits to its file cannot change the attempt.
+A changed source, policy, environment, or limit cannot reuse the same operation ID.
+Lookup validates all captured input and completion bytes before reuse.
+
+The receipt stores `verification.json` beside the original source, bundle, challenge, diagnostics, decision, and any exports.
+It binds the complete request, including the operation ID and project context.
+`Claims.assess()` accepts a proof receipt only for its exact challenge artifact.
+It preserves `rejected`, `unproved`, and `infrastructure_failure` as distinct outcomes.
+Historical assessment needs neither installed tools nor the original bundle file.
+It checks stored evidence without running verification.
+
+A missing completion leaves the operation unknown and reserved.
+An unsupported or mismatched result is retained as raw evidence, reports `unsupported`, and also leaves the operation unknown and reserved.
+It cannot release the reservation or establish proof success.
+Repeating either kind of unknown attempt does not execute it again.
+Other unknown operations block new dispatch through the existing host recovery check.
+There is no imported-receipt reconciliation API in this slice; an unresolved attempt stays blocked.
+
+Claim validation still describes the conditional theorem only.
+Version applicability does not establish an empirical premise, correspondence with a Python implementation, or task acceptance.
+The next slice supplies those independent fixture checks.
 
 ## Evidence and limits
 
@@ -124,10 +211,14 @@ Native cases cover direct and indirect `sorry`, custom and native-evaluation axi
 They also cover incomplete proofs, forged output, malformed compiled artifacts, and unchecked proof terms rejected during kernel replay.
 Containment cases attempt writes to the challenge, configuration, decision, and verifier executable.
 They exercise secret exclusion, resource limits, excessive output, and timeout cleanup.
-All 19 existing M3 containment tests pass after sharing the bounded Podman transport.
+Every native proof case also records a durable receipt, reopens the ledger, and resumes twice without another execution or charge.
+Reports retain exact request identities and a separate execution witness.
+Fast tests use a scripted verifier for host deaths after reservation, dispatch, execution, and completion.
+Each recovery runs in a fresh process and counts execution outside the ledger.
+Other cases cover wrong-target and copied receipts, corrupt bytes, changed identities, exhausted budgets, and unsupported evidence that cannot settle an unknown attempt.
 
 The host, tool builder, pinned verifier, Lean kernel, Landrun, operating system, and container runtime remain trusted.
 A second proof kernel is not used.
 These development cases establish the tested local boundary. They do not establish resistance to every implementation vulnerability.
 The [Lean proof-validation guide](https://lean-lang.org/doc/reference/latest/ValidatingProofs/) explains the underlying trust assumptions.
-M4 still needs durable proof receipts, supported fixture applications, recovery, and comparisons with the executable baseline.
+M4 still needs supported fixture applications, the changed-premise demonstration, and comparisons with the executable baseline.

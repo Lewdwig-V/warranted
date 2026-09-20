@@ -1,4 +1,4 @@
-"""One bounded, independent proof check. Durable operation receipts follow in M4/2.
+"""One bounded, independent proof check; proof_receipts adds durable host operations.
 
 The bundle is host-owned output from scripts/build_proof_bundle.py. A worker can
 submit only source bytes; it cannot select the challenge, policy, or tool image.
@@ -11,6 +11,7 @@ import hashlib
 import json
 import platform
 import re
+import shutil
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
@@ -87,19 +88,15 @@ def _checked(args: list[str], data: bytes = b"", **kwargs) -> bytes:
     return result.stdout
 
 
-def verify(
-    source: bytes, bundle_path: Path, *, seconds: int = LIMITS["seconds"]
-) -> Verification:
-    """Verify captured bytes under a host-selected immutable build manifest.
-
-    Cleanup failure raises instead of claiming a known, stopped attempt. This
-    function does not reserve budgets, persist evidence, or authorize acceptance.
-    """
+def _validate(source: bytes, seconds: int) -> None:
     if type(source) is not bytes or not 0 < len(source) <= SOURCE_LIMIT:
         raise ValueError("source must be nonempty bounded bytes")
     if type(seconds) is not int or not 1 <= seconds <= LIMITS["seconds"]:
         raise ValueError("timeout must be an integer from 1 to 120 seconds")
-    bundle_bytes = bundle_path.read_bytes()
+
+
+def _inputs(source: bytes, bundle_bytes: bytes, seconds: int) -> tuple[dict, dict]:
+    _validate(source, seconds)
     bundle = json.loads(bundle_bytes)
     if (
         bundle.get("policy") != policy_digest()
@@ -108,25 +105,48 @@ def verify(
         != json.loads((RESOURCES / "toolchain.json").read_bytes())
     ):
         raise ValueError("bundle does not match the pinned proof policy")
+    challenge = (RESOURCES / "Challenge.lean").read_bytes()
+    executable = shutil.which("podman")
+    runtime_digest = None
+    if executable is not None:
+        with Path(executable).open("rb") as stream:
+            runtime_digest = hashlib.file_digest(stream, "sha256").hexdigest()
     identity = {
         "solution": hashlib.sha256(source).hexdigest(),
-        "challenge": hashlib.sha256(
-            (RESOURCES / "Challenge.lean").read_bytes()
-        ).hexdigest(),
+        "challenge": hashlib.sha256(challenge).hexdigest(),
         "bundle": hashlib.sha256(bundle_bytes).hexdigest(),
         "image": bundle["image"],
         "tools": bundle["manifest"],
         "policy": bundle["policy"],
         "limits": {**LIMITS, "seconds": seconds},
         "kernel": platform.release(),
+        "python": platform.python_version(),
+        "podman_binary": runtime_digest,
     }
-    name = "warranted-proof-" + uuid.uuid4().hex
-    started = perf_counter_ns()
-    raw: dict[str, bytes] = {
+    return identity, {
         "bundle.json": bundle_bytes,
         "Solution.lean": source,
-        "Challenge.lean": (RESOURCES / "Challenge.lean").read_bytes(),
+        "Challenge.lean": challenge,
     }
+
+
+def verify(
+    source: bytes, bundle_path: Path, *, seconds: int = LIMITS["seconds"]
+) -> Verification:
+    """Verify captured bytes under a host-selected immutable build manifest.
+
+    Cleanup failure raises instead of claiming a known, stopped attempt. This
+    function does not reserve budgets, persist evidence, or authorize acceptance.
+    """
+    _validate(source, seconds)
+    return _verify(source, bundle_path.read_bytes(), seconds=seconds)
+
+
+def _verify(source: bytes, bundle_bytes: bytes, *, seconds: int) -> Verification:
+    identity, raw = _inputs(source, bundle_bytes, seconds)
+    bundle = json.loads(bundle_bytes)
+    name = "warranted-proof-" + uuid.uuid4().hex
+    started = perf_counter_ns()
     status, diagnostic, axioms = ProofStatus.INFRASTRUCTURE_FAILURE, "", ()
     created = False
     executing = False
