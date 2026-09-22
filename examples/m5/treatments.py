@@ -670,12 +670,10 @@ def run_stage(stage: str, root: Path, bundle: Path, *, crash=False):
             or bool(support)
             and all(value["status"] == "supported" for value in support.values())
         )
-        balances = ledger.accounting()
-        report = {
+        result = {
             "stage": stage,
             "family": family,
             "condition": condition,
-            "environment": dict(ledger.project.manifest.environment),
             "candidate": candidate,
             "old_candidate": old,
             "proofs": proofs,
@@ -683,6 +681,17 @@ def run_stage(stage: str, root: Path, bundle: Path, *, crash=False):
             "support": support,
             "qualified": qualified,
             "matrix": matrix,
+        }
+        record(
+            host,
+            "result/" + stage,
+            {"candidate": target},
+            {"result.json": _encode(result)},
+        )
+        balances = ledger.accounting()
+        report = {
+            **result,
+            "environment": dict(ledger.project.manifest.environment),
             "spent": {key: value.spent for key, value in balances.items()},
             "reserved": {key: value.reserved for key, value in balances.items()},
             "limits": CAPS,

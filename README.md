@@ -77,7 +77,10 @@ supported narrow proofs leave independent task failures intact across restart.
 The [A–E treatment runner](docs/m5-contexts.md) now connects both fixtures to the
 shared context boundary. It preserves workspace files and notes, updates models
 and dependency reports, and charges E for real proof work across restart.
-Credential-free tests cover all five conditions. Measured model comparisons remain planned.
+Credential-free tests cover all five conditions.
+[Scripted trial accounting](docs/m5-migration.md#scripted-trial-accounting) now
+pins a development trial list and reports committed results, failures, missing
+runs, and recorded usage. Measured model comparisons remain planned.
 
 ## What we are building
 

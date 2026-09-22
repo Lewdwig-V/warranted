@@ -160,6 +160,59 @@ Add no model dependency or paid trial to the first fixture slice.
 Keep native execution out of the fast local suite and avoid timeout tests longer than their failure case requires.
 Leave M5's completion boxes unchecked until their stated evidence exists.
 
+## Scripted trial accounting
+
+`examples/m5/trials.py` prepares an offline development trial list and reads its results.
+It creates one run for each family and A–E condition per repetition.
+The plan pins each ledger's identity, manifest, and snapshot references before any worker starts.
+Each manifest records the fixed model, policy, environment, evaluator, and per-run limits.
+The snapshots retain exact fixture, host, model-response, and verifier bytes.
+Both public fixture lineages remain development data.
+Repetitions of these fixtures are not independent task samples or held-out evidence.
+
+Use the [existing pinned proof bundle](m4-verification.md#run-the-native-checks).
+Preparing the list does not run workers, containers, or proofs.
+
+```bash
+uv run --locked python examples/m5/trials.py init runs/m5-trials \
+  --bundle runs/m4-tools/bundle.json --repetitions 1
+uv run --locked python examples/m5/trials.py report runs/m5-trials
+```
+
+The plan lists runs in repetition, family, then condition order.
+It records that order but does not enforce execution order or dispatch work.
+Use the existing treatment runner for each listed path, starting with:
+
+```bash
+uv run --locked python examples/m5/treatments.py start \
+  runs/m5-trials/runs/001-csv-A --family csv --condition A \
+  --bundle runs/m4-tools/bundle.json
+uv run --locked python examples/m5/treatments.py resume \
+  runs/m5-trials/runs/001-csv-A --family csv --condition A \
+  --bundle runs/m4-tools/bundle.json
+uv run --locked python examples/m5/trials.py report runs/m5-trials
+```
+
+Run the reporter while trial writers are stopped.
+It reads host ledger records and verifies their stored bytes without starting new work.
+It does not read the mutable `reports/` files or grant fresh acceptance.
+Stage results retain independent task checks, stale receipt decisions, proof support, and specification failures.
+The report separates completed task acceptance from the treatment's full qualification rule.
+It keeps every planned slot in each family and condition's denominator.
+Unknown attempts and budget breaches cannot count as qualified trials.
+Missing, damaged, or substituted ledgers remain visible and make usage totals incomplete.
+Unresolved attempts retain their reservations and also mark usage incomplete.
+Failed proofs remain visible even when they prevent a stage from finishing.
+
+Totals cover recorded operations in the planned runs only.
+They retain failed work and distinguish spent units from unresolved reservations.
+The pinned bundle's build duration appears once in the plan.
+Operation durations are not end-to-end wall time and can overlap.
+Monetary cost, human interventions, fixture setup, formalization, and development effort remain unmeasured.
+An interrupted setup has no complete plan and cannot run as a campaign.
+Keep its directory for diagnosis and prepare a new plan before starting work.
+This slice adds no provider adapter, spending authority, thresholds, or final task split.
+
 ## Trial decisions still required
 
 Before paid development trials, choose available provider/model versions and an explicit total spending cap.
