@@ -1,12 +1,13 @@
 # M5: repository migration and knowledge comparisons
 
 Implementation plan, 2026-09-22. M4 is complete for its fixed development fixture.
-The migration fixture and the comparisons below are planned, not implemented.
-The first implementation PR supplies a runnable migration and an independent checker.
+The [first fixture slice](m5-fixture.md) implements the fixed migration matrix and an independent checker.
+Worker recovery, the additional proofs, shared adapters, and A–E comparisons remain planned.
 
 ## First migration task
 
 Use a small Python repository with no third-party dependencies.
+Its formats and legacy consumer are synthetic test cases, not compatibility commitments for Warranted.
 It contains `settings.json`, `migrate.py`, two consumers, and public example tests.
 The worker changes only `migrate.py`.
 The program reads one JSON object from standard input and writes one JSON object to standard output.
@@ -79,8 +80,10 @@ Check the renamed values, output schema, legacy behavior, and current repetition
 Keep every failed obligation in the result rather than stopping after the first failure.
 Malformed output cannot establish success. Distinguish candidate failures from missing isolation or other infrastructure failures.
 
-Candidate Python runs inside a fresh, bounded container with no network or host mounts.
-The container receives the captured candidate and one input case, without expected answers or the authoritative ledger.
+Each candidate runs inside one fresh, bounded container with no network or host mounts.
+A trusted supervisor runs its cases in fresh processes and temporary working directories, stopping candidate processes between cases.
+Each process receives only its current input. Expected answers and the authoritative ledger stay outside the container.
+Cases share the outer container's temporary filesystem. Full isolation between cases is not claimed.
 The host captures output and computes the acceptance result outside that container.
 Candidate exit codes, printed success labels, edited tests, and self-reported receipts cannot authorize acceptance.
 Bound runtime, processes, memory, input size, and captured output before dispatch.

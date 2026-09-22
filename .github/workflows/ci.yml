@@ -85,6 +85,7 @@ jobs:
     env:
       WARRANTED_CONTAINER_TESTS: "1"
       MSWEA_SILENT_STARTUP: "1"
+      WARRANTED_M5_REPORTS: runs/m5-ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -100,7 +101,19 @@ jobs:
           uv sync --locked
           podman pull "$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
       - name: Exercise the actual container boundary
-        run: uv run --locked pytest -q -m container tests
+        id: containers
+        run: uv run --locked pytest -q -m container --durations=5 tests
+      - name: Retain M5 migration evidence
+        if: ${{ always() && steps.containers.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: m5-migration
+          path: |
+            runs/m5-ci/reports/
+            runs/m5-ci/exports/
+            runs/m5-ci/executions.jsonl
+          if-no-files-found: error
+          retention-days: 14
       - name: Force a restart during the M3 task
         id: m3
         run: |
