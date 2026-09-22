@@ -299,6 +299,32 @@ def test_missing_treatment_checkpoint_blocks_before_new_work(tmp_path, monkeypat
     assert (root / "worker-dispatches.jsonl").read_bytes() == before
 
 
+@pytest.mark.parametrize("family", ["csv", "migration"])
+@pytest.mark.parametrize(
+    "helper", ["m2/experiments.py", "m4/demo.py", "m5/recovery.py"]
+)
+def test_changed_shared_helper_blocks_resume_before_dispatch(
+    tmp_path, monkeypatch, family, helper
+):
+    demo, root, bundle = scripted(tmp_path, monkeypatch, family, Condition.A)
+    demo["demonstrate"]("start", root, bundle)
+    before = (root / "worker-dispatches.jsonl").read_bytes()
+    changed = SCRIPT.parent.parent / helper
+    read_bytes = Path.read_bytes
+
+    def changed_bytes(path):
+        data = read_bytes(path)
+        return data + b"\n# changed host helper\n" if path == changed else data
+
+    monkeypatch.setattr(Path, "read_bytes", changed_bytes)
+    with pytest.raises(ValueError, match="fixture or host changed"):
+        demo["demonstrate"]("resume", root, bundle)
+    assert (root / "worker-dispatches.jsonl").read_bytes() == before
+    with Ledger.open(root / "ledger") as ledger:
+        assert ledger.accounting()["model"].spent == 1
+        assert ledger.accounting()["tool"].spent == 1
+
+
 @pytest.mark.proof
 @pytest.mark.skipif(
     os.environ.get("WARRANTED_PROOF_TESTS") != "1",
