@@ -75,6 +75,9 @@ def stop_workers():
             return
         time.sleep(0.001)
     raise RuntimeError('worker processes did not stop')
+with open('/work/migrate.py', 'xb') as file:
+    file.write(base64.b64decode(sys.argv[1], validate=True))
+os.chmod('/work/migrate.py', 0o444)
 results = {}
 for name, data in json.load(sys.stdin).items():
     started = time.perf_counter_ns()
@@ -84,7 +87,7 @@ for name, data in json.load(sys.stdin).items():
         os.chmod(work, 0o777)
         status = {'returncode': None, 'timed_out': False}
         try:
-            result = subprocess.run([sys.executable, '-I', '/work/' + sys.argv[1]],
+            result = subprocess.run([sys.executable, '-I', '/work/migrate.py'],
                                     input=data.encode(), stdout=out, stderr=err,
                                     cwd=work, user=1000, group=1000, extra_groups=[],
                                     preexec_fn=limits, timeout=int(sys.argv[2]))
@@ -287,7 +290,9 @@ def validate(ledger: Ledger):
             raise ValueError("fixture or checker changed: " + name)
 
 
-def execute(root: Path, episode: Episode, inputs: dict[str, str]) -> AttemptResult:
+def execute(
+    root: Path, episode: Episode, inputs: dict[str, str], source: bytes
+) -> AttemptResult:
     """One contained batch; its trusted supervisor captures each process result."""
     started = perf_counter_ns()
     with Sandbox(root / "ledger", episode) as isolated:
@@ -303,7 +308,7 @@ def execute(root: Path, episode: Episode, inputs: dict[str, str]) -> AttemptResu
                     "-I",
                     "-c",
                     SUPERVISE,
-                    *episode.inputs,
+                    base64.b64encode(source).decode(),
                     str(CASE_SECONDS),
                     str(OUTPUT_LIMIT),
                 ],
@@ -474,7 +479,11 @@ def demonstrate(root: Path) -> dict:
                 for key in cases
             }
             batch = perform(
-                ledger, session, req, "batch", partial(execute, root, episode, inputs)
+                ledger,
+                session,
+                req,
+                "batch",
+                partial(execute, root, episode, inputs, source),
             )
             evidence = {
                 Evidence.captured(batch.observation, channel).name: ref

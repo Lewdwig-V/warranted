@@ -76,7 +76,7 @@ def scripted(tmp_path, monkeypatch):
     demo["initialize"](root)
     references = json.loads((SCRIPT.parent / "fixture/references.json").read_bytes())
 
-    def execute(root, episode, inputs):
+    def execute(root, episode, inputs, source):
         name = episode.inputs[0].removeprefix("candidate-").removesuffix(".py")
         raw = {}
         for case_name in inputs:
@@ -233,7 +233,7 @@ def test_unavailable_isolation_never_runs_or_reports_candidate_success(
             closed.append(True)
 
     monkeypatch.setitem(demo["execute"].__globals__, "Sandbox", Unavailable)
-    result = demo["execute"](tmp_path, None, {"probe": "{}"})
+    result = demo["execute"](tmp_path, None, {"probe": "{}"}, b"pass")
     assert result.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
     assert result.result.exit_code is None
     assert b"isolation unavailable" in result.raw["diagnostic"]
@@ -311,7 +311,7 @@ def native_case(root, source, inputs=None):
             ledger.start_session(),
             req,
             "batch",
-            lambda: demo["execute"](root, episode, inputs or {"probe": "{}"}),
+            lambda: demo["execute"](root, episode, inputs or {"probe": "{}"}, source),
         )
         return completed.result, {
             name: ledger.read_artifact(ref)
