@@ -369,7 +369,7 @@ def count(path: Path):
     return len(path.read_bytes().splitlines()) if path.exists() else 0
 
 
-def demonstrate(stage: str, root: Path, bundle: Path) -> dict:
+def demonstrate(stage: str, root: Path, bundle: Path, *, crash: bool = False) -> dict:
     started = perf_counter_ns()
     execute = proofs._verify
 
@@ -492,6 +492,8 @@ def demonstrate(stage: str, root: Path, bundle: Path) -> dict:
         raw = M2["encode"](report)
         (root / "reports" / f"{host.session}.json").write_bytes(raw)
         (root / "reports" / f"{stage}.json").write_bytes(raw)
+        if crash:
+            os.kill(os.getpid(), signal.SIGKILL)
         return report
 
 
@@ -503,13 +505,13 @@ def main():
     parser.add_argument(
         "--crash",
         action="store_true",
-        help="kill this host after capturing its durable report",
+        help="kill this host after writing its report, before closing the ledger",
     )
     args = parser.parse_args()
     root, bundle = args.root.resolve(), args.bundle.resolve()
     if args.stage == "start" and not (root / "ledger").exists():
         initialize(root, bundle)
-    report = demonstrate(args.stage, root, bundle)
+    report = demonstrate(args.stage, root, bundle, crash=args.crash)
     if args.stage == "resume":
         matrix = report["matrix"]
         if (
@@ -523,8 +525,6 @@ def main():
             or report["premise_revision"]["current"]["status"] != "unsupported"
         ):
             raise RuntimeError("demonstration did not establish the required outcomes")
-    if args.crash:
-        os.kill(os.getpid(), signal.SIGKILL)
     print(json.dumps(report, indent=2))
     return 0
 

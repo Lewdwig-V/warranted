@@ -292,6 +292,38 @@ def test_changed_fixture_and_unknown_verification_cannot_dispatch_on_resume(
     assert len((root / "proof-executions.jsonl").read_bytes().splitlines()) == 1
 
 
+def test_cli_kills_host_before_ledger_teardown(tmp_path, monkeypatch):
+    import signal
+    import sys
+
+    from warranted.ledger import Ledger
+
+    root = tmp_path / "demo"
+    demo, bundle = scripted(root, monkeypatch)
+    events = []
+    close = Ledger.close
+
+    def closed(ledger):
+        events.append("close")
+        close(ledger)
+
+    def killed(pid, sig):
+        assert (pid, sig) == (os.getpid(), signal.SIGKILL)
+        events.append("kill")
+        raise SystemExit(sig)
+
+    monkeypatch.setattr(Ledger, "close", closed)
+    monkeypatch.setattr(os, "kill", killed)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(SCRIPT), "start", str(root), "--bundle", str(bundle), "--crash"],
+    )
+    with pytest.raises(SystemExit, match=str(signal.SIGKILL)):
+        demo["main"]()
+    assert events == ["kill", "close"]
+
+
 @pytest.mark.proof
 @pytest.mark.skipif(
     os.environ.get("WARRANTED_PROOF_TESTS") != "1",

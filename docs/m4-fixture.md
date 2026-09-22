@@ -21,7 +21,7 @@ uv run --locked python examples/m4/demo.py resume runs/m4-demo --bundle runs/m4-
 `start` captures one valid proof, one incomplete proof, and one five-second timeout.
 The incomplete proof and timeout remain unproved, with their costs retained.
 It commits the proof checkpoint before any application or task check.
-Add `--crash` to kill that host after it writes the report.
+Add `--crash` to kill that host after it writes the report, while the ledger is still open.
 The native test uses this option, then resumes in two fresh processes.
 
 The first `resume` performs eight executable checks and records the applications and task decisions.
