@@ -298,6 +298,9 @@ The [A–E treatment runner](m5-contexts.md) uses captured workspace files and n
 permitted history, updated models, and dependency reports across both fixtures.
 Condition E includes the three supported proof cases and their full attempt costs.
 Fixed workers recover through a host kill and repeated resume. Model trials remain planned.
+The [scripted trial ledger](m5-migration.md#scripted-trial-accounting) predeclares
+development runs and keeps missing runs and failed attempts in the report.
+It does not establish model quality, held-out results, or full campaign costs.
 
 - [x] Complete the same restart/changed-premise exercise in this second task family.
 - [x] Exercise the pilot's migration regression outside the proved properties,
