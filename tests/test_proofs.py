@@ -13,17 +13,27 @@ from warranted.proofs import (
 )
 
 
+def test_unknown_target_cannot_start_verification(tmp_path):
+    with pytest.raises(ValueError, match="target"):
+        verify(b"source", tmp_path / "missing-bundle.json", target_id="../weaker")
+
+
 @pytest.mark.parametrize("source", [b"", b"x" * (1024 * 1024 + 1)])
 def test_invalid_source_cannot_start_verification(tmp_path, source):
     assert SOURCE_LIMIT == 1024 * 1024
     with pytest.raises(ValueError, match="source"):
-        verify(source, tmp_path / "missing-bundle.json")
+        verify(source, tmp_path / "missing-bundle.json", target_id="uniqueness")
 
 
 @pytest.mark.parametrize("seconds", [0, -1, 121, True, "5"])
 def test_host_timeout_must_stay_within_the_policy_ceiling(tmp_path, seconds):
     with pytest.raises(ValueError, match="timeout"):
-        verify(b"source", tmp_path / "missing-bundle.json", seconds=seconds)
+        verify(
+            b"source",
+            tmp_path / "missing-bundle.json",
+            seconds=seconds,
+            target_id="uniqueness",
+        )
 
 
 @pytest.mark.parametrize("field", ["policy", "image", "toolchain"])
@@ -37,7 +47,7 @@ def test_changed_bundle_pin_fails_before_runtime_dispatch(tmp_path, field):
     path = tmp_path / "bundle.json"
     path.write_text(json.dumps(bundle))
     with pytest.raises(ValueError, match="pinned proof policy"):
-        verify(b"theorem fake : True := True.intro", path)
+        verify(b"theorem fake : True := True.intro", path, target_id="uniqueness")
 
 
 def test_runtime_preflight_timeout_is_infrastructure_failure(tmp_path, monkeypatch):
@@ -60,5 +70,5 @@ def test_runtime_preflight_timeout_is_infrastructure_failure(tmp_path, monkeypat
         raise SandboxFailure("runtime timeout")
 
     monkeypatch.setattr(proofs, "require_runtime", unavailable)
-    result = verify(b"theorem fake : True := True.intro", path)
+    result = verify(b"theorem fake : True := True.intro", path, target_id="uniqueness")
     assert result.status is ProofStatus.INFRASTRUCTURE_FAILURE

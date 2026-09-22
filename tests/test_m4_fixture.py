@@ -92,8 +92,8 @@ def scripted(root, monkeypatch):
         )
     )
 
-    def verify(data, captured, *, seconds):
-        identity, raw = proofs._inputs(data, captured, seconds)
+    def verify(data, captured, *, target_id, seconds):
+        identity, raw = proofs._inputs(data, captured, seconds, target_id)
         identity["podman"] = {"Version": "scripted"}
         status = (
             ProofStatus.UNPROVED

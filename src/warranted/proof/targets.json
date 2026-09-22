@@ -1,0 +1,5 @@
+{
+  "uniqueness": {"challenge": "Challenge.lean", "theorem": "Warranted.uniqueness_preserved"},
+  "migration": {"challenge": "Migration.lean", "theorem": "Warranted.migration_renaming"},
+  "timestamp": {"challenge": "Timestamp.lean", "theorem": "Warranted.timestamp_roundtrip"}
+}

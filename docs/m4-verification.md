@@ -1,7 +1,8 @@
 # M4 verification boundary
 
 This implements the verification and receipt slices of the [M4 plan](m4-proof-boundary.md).
-The host can check captured Lean source against the fixed uniqueness theorem.
+The host can check captured Lean source against an explicitly selected approved theorem.
+M4 uses the uniqueness target. M5 adds migration and timestamp targets.
 The ledger retains exact proof receipts, budgets, and claim outcomes across restarts.
 The [fixture demonstration](m4-fixture.md) adds supported applications and changed-premise recovery.
 The result cannot authorize task acceptance.
@@ -46,7 +47,7 @@ from pathlib import Path
 from warranted.proofs import verify
 
 source = Path("examples/m4/Solution.lean").read_bytes()
-result = verify(source, Path("runs/m4-tools/bundle.json"))
+result = verify(source, Path("runs/m4-tools/bundle.json"), target_id="uniqueness")
 Path("runs/m4-control.json").write_text(json.dumps(result.as_dict(), indent=2))
 print(result.status, result.axioms)
 ```
@@ -155,7 +156,7 @@ with Ledger.create(
     snapshots,
 ) as ledger:
     session = ledger.start_session()
-    proofs = Proofs(ledger, session, bundle)
+    proofs = Proofs(ledger, session, bundle, target_id="uniqueness")
     solution = Evidence("solution", ledger.project.snapshots["solution"].artifact)
     request = proofs.check("uniqueness-1", solution)
     claim = Claims(ledger, session).record(
@@ -169,7 +170,7 @@ with Ledger.create(
 
 with Ledger.open(root) as ledger:
     session = ledger.start_session()
-    proofs = Proofs(ledger, session, bundle)
+    proofs = Proofs(ledger, session, bundle, target_id="uniqueness")
     assert proofs.check("uniqueness-1", solution) == request
     print(Claims(ledger, session).assess(claim, {}))
     print(ledger.accounting()["proof"])
@@ -187,7 +188,12 @@ The host captures bundle bytes once, so later edits to its file cannot change th
 A changed source, policy, environment, or limit cannot reuse the same operation ID.
 Lookup validates all captured input and completion bytes before reuse.
 
-The receipt stores `verification.json` beside the original source, bundle, challenge, diagnostics, decision, and any exports.
+The receipt stores `verification.json` beside the original source, bundle, challenge, selected configuration, diagnostics, decision, and exports.
+The required `target_id` selects `uniqueness`, `migration`, or `timestamp` from the trusted image registry.
+The worker cannot supply a challenge path or select a different target.
+The request binds the selected ID, challenge bytes, and exact theorem configuration.
+M5 uses receipt version 2 and requires a fresh bundle and run directory for this format.
+No compatibility reader for earlier proof receipts is implemented.
 It binds the complete request, including the operation ID and project context.
 `Claims.assess()` accepts a proof receipt only for its exact challenge artifact.
 It preserves `rejected`, `unproved`, and `infrastructure_failure` as distinct outcomes.

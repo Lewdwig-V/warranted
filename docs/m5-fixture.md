@@ -188,5 +188,6 @@ uv run --locked pytest -q -m 'not container' tests/test_m5_recovery.py
 WARRANTED_CONTAINER_TESTS=1 uv run --locked pytest -q -m container --durations=5 tests/test_m5_recovery.py
 ```
 
-The [next slice](m5-migration.md#five-implementation-slices) adds supported migration and timestamp proofs.
-Shared adapters, A–E treatments, and measured model trials remain planned.
+The [supported proof cases](m5-proofs.md) add migration and timestamp proofs without changing this checker.
+The [next slice](m5-migration.md#five-implementation-slices) derives the shared boundary and A–E treatments.
+Measured model trials remain planned.

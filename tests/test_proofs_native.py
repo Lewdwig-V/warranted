@@ -62,7 +62,9 @@ def run(source, *, seconds=120):
             patch.object(verifier, "_verify", witnessed),
         ):
             session = ledger.start_session()
-            proofs = Proofs(ledger, session, bundle, seconds=seconds)
+            proofs = Proofs(
+                ledger, session, bundle, seconds=seconds, target_id="uniqueness"
+            )
             solution = Evidence(
                 "solution", ledger.project.snapshots["solution"].artifact
             )
@@ -90,7 +92,9 @@ def run(source, *, seconds=120):
             ),
         ):
             session = ledger.start_session()
-            proofs = Proofs(ledger, session, bundle, seconds=seconds)
+            proofs = Proofs(
+                ledger, session, bundle, seconds=seconds, target_id="uniqueness"
+            )
             for _ in range(2):
                 assert proofs.check("verify", solution) == request
                 assert Claims(ledger, session).assess(claim, {}).validation is expected

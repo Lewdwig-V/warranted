@@ -73,8 +73,12 @@ def prepare():
     if not 0 < len(source) <= 1024 * 1024:
         raise ValueError("source exceeds limit or is empty")
     os.mkdir("/tmp/host", 0o700)
-    for name in ("Challenge.lean", "config.json", "lakefile.toml"):
-        shutil.copyfile(ROOT / name, WORK / name)
+    target = json.loads((ROOT / "targets.json").read_bytes())[sys.argv[2]]
+    shutil.copyfile(ROOT / target["challenge"], WORK / "Challenge.lean")
+    shutil.copyfile(ROOT / "lakefile.toml", WORK / "lakefile.toml")
+    config = json.loads((ROOT / "config.json").read_bytes())
+    config["theorem_names"] = [target["theorem"]]
+    (WORK / "config.json").write_text(json.dumps(config, sort_keys=True))
     (WORK / "lake-manifest.json").write_text(
         '{"version":"1.2.0","packagesDir":".lake/packages",'
         '"packages":[],"name":"WarrantedProof","lakeDir":".lake"}'
