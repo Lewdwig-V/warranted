@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "owner": "fixture-owner",
+  "migration": {
+    "target": "migration",
+    "variants": {"drop-label": false, "complete": true},
+    "scope": "Renaming preserves host and timeout values; label preservation is a separate task gate."
+  },
+  "timestamp": {
+    "target": "timestamp",
+    "variants": {"correct": 60, "wrong-offset": 0},
+    "scope": "Round-trip conversion uses the assumed offset. The zero-offset interpretation deliberately mistranslates the source contract."
+  },
+  "known_gaps": [
+    "The host checks correspondence on the fixed development cases, not all possible inputs.",
+    "Lean does not verify the separate Python parser, checker, or calendar conversion.",
+    "The deliberately incorrect formal interpretation cannot revise the independent task contract.",
+    "Fixed proofs do not measure model proof search or held-out task quality."
+  ]
+}

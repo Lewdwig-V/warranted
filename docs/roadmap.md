@@ -292,10 +292,12 @@ implementation slices. The [first fixture slice](m5-fixture.md) supplies fixed
 candidates, contained execution, and an independent checker under both contracts.
 The [worker demonstration](m5-fixture.md#worker-and-restart) adds the approved revision,
 forced host restart, correction, and repeated resume with preserved costs.
-Additional proofs, shared adapters, and A–E trials remain planned.
+The [supported proof cases](m5-proofs.md) preserve all three narrow proof successes,
+independent task failures, and successful controls across a forced restart.
+Shared adapters and A–E trials remain planned; the standalone cases are ready for condition E.
 
 - [x] Complete the same restart/changed-premise exercise in this second task family.
-- [ ] Exercise the pilot's migration regression outside the proved properties,
+- [x] Exercise the pilot's migration regression outside the proved properties,
   retaining the declared compatibility obligations and a successful control.
 - [ ] In condition E, add valid proofs for the timestamp-mistranslation and
   migration-regression cases, retaining M4's incomplete-target case and successful

@@ -30,7 +30,8 @@ def _spec(ledger: Ledger, request: Request) -> tuple[dict, Evidence, Evidence]:
             event.origin.kind == "proof-policy"
             and event.origin.producer == PRODUCER[1]
             and event.origin.producer_version == PRODUCER[2]
-            and set(event.artifacts) == {"policy.json", "bundle.json", "Challenge.lean"}
+            and set(event.artifacts)
+            == {"policy.json", "bundle.json", "Challenge.lean", "config.json"}
         ):
             inputs = {
                 Evidence.captured(event, name).name: ref
@@ -75,7 +76,7 @@ def _decision(ledger: Ledger, request: Request, raw: dict[str, bytes]) -> Status
             "elapsed_ns",
         }
         or type(report["version"]) is not int
-        or report["version"] != 1
+        or report["version"] != 2
         or report["request"] != _digest(request)
         or actual != {**identity, "solution": solution.artifact.digest}
         or type(report["elapsed_ns"]) is not int
@@ -87,6 +88,8 @@ def _decision(ledger: Ledger, request: Request, raw: dict[str, bytes]) -> Status
         or not set(report["axioms"]) <= {"propext", "Quot.sound"}
         or raw["Solution.lean"] != ledger.read_artifact(solution.artifact)
         or raw["Challenge.lean"] != ledger.read_artifact(target.artifact)
+        or hashlib.sha256(raw["Challenge.lean"]).hexdigest() != identity["challenge"]
+        or hashlib.sha256(raw["config.json"]).hexdigest() != identity["config"]
         or hashlib.sha256(raw["bundle.json"]).hexdigest() != identity["bundle"]
         or (
             status is not proofs.ProofStatus.INFRASTRUCTURE_FAILURE
@@ -158,12 +161,16 @@ class Proofs:
         session: str,
         bundle: Path,
         *,
+        target_id: str,
         seconds: int = proofs.LIMITS["seconds"],
     ):
         self.ledger, self.session = ledger, session
         self.bundle = bundle.read_bytes()
         self.seconds = seconds
-        identity, raw = proofs._inputs(b"policy preparation", self.bundle, seconds)
+        self.target_id = target_id
+        identity, raw = proofs._inputs(
+            b"policy preparation", self.bundle, seconds, target_id
+        )
         del identity["solution"]
         del raw["Solution.lean"]
         raw["policy.json"] = _encode(identity)
@@ -204,10 +211,12 @@ class Proofs:
         if not self.ledger.begin(self.session, request):
             return request
         # Exceptions (including uncertain cleanup) preserve UNKNOWN and reservation.
-        verification = proofs._verify(data, self.bundle, seconds=self.seconds)
+        verification = proofs._verify(
+            data, self.bundle, target_id=self.target_id, seconds=self.seconds
+        )
         report = asdict(verification)
         del report["raw"]
-        report.update(version=1, request=_digest(request))
+        report.update(version=2, request=_digest(request))
         raw = {**verification.raw, "verification.json": _encode(report)}
         try:
             status = _decision(self.ledger, request, raw)

@@ -1,6 +1,5 @@
 {
   "challenge_module": "Challenge",
   "solution_module": "Solution",
-  "theorem_names": ["Warranted.uniqueness_preserved"],
   "permitted_axioms": ["propext", "Quot.sound"]
 }

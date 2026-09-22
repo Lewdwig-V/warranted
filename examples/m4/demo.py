@@ -163,7 +163,9 @@ def proof_work(host, bundle: Path) -> tuple[Evidence, dict]:
         ("incomplete", "Incomplete.lean", 120),
         ("timeout", "Timeout.lean", 5),
     ):
-        adapter = Proofs(host.ledger, host.session, bundle, seconds=seconds)
+        adapter = Proofs(
+            host.ledger, host.session, bundle, seconds=seconds, target_id="uniqueness"
+        )
         request = adapter.check("m4-proof/" + name, host.ref(source))
         status = proof_status(host.ledger, request, adapter.target)
         expected = Status.PASSED if name == "control" else Status.UNPROVED
@@ -373,7 +375,7 @@ def demonstrate(stage: str, root: Path, bundle: Path, *, crash: bool = False) ->
     started = perf_counter_ns()
     execute = proofs._verify
 
-    def witnessed(data, captured_bundle, *, seconds):
+    def witnessed(data, captured_bundle, *, target_id, seconds):
         with (root / "proof-executions.jsonl").open("ab") as stream:
             stream.write(
                 json.dumps(
@@ -381,7 +383,7 @@ def demonstrate(stage: str, root: Path, bundle: Path, *, crash: bool = False) ->
                 ).encode()
                 + b"\n"
             )
-        return execute(data, captured_bundle, seconds=seconds)
+        return execute(data, captured_bundle, target_id=target_id, seconds=seconds)
 
     with (
         Ledger.open(root / "ledger") as ledger,

@@ -2,7 +2,8 @@
 
 Status: the M1 walkthrough, M2 experiments, M3 scripted worker demonstration, and
 M4 fixed-proposal proof fixture are implemented within their documented local scopes.
-M5 adds a fixed migration matrix and scripted worker recovery across an approved contract revision.
+M5 adds a fixed migration matrix, scripted worker recovery across an approved contract revision,
+and [three supported proof cases](m5-proofs.md). Shared A–E treatments remain planned.
 Agent trials and benchmark comparisons remain planned.
 The task families below exercise the design without adopting another harness's
 interfaces.
@@ -406,9 +407,10 @@ formalise only uniqueness preservation and reuse that theorem for the incomplete
 target case and its successful control. For example, applying the theorem to an
 empty selected input can establish output uniqueness while the independent check
 rejects losing records from the nonempty source. This requires no proof of record
-preservation or timestamp semantics. Introduce the migration fixture across all
-conditions in M5; add the timestamp-mistranslation and migration proofs in its
-Lean condition, retaining M4's case.
+preservation or timestamp semantics. M5's [standalone proof demonstration](m5-proofs.md)
+adds the timestamp-mistranslation and migration proofs while retaining M4's case.
+It uses fixed proof proposals and checks model-to-output correspondence on development inputs.
+Introducing both fixtures across A–E, including these proofs in condition E, remains planned.
 
 Use valid proofs of these inadequate targets. Do not substitute proof forgery,
 unsupported premises, or a mismatch between model and implementation for these

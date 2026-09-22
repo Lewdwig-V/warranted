@@ -95,8 +95,18 @@ def _validate(source: bytes, seconds: int) -> None:
         raise ValueError("timeout must be an integer from 1 to 120 seconds")
 
 
-def _inputs(source: bytes, bundle_bytes: bytes, seconds: int) -> tuple[dict, dict]:
+def _target(target_id: str) -> dict:
+    targets = json.loads((RESOURCES / "targets.json").read_bytes())
+    if type(target_id) is not str or target_id not in targets:
+        raise ValueError("unknown host-approved proof target")
+    return targets[target_id]
+
+
+def _inputs(
+    source: bytes, bundle_bytes: bytes, seconds: int, target_id: str
+) -> tuple[dict, dict]:
     _validate(source, seconds)
+    target = _target(target_id)
     bundle = json.loads(bundle_bytes)
     if (
         bundle.get("policy") != policy_digest()
@@ -105,7 +115,10 @@ def _inputs(source: bytes, bundle_bytes: bytes, seconds: int) -> tuple[dict, dic
         != json.loads((RESOURCES / "toolchain.json").read_bytes())
     ):
         raise ValueError("bundle does not match the pinned proof policy")
-    challenge = (RESOURCES / "Challenge.lean").read_bytes()
+    challenge = (RESOURCES / target["challenge"]).read_bytes()
+    config = json.loads((RESOURCES / "config.json").read_bytes())
+    config["theorem_names"] = [target["theorem"]]
+    config_bytes = json.dumps(config, sort_keys=True).encode()
     executable = shutil.which("podman")
     runtime_digest = None
     if executable is not None:
@@ -113,7 +126,9 @@ def _inputs(source: bytes, bundle_bytes: bytes, seconds: int) -> tuple[dict, dic
             runtime_digest = hashlib.file_digest(stream, "sha256").hexdigest()
     identity = {
         "solution": hashlib.sha256(source).hexdigest(),
+        "target_id": target_id,
         "challenge": hashlib.sha256(challenge).hexdigest(),
+        "config": hashlib.sha256(config_bytes).hexdigest(),
         "bundle": hashlib.sha256(bundle_bytes).hexdigest(),
         "image": bundle["image"],
         "tools": bundle["manifest"],
@@ -127,11 +142,16 @@ def _inputs(source: bytes, bundle_bytes: bytes, seconds: int) -> tuple[dict, dic
         "bundle.json": bundle_bytes,
         "Solution.lean": source,
         "Challenge.lean": challenge,
+        "config.json": config_bytes,
     }
 
 
 def verify(
-    source: bytes, bundle_path: Path, *, seconds: int = LIMITS["seconds"]
+    source: bytes,
+    bundle_path: Path,
+    *,
+    target_id: str,
+    seconds: int = LIMITS["seconds"],
 ) -> Verification:
     """Verify captured bytes under a host-selected immutable build manifest.
 
@@ -139,11 +159,16 @@ def verify(
     function does not reserve budgets, persist evidence, or authorize acceptance.
     """
     _validate(source, seconds)
-    return _verify(source, bundle_path.read_bytes(), seconds=seconds)
+    _target(target_id)
+    return _verify(
+        source, bundle_path.read_bytes(), target_id=target_id, seconds=seconds
+    )
 
 
-def _verify(source: bytes, bundle_bytes: bytes, *, seconds: int) -> Verification:
-    identity, raw = _inputs(source, bundle_bytes, seconds)
+def _verify(
+    source: bytes, bundle_bytes: bytes, *, target_id: str, seconds: int
+) -> Verification:
+    identity, raw = _inputs(source, bundle_bytes, seconds, target_id)
     bundle = json.loads(bundle_bytes)
     name = "warranted-proof-" + uuid.uuid4().hex
     started = perf_counter_ns()
@@ -202,6 +227,7 @@ def _verify(source: bytes, bundle_bytes: bytes, *, seconds: int) -> Verification
                 "-I",
                 "/opt/proof/supervisor.py",
                 "prepare",
+                target_id,
             ],
             source,
         )

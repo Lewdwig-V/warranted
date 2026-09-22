@@ -3,7 +3,8 @@
 Implementation plan, 2026-09-22. M4 is complete for its fixed development fixture.
 The [first fixture slice](m5-fixture.md) implements the fixed migration matrix and an independent checker.
 The [worker demonstration](m5-fixture.md#worker-and-restart) implements the second slice with a fixed fake model and forced restart.
-The additional proofs, shared adapters, and A–E comparisons remain planned.
+The [supported proof cases](m5-proofs.md) implement the third slice across all three targets.
+Shared adapters and A–E comparisons remain planned.
 
 ## First migration task
 
@@ -113,16 +114,16 @@ The host checks complete output correspondence with the selected variant, includ
 The regression therefore fails the independent legacy obligation despite a valid, applicable proof and matching implementation output.
 The successful control preserves the label and passes every task obligation.
 
-Add the pilot's [timestamp-mistranslation case](pilot.md#specification-and-behavioral-failures) separately.
-Its negative candidate must match a valid proof of the wrong offset interpretation.
-The independently specified timestamp behavior must still reject it.
-Retain the existing M4 incomplete-target case and successful controls for all three cases.
+The pilot's [timestamp-mistranslation case](pilot.md#specification-and-behavioral-failures) uses a separate target.
+Its negative candidate matches the zero-offset model and its valid round-trip theorem.
+The source contract requires a one-hour offset, so independent timestamp and total checks reject it.
+The demonstration retains the existing M4 incomplete-target case and successful controls for all three cases.
 Proof verification, current application support, and final task acceptance remain separate outcomes.
 
-M4 currently pins one challenge in the verifier resources and bundle identity.
-Additional targets require host-approved challenge identities, supporting definitions, and matching verification receipts.
-Do not replace the uniqueness target under its existing identity or let candidates select weaker targets.
-Test wrong-target receipt reuse and historical assessment before adding the two new proof cases.
+The verifier now requires one of three explicit host-approved target IDs.
+Each target pins its challenge, supporting definitions, comparator configuration, and verification receipt.
+The M4 uniqueness challenge remains unchanged. Candidates cannot select the host's target.
+Tests reject wrong-target receipt reuse and assess historical receipts without installed tools or target resources.
 These proofs do not establish correctness of the Python parser or discover undeclared user requirements.
 
 ## Five implementation slices
