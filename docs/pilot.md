@@ -355,6 +355,10 @@ exports, host reports, and execution counter in its `m1-walkthrough` artifact fo
 
 ## Second family: repository migration with revised requirements
 
+The [M5 implementation plan](m5-migration.md) fixes the first development case:
+rename configuration fields, preserve an optional legacy label, then add an
+owner-approved requirement for safe repetition. Implementation remains planned.
+
 Provide a small local repository containing configuration, a consumer, and tests.
 Ask for a migration between two explicit formats or APIs while preserving declared
 behavior. Partway through, revise one requirement, such as compatibility with an

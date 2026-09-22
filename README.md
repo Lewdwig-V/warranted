@@ -62,6 +62,10 @@ revision blocks application without invalidating the theorem. Native tests cover
 a forced restart and repeated reuse. M4 is complete for this local fixed-proposal
 fixture; model proof search and broader comparisons remain planned.
 
+The [M5 plan](docs/m5-migration.md) defines a repository migration with a preserved
+legacy consumer, an approved requirement for safe repetition, and five implementation slices.
+The migration fixture and A–E comparisons remain planned.
+
 ## What we are building
 
 Warranted is a proposed build system for knowledge. Observations, assumptions,
