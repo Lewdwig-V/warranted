@@ -294,7 +294,10 @@ The [worker demonstration](m5-fixture.md#worker-and-restart) adds the approved r
 forced host restart, correction, and repeated resume with preserved costs.
 The [supported proof cases](m5-proofs.md) preserve all three narrow proof successes,
 independent task failures, and successful controls across a forced restart.
-Shared adapters and A–E trials remain planned; the standalone cases are ready for condition E.
+The [shared context boundary](m5-contexts.md) supplies captured worker files,
+shared submission capture, and A–E disclosure tests for both fixtures.
+Complete A–E recovery runs and trials remain planned. The standalone proof cases
+are ready for integration with condition E.
 
 - [x] Complete the same restart/changed-premise exercise in this second task family.
 - [x] Exercise the pilot's migration regression outside the proved properties,
@@ -302,7 +305,7 @@ Shared adapters and A–E trials remain planned; the standalone cases are ready 
 - [ ] In condition E, add valid proofs for the timestamp-mistranslation and
   migration-regression cases, retaining M4's incomplete-target case and successful
   controls for all three.
-- [ ] Derive the smallest shared adapter boundary from both working fixtures.
+- [x] Derive the smallest shared adapter boundary from both working fixtures.
 - [ ] Run the A–E conditions in [pilot.md](pilot.md) with fixed scheduling and
   equal worker capabilities, including frontier and small-model trials.
 - [ ] Separate training/development/final tasks and preserve full failure records.

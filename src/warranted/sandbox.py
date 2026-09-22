@@ -12,13 +12,11 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from time import perf_counter_ns
 
 from warranted.containers import SandboxFailure, _run, require_runtime
-from warranted.exports import export_evidence
 from warranted.ledger import Ledger, Outcome, Request, Result
-from warranted.worker import AttemptResult, Episode
+from warranted.worker import AttemptResult, Episode, input_files
 
 IMAGE = (
     "docker.io/library/python@sha256:"
@@ -89,7 +87,7 @@ class Sandbox:
         if any(
             not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}", name)
             or name in {"context.json", "result.json"}
-            for name in episode.inputs
+            for name in (*episode.inputs, *episode.files)
         ):
             raise ValueError("worker input names must be safe, distinct basenames")
         self.root, self.episode = ledger_root, episode
@@ -154,17 +152,11 @@ class Sandbox:
                 "120",
             ]
         )
-        with Ledger.open(self.root) as ledger, TemporaryDirectory() as directory:
-            index = export_evidence(
-                ledger, Path(directory) / "context", snapshots=self.episode.inputs
-            )
-            files = {"context.json": index.read_bytes()}
-            files.update(
-                {
-                    name: ledger.read_artifact(ledger.project.snapshots[name].artifact)
-                    for name in self.episode.inputs
-                }
-            )
+        with Ledger.open(self.root) as ledger:
+            files = input_files(ledger, self.episode)
+        files["context.json"] = json.dumps(
+            {"authoritative": False, "files": sorted(files)}, sort_keys=True
+        ).encode()
         if sum(map(len, files.values())) > CANDIDATE_LIMIT:
             raise SandboxFailure("permitted context exceeds limit")
         encoded = json.dumps(

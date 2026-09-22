@@ -3,7 +3,9 @@
 Status: the M1 walkthrough, M2 experiments, M3 scripted worker demonstration, and
 M4 fixed-proposal proof fixture are implemented within their documented local scopes.
 M5 adds a fixed migration matrix, scripted worker recovery across an approved contract revision,
-and [three supported proof cases](m5-proofs.md). Shared A–E treatments remain planned.
+and [three supported proof cases](m5-proofs.md).
+The [shared context boundary](m5-contexts.md) tests A–E disclosure rules.
+Complete A–E recovery runs and measured comparisons remain planned.
 Agent trials and benchmark comparisons remain planned.
 The task families below exercise the design without adopting another harness's
 interfaces.

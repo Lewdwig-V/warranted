@@ -10,9 +10,10 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields
 from importlib.metadata import version
 from pathlib import Path
+from types import MappingProxyType
 from typing import TypedDict
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -59,6 +60,7 @@ class Episode:
     tool_reservation: int = 1
     continues: str | None = None
     model_service: str | None = None
+    files: Mapping[str, Evidence] = field(default_factory=dict)
 
     def __post_init__(self):
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", self.episode_id):
@@ -70,6 +72,14 @@ class Episode:
             raise ValueError("episode requires objective and boundary versions")
         if type(self.inputs) is not tuple or len(set(self.inputs)) != len(self.inputs):
             raise ValueError("episode inputs must be distinct snapshot names")
+        if not isinstance(self.files, Mapping) or any(
+            type(name) is not str or not name or type(ref) is not Evidence
+            for name, ref in self.files.items()
+        ):
+            raise ValueError("episode files require filenames and captured evidence")
+        if set(self.files) & set(self.inputs):
+            raise ValueError("episode filename repeats a snapshot input")
+        object.__setattr__(self, "files", MappingProxyType(dict(self.files)))
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("episode step limit must be between 1 and 100")
         if self.continues is not None and (
@@ -86,6 +96,13 @@ class Episode:
             for n in (self.model_reservation, self.tool_reservation)
         ):
             raise ValueError("attempt reservations must be positive integers")
+
+    def __reduce__(self):
+        # Spawned hosts reconstruct the same immutable, validated specification.
+        return type(self), tuple(
+            dict(self.files) if item.name == "files" else getattr(self, item.name)
+            for item in fields(self)
+        )
 
 
 def record_once(
@@ -118,6 +135,47 @@ def unresolved(ledger: Ledger) -> None:
             raise UnknownOutcome(f"unknown outcome: {op.request.origin.operation_id}")
 
 
+def input_files(ledger: Ledger, episode: Episode) -> dict[str, bytes]:
+    """Resolve only the host's explicit files, with exact evidence provenance."""
+    refs = {
+        name: Evidence(name, ledger.project.snapshots[name].artifact)
+        for name in episode.inputs
+    } | dict(episode.files)
+    inputs = {}
+    for ref in refs.values():
+        if ref.name in inputs and inputs[ref.name] != ref.artifact:
+            raise ValueError("conflicting context evidence")
+        inputs[ref.name] = ref.artifact
+    ledger.lookup(
+        Request(
+            Origin(
+                "context-validation",
+                "context",
+                "warranted-worker",
+                "1",
+                inputs,
+            ),
+            ledger.project,
+        )
+    )
+    return {name: ledger.read_artifact(ref.artifact) for name, ref in refs.items()}
+
+
+def submitted_candidate(ledger: Ledger, episode_id: str) -> Evidence:
+    """Find the single captured submission, never a worker-supplied host path."""
+    matches = [
+        op
+        for op in ledger.operations()
+        if op.request.origin.operation_id.startswith(f"episode/{episode_id}/tool/")
+        and op.completion
+        and "candidate/result.json" in op.completion.observation.artifacts
+    ]
+    if len(matches) != 1:
+        raise ValueError("submission lacks one exact captured candidate")
+    operation = ledger.lookup(matches[0].request)
+    return Evidence.captured(operation.completion.observation, "candidate/result.json")
+
+
 class Journal:
     """One host writer, stable attempt slots, and exact raw completions."""
 
@@ -128,6 +186,10 @@ class Journal:
         inputs = {
             name: ledger.project.snapshots[name].artifact for name in episode.inputs
         }
+        for ref in episode.files.values():
+            if ref.name in inputs and inputs[ref.name] != ref.artifact:
+                raise ValueError("conflicting context evidence")
+            inputs[ref.name] = ref.artifact
         if episode.continues is not None:
             parents = [
                 o
