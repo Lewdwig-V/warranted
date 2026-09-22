@@ -24,7 +24,7 @@ from warranted.attempts import ReceiptService  # noqa: E402
 from warranted.exports import export_evidence  # noqa: E402
 from warranted.ledger import Ledger, Manifest, Snapshot  # noqa: E402
 from warranted.sandbox import SANDBOX_ID, Sandbox  # noqa: E402
-from warranted.worker import Episode, run_workflow  # noqa: E402
+from warranted.worker import Episode, run_workflow, submitted_candidate  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 M2 = runpy.run_path(str(HERE.parent / "m2/experiments.py"))
@@ -171,21 +171,7 @@ def candidate(root: Path, current, client: ReceiptService) -> Evidence:
     if result.get("exit_status") != "Submitted":
         raise RuntimeError("worker did not submit a candidate")
     with Ledger.open(root / "ledger") as ledger:
-        matches = [
-            op
-            for op in ledger.operations()
-            if op.request.origin.operation_id.startswith(
-                f"episode/{episode.episode_id}/tool/"
-            )
-            and op.completion is not None
-            and "candidate/result.json" in op.completion.observation.artifacts
-        ]
-        if len(matches) != 1:
-            raise RuntimeError("submission lacks one exact captured candidate")
-        operation = ledger.lookup(matches[0].request)
-        return Evidence.captured(
-            operation.completion.observation, "candidate/result.json"
-        )
+        return submitted_candidate(ledger, episode.episode_id)
 
 
 def claims(host, target, current):

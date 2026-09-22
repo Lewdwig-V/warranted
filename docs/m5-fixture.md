@@ -189,5 +189,6 @@ WARRANTED_CONTAINER_TESTS=1 uv run --locked pytest -q -m container --durations=5
 ```
 
 The [supported proof cases](m5-proofs.md) add migration and timestamp proofs without changing this checker.
-The [next slice](m5-migration.md#five-implementation-slices) derives the shared boundary and A–E treatments.
+The [shared context boundary](m5-contexts.md) adds captured attachments and A–E disclosure tests.
+Connecting those contexts to complete A–E recovery runs remains the next part of slice 4.
 Measured model trials remain planned.

@@ -74,7 +74,9 @@ and resumes again without repeating work. The model responses are fixed.
 The [supported proof cases](docs/m5-proofs.md) add migration and timestamp targets
 alongside M4 uniqueness. All three retain successful controls and candidates whose
 supported narrow proofs leave independent task failures intact across restart.
-Shared adapters and A–E comparisons remain planned.
+The [shared context boundary](docs/m5-contexts.md) binds recorded files to worker
+episodes and tests A–E disclosure rules against both fixtures.
+Connecting those contexts to complete A–E recovery runs and measured comparisons remains planned.
 
 ## What we are building
 

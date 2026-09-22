@@ -140,7 +140,9 @@ The containment slice uses local rootless Podman with cgroup v2 and seccomp.
 128 MiB memory, one CPU, 32 processes, and a 120-second container lifetime.
 Each command has a 20-second deadline and at most 2 MiB of combined output.
 The root filesystem is read-only. No host directory or runtime socket is mounted.
-`export_evidence` supplies an explicit selection of public input snapshots.
+The host supplies an explicit selection of public input snapshots and captured files.
+The worker receives copied bytes and a filename inventory in `context.json`.
+M5's [context boundary](m5-contexts.md) binds captured attachments to each episode.
 
 The worker runs as UID 1000 with no effective capabilities. A trusted supervisor
 inside the container retains `CAP_KILL`, `CAP_SETUID`, and `CAP_SETGID` to start

@@ -103,7 +103,7 @@ CI runs the native demonstration once through pytest and retains its reports,
 exports, and execution witnesses. The existing M4 tests separately cover incomplete
 proofs, timeout, changed premises, and verification isolation.
 
-The next slice compares the two working fixtures before extracting shared code
-and implementing the pilot's A–E visibility rules. Paid trials and model selection
-remain separate work. These fixed proposals demonstrate acceptance boundaries;
+The [shared context boundary](m5-contexts.md) now tests the pilot's A–E visibility rules.
+Connecting these proof cases to complete condition E recovery runs remains required.
+Paid trials and model selection remain separate work. These fixed proposals demonstrate acceptance boundaries;
 they do not show that a model can discover missing requirements.

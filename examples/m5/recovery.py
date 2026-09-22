@@ -39,6 +39,7 @@ from warranted.worker import (  # noqa: E402
     Episode,
     record_once,
     run_workflow,
+    submitted_candidate,
     unresolved,
 )
 
@@ -219,19 +220,7 @@ def propose(root: Path, phase: str, previous: dict | None = None) -> Evidence:
     if result.get("exit_status") != "Submitted":
         raise RuntimeError("worker did not submit a candidate")
     with Ledger.open(root / "ledger") as ledger:
-        matches = [
-            op
-            for op in ledger.operations()
-            if op.request.origin.operation_id.startswith(f"episode/{phase}/tool/")
-            and op.completion
-            and "candidate/result.json" in op.completion.observation.artifacts
-        ]
-        if len(matches) != 1:
-            raise ValueError("submission lacks one captured candidate")
-        ledger.lookup(matches[0].request)
-        return Evidence.captured(
-            matches[0].completion.observation, "candidate/result.json"
-        )
+        return submitted_candidate(ledger, phase)
 
 
 def revision(ledger: Ledger) -> tuple[Observation, dict] | None:

@@ -4,7 +4,9 @@ Implementation plan, 2026-09-22. M4 is complete for its fixed development fixtur
 The [first fixture slice](m5-fixture.md) implements the fixed migration matrix and an independent checker.
 The [worker demonstration](m5-fixture.md#worker-and-restart) implements the second slice with a fixed fake model and forced restart.
 The [supported proof cases](m5-proofs.md) implement the third slice across all three targets.
-Shared adapters and A–E comparisons remain planned.
+The [shared context boundary](m5-contexts.md) implements the first part of slice 4:
+captured attachments, shared submission capture, and A–E disclosure tests.
+Full A–E recovery runs and measured comparisons remain planned.
 
 ## First migration task
 
@@ -143,6 +145,8 @@ These proofs do not establish correctness of the Python parser or discover undec
    Extract only the repeated operations needed by both, with fixture-specific requirements and checkers kept outside the core.
    Implement the [pilot's A–E visibility rules](pilot.md#knowledge-workflow-conditions) and credential-free treatment tests.
    Host-only recording must not expose queryable history, dependencies, private cases, or future revisions to an unauthorized treatment.
+   The [context boundary](m5-contexts.md) implements file preparation and disclosure tests.
+   Connecting it to the complete recovery and proof workflows remains required.
 5. Measured trials. Record task lineage, split assignments, model versions, inference settings, fixed scheduling, budgets, and evaluator identities.
    Use development runs to select thresholds, then freeze them before untouched final evaluation.
    Run repeated frontier and smaller-model trials on both families, with failures and all costs retained.
