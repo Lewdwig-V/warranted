@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "owner": "fixture-owner",
+  "initial": ["repository_integrity", "output_schema", "renaming", "legacy_label", "input_rejection"],
+  "revised": ["repository_integrity", "output_schema", "renaming", "legacy_label", "input_rejection", "repetition"],
+  "revision": {
+    "checkpoint": "after-first-submission-assessment",
+    "previous": "initial",
+    "current": "revised",
+    "reason": "Configuration deployment can repeat the migration.",
+    "requirement": "Valid version 2 input must return the same parsed configuration, including every optional label."
+  },
+  "known_gaps": [
+    "This is a finite development fixture, not a proof for all Python programs.",
+    "The checker enforces declared behavior and does not discover unstated requirements.",
+    "The matrix compares two fixed contracts; revision delivery and worker restart are the next slice."
+  ]
+}

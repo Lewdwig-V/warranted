@@ -64,7 +64,10 @@ fixture; model proof search and broader comparisons remain planned.
 
 The [M5 plan](docs/m5-migration.md) defines a repository migration with a preserved
 legacy consumer, an approved requirement for safe repetition, and five implementation slices.
-The migration fixture and A–E comparisons remain planned.
+The [first fixture slice](docs/m5-fixture.md) checks three fixed migration programs
+under both contracts in isolated containers. It retains independent failures and
+reuses completed executions and decisions. These are synthetic fixture formats,
+not compatibility commitments for Warranted. Worker recovery and A–E comparisons remain planned.
 
 ## What we are building
 

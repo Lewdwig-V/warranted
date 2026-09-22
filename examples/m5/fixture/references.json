@@ -1,0 +1,39 @@
+{
+  "label": {
+    "kind": "migrate",
+    "input": "{\"version\":1,\"host\":\"service.invalid\",\"timeout\":30,\"label\":\"billing\"}",
+    "expected": {"version":2,"endpoint":"service.invalid","timeout_seconds":30,"label":"billing"},
+    "legacy": "billing"
+  },
+  "absent": {
+    "kind": "migrate",
+    "input": "{\"version\":1,\"host\":\"batch.invalid\",\"timeout\":5}",
+    "expected": {"version":2,"endpoint":"batch.invalid","timeout_seconds":5},
+    "legacy": "default"
+  },
+  "empty-zero": {
+    "kind": "migrate",
+    "input": "{\"version\":1,\"host\":\"empty.invalid\",\"timeout\":0,\"label\":\"\"}",
+    "expected": {"version":2,"endpoint":"empty.invalid","timeout_seconds":0,"label":""},
+    "legacy": ""
+  },
+  "repeat-label": {
+    "kind": "repeat",
+    "input": "{\"version\":2,\"endpoint\":\"service.invalid\",\"timeout_seconds\":30,\"label\":\"billing\"}",
+    "expected": {"version":2,"endpoint":"service.invalid","timeout_seconds":30,"label":"billing"}
+  },
+  "repeat-absent": {
+    "kind": "repeat",
+    "input": "{\"version\":2,\"endpoint\":\"batch.invalid\",\"timeout_seconds\":5}",
+    "expected": {"version":2,"endpoint":"batch.invalid","timeout_seconds":5}
+  },
+  "repeat-empty": {
+    "kind": "repeat",
+    "input": "{\"version\":2,\"endpoint\":\"empty.invalid\",\"timeout_seconds\":0,\"label\":\"\"}",
+    "expected": {"version":2,"endpoint":"empty.invalid","timeout_seconds":0,"label":""}
+  },
+  "boolean": {"kind":"invalid","input":"{\"version\":1,\"host\":\"x\",\"timeout\":true}"},
+  "duplicate": {"kind":"invalid","input":"{\"version\":1,\"host\":\"x\",\"timeout\":1,\"timeout\":2}"},
+  "extra": {"kind":"invalid","input":"{\"version\":1,\"host\":\"x\",\"timeout\":1,\"extra\":0}"},
+  "unsupported": {"kind":"invalid","input":"{\"version\":3,\"host\":\"x\",\"timeout\":1}"}
+}
