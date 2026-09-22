@@ -1,9 +1,9 @@
 # M4: Lean proof boundary
 
 Implementation plan, 2026-09-19. M3 is complete for the local scripted fixture.
-The [verification boundary](m4-verification.md) implements the first two of three PRs,
-including durable proof receipts and claim integration.
-Fixture applications and their changed-premise demonstration remain planned.
+The [verification boundary](m4-verification.md) and [fixture demonstration](m4-fixture.md)
+implement all three slices for fixed proof proposals.
+The demonstration preserves independent task failures and recovers after a forced restart.
 The optional M3a Jev experiment remains separate.
 
 ## Target and scope
@@ -54,7 +54,7 @@ Comparator compares a solution with a trusted challenge, the required theorem st
 Its exporter produces serialized declarations for independent checking.
 The [first implementation](m4-verification.md) pins and tests this integration.
 Warranted supplies containment, artifact identity, and durable proof evidence.
-Supported fixture applications and acceptance integration remain the next slice.
+The fixture supplies checked application premises and retains the unchanged M2 acceptance boundary.
 
 PR 1 must pin compatible Lean, Comparator, exporter, and Landrun revisions.
 Landrun restricts the files and actions available during proof processing.

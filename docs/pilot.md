@@ -1,7 +1,8 @@
 # Pilot and evaluation
 
-Status: the M1 walkthrough and the three M2 fixture experiments are implemented
-for a trusted local host. Agent trials and benchmark comparisons remain planned.
+Status: the M1 walkthrough, M2 experiments, M3 scripted worker demonstration, and
+M4 fixed-proposal proof fixture are implemented within their documented local scopes.
+Agent trials and benchmark comparisons remain planned.
 The task families below exercise the design without adopting another harness's
 interfaces.
 
@@ -28,10 +29,17 @@ and private acceptance cases. Candidate code and generated tests are useful
 artifacts, but cannot replace that evaluator. Keep published feedback distinct
 from private grading inputs. Version the fixture, task contract, and evaluator.
 
-A later Lean obligation may prove that an injective mapping preserves uniqueness
+The M4 Lean obligation proves that an injective mapping preserves uniqueness
 for unique input identifiers. Checks supporting those premises belong to the
 current input snapshot. The theorem does not by itself verify the separate
 transformation implementation or establish the source data's properties.
+
+The [M4 demonstration](m4-fixture.md) applies this theorem to the correct,
+dropped-row, and empty M2 candidates. All three applications are supported;
+only the correct candidate passes the unchanged task gates. A separate approved
+duplicate-ID revision makes the old application stale and leaves the new one
+unsupported, while the conditional theorem stays valid. Native tests restart
+after proof capture and repeat recovery without new completed work.
 
 ## M2 fixture experiments
 

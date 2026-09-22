@@ -1,9 +1,9 @@
 # M4 verification boundary
 
-This implements PRs 1 and 2 of the [M4 plan](m4-proof-boundary.md).
+This implements the verification and receipt slices of the [M4 plan](m4-proof-boundary.md).
 The host can check captured Lean source against the fixed uniqueness theorem.
 The ledger retains exact proof receipts, budgets, and claim outcomes across restarts.
-Supported fixture applications remain planned.
+The [fixture demonstration](m4-fixture.md) adds supported applications and changed-premise recovery.
 The result cannot authorize task acceptance.
 
 ## Run the native checks
@@ -17,7 +17,7 @@ uv sync --locked
 uv run --locked python scripts/build_proof_bundle.py runs/m4-tools
 WARRANTED_PROOF_TESTS=1 \
 WARRANTED_PROOF_BUNDLE=runs/m4-tools/bundle.json \
-uv run --locked pytest -q -m proof tests/test_proofs_native.py
+uv run --locked pytest -q -m proof tests/test_proofs_native.py tests/test_m4_fixture.py
 ```
 
 The build creates an image and a host-owned `bundle.json`.
@@ -203,7 +203,7 @@ There is no imported-receipt reconciliation API in this slice; an unresolved att
 
 Claim validation still describes the conditional theorem only.
 Version applicability does not establish an empirical premise, correspondence with a Python implementation, or task acceptance.
-The next slice supplies those independent fixture checks.
+The [fixture demonstration](m4-fixture.md) supplies those independent checks.
 
 ## Evidence and limits
 
@@ -221,4 +221,5 @@ The host, tool builder, pinned verifier, Lean kernel, Landrun, operating system,
 A second proof kernel is not used.
 These development cases establish the tested local boundary. They do not establish resistance to every implementation vulnerability.
 The [Lean proof-validation guide](https://lean-lang.org/doc/reference/latest/ValidatingProofs/) explains the underlying trust assumptions.
-M4 still needs supported fixture applications, the changed-premise demonstration, and comparisons with the executable baseline.
+The fixture demonstration completes M4 for local fixed proposals and reports its cost alongside the executable baseline.
+Broader performance comparisons and model proof-search trials remain planned.

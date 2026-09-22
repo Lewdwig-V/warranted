@@ -55,8 +55,12 @@ enforce the axiom policy, and replay the proof in Lean's kernel.
 Durable proof receipts bind exact inputs and retain verification costs.
 Claims preserve distinct proof outcomes, completed checks survive restart without
 another execution, and unknown attempts keep their reservations.
-Native tests run in a separate CI job. Supported fixture applications and the
-changed-premise demonstration remain planned.
+The [M4 fixture demonstration](docs/m4-fixture.md) applies the same theorem to
+the correct, dropped-row, and empty candidates. All three preserve uniqueness;
+only the correct candidate passes the unchanged task gates. A separate duplicate-ID
+revision blocks application without invalidating the theorem. Native tests cover
+a forced restart and repeated reuse. M4 is complete for this local fixed-proposal
+fixture; model proof search and broader comparisons remain planned.
 
 ## What we are building
 
