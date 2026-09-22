@@ -1,14 +1,14 @@
-# M5 context boundary
+# M5 contexts and recovery treatments
 
-This is the first part of M5 slice 4. The shared worker boundary now accepts
-explicit files from recorded observations as well as initial snapshots.
-Both the CSV and migration runners use one function to find a captured submission.
-The [A–E policy](pilot.md#knowledge-workflow-conditions) selects which recorded
-files the host prepares for a worker episode.
+M5 slice 4 connects the [A–E policy](pilot.md#knowledge-workflow-conditions) to
+both complete recovery fixtures. `examples/m5/treatments.py` runs a fixed worker,
+checks its first submission, commits the approved revision, and can kill the host.
+A fresh process rejects the stale receipt and old candidate, restores the worker's
+files, and checks a correction. A second resume reuses all completed work.
 
-The implementation covers file disclosure and exact episode identity. It does
-not yet run the complete A–E comparison. The existing recovery demonstrations
-retain their fixed context policies and unchanged task checkers.
+These are development integration runs with fixed model responses. They do not
+measure model quality, learning, or a benefit from any treatment. The existing
+CSV and migration task checkers remain unchanged.
 
 ## Shared responsibilities
 
@@ -26,8 +26,19 @@ Its `context.json` contains a file inventory, without host provenance or project
 The copied inputs remain read-only. General evidence exports remain available
 for separate host inspection.
 
-`submitted_candidate()` finds one exact `candidate/result.json` capture for an
-episode. Both working fixtures use this function. Candidate parsing, revision
+Workers save ordinary files and prose notes under `/work/workspace/`. Submission
+captures that directory after all worker processes stop. `Episode.workspace`
+binds the resulting evidence to the next episode, where those files are writable
+again. The snapshot preserves relative paths and file bytes. It accepts at most
+128 regular files, 16 path components, and 1 MiB of file content. Links, special
+files, path traversal, and file/directory conflicts fail. Restoration writes only
+inside the container, as the worker UID, without additional capabilities.
+Empty directories and file modes are not retained; invoke saved programs through
+their interpreter. Files outside this directory are scratch files unless captured
+as `result.json`. This bounded convention applies equally to A–E.
+
+`submitted_files()` resolves the exact submission and workspace from a completed
+episode. `submitted_candidate()` selects its `result.json`. Candidate parsing, revision
 approval, execution, and acceptance remain in their existing fixture adapters.
 These shared functions do not define a universal task or checker interface.
 
@@ -42,7 +53,7 @@ The run manifest pins `environment["condition"]` to `A`, `B`, `C`, `D`, or `E`.
 | B | Permitted observation and action history | B–E |
 | C | Executable models and regression checks | C–E |
 | D | Dependency and current applicability reports | D–E |
-| E | Formal targets, proof work, and its scoped results | E |
+| E | Scheduled proof proposals, verification, and scoped results | E |
 
 An unknown condition fails. No layer is inferred from arbitrary ledger records
 or worker-authored labels. The host must classify each disclosure correctly.
@@ -61,6 +72,12 @@ The caller supplies all permitted prior episodes in order. This function does
 not reconstruct missing events or permit live execution during inspection.
 The trial runner must keep each condition and its history separate. It must not
 copy an E episode into a B run or expose a future revision before its checkpoint.
+
+The treatment runner adds the exact files disclosed to the prior episode, then
+the current revision and checker feedback. This completes the permitted history
+for these two-episode runs. It never includes private grading inputs or a general
+ledger export. History remains a local JSONL file that workers can query with
+ordinary Python or shell commands.
 
 For a prepared selection, attach the returned files to the existing worker API:
 
@@ -85,30 +102,81 @@ reference. Supply this episode to `run_workflow()` and the existing `Sandbox`.
 Worker-visible reports remain copies. They cannot authorize acceptance or replace
 the original receipt used by the host.
 
-## Demonstrated scope
+## Treatment behavior
 
-The fast matrix uses snapshots from both real fixtures and the real worker journal.
-It covers all five conditions before and after a fixture-selected input revision.
-Private references and unreleased revision text stay outside the selected files.
-The tests retain an old candidate, preserve binary diagnostics in history, expose
-a stale dependency in D/E, and reuse completed worker attempts after reopening.
+All conditions use the same fixed responses, two one-step worker episodes, shell
+and file permissions, available proof verifier, and host caps. Current task input,
+revision feedback, and ordinary workspace are available in A. B adds history.
+C adds `model.py` and `regression.py`; their pinned source changes with the approved
+revision. The fixed worker runs the public regression when present. These models
+are executable development aids, not private grading references.
 
-The E visibility fixture deliberately reports zero proof attempts and an unproved
-status. Receiving a proof-work file does not establish formal support.
-The [separate supported-proof demonstration](m5-proofs.md) supplies the real Lean
-verification and acceptance evidence. The two demonstrations are not yet one E run.
+D records the initial and current model dependencies through `Claims`. The old
+model becomes stale after revision, while the replacement is current. Both remain
+unproved assertions: a current dependency does not establish model correctness.
 
-Native tests exercise the minimal A selection and the full E selection with
-actual containers. They compare every received file and check host-state isolation.
-These are disclosure tests, not task-success or model-quality measurements.
+E verifies the fixed Lean proposals and runs the [supported proof cases](m5-proofs.md)
+before the forced kill. CSV uses the uniqueness and timestamp theorems; migration
+uses its renaming theorem after the revision is approved. Their receipts survive
+restart. The resumed worker receives the proof sources and scoped results. The host checks
+the final candidate's correspondence separately and reports `qualified` only when
+task acceptance and all required E support pass. This report does not replace or
+weaken the independent task acceptance receipt. A failed proof stops the workflow
+and remains in the ledger with its cost.
+
+The historical proof-case matrix preserves record loss, timestamp mistranslation,
+and the dropped legacy label as task failures despite supported narrow proofs.
+The timestamp counterexample uses the initial one-hour contract; the later
+approved zero-offset revision does not rewrite that historical decision.
+
+Every condition can submit an optional proof source under `workspace/`, using the
+filenames in `tools.md`. The host checks it at submission through the same pinned
+verifier, records its result and cost, and returns initial results on resume even
+in A. Approved target definitions are equally available in `tool-targets.json`.
+The migration target is released only after the revision, because it mentions
+current-version inputs. The fixed baseline workers do not request proofs; a
+separate fast test exercises this capability.
+
+Caps per run are 2 model attempts, 2 shell attempts, 4 proof attempts, 24 synthetic
+checks, 4 migration batches, and 5 migration task checks. Reports retain each unit
+separately, measured operation time, and the bundle's recorded build time.
+Scripted E spends two proof units for CSV and one for migration. A–D spend none
+unless the worker requests a proof. Units are not money and cannot be summed as
+a monetary cost. Human fixture development and formalization costs are not measured.
+
+## Run and verify
+
+Prepare rootless Podman and a pinned bundle as in the
+[verification guide](m4-verification.md), then use a fresh directory for each
+family and condition:
 
 ```bash
-uv run --locked pytest -q -m 'not container' tests/test_contexts.py tests/test_m5_contexts.py
-WARRANTED_CONTAINER_TESTS=1 uv run --locked pytest -q -m container tests/test_m5_contexts.py
+uv run --locked python examples/m5/treatments.py start runs/csv-E --family csv --condition E --bundle runs/m4-tools/bundle.json --crash
+uv run --locked python examples/m5/treatments.py resume runs/csv-E --family csv --condition E --bundle runs/m4-tools/bundle.json
+uv run --locked python examples/m5/treatments.py resume runs/csv-E --family csv --condition E --bundle runs/m4-tools/bundle.json
 ```
 
-The remaining part of slice 4 must connect these selections to both full recovery
-runs. It must preserve ordinary workspace and notes, publish complete permitted
-history, maintain models and dependency reports, and charge E for its additional
-proof work. All conditions need equal worker capabilities and the same independent
-task-success checks. Measured model trials remain slice 5.
+The crash command exits with shell status 137 after writing its report. Use
+`--family migration` for the second fixture and `--condition A` through `E` for
+the treatments. Family, condition, fixture, host, and bundle bytes cannot change
+within a run. Unknown outcomes retain reservations and block new work. A missing
+treatment checkpoint also blocks resume before further dispatch; this fixed
+driver does not reconstruct a partially prepared checkpoint.
+
+Fast tests exercise all ten combinations with scripted external boundaries and
+the real task checkers. Native tests run E on both families through a kill and
+two fresh resumes. Existing native tests cover baseline recovery and A/E file
+disclosure; the new CI cases do not repeat those baseline runs.
+CI runs the three proof-case targets inside E instead of
+repeating the standalone M5 proof demonstration. Existing M4 tests retain the
+incomplete-target and failed-proof controls.
+
+```bash
+uv run --locked pytest -q -m 'not proof' tests/test_m5_treatments.py
+WARRANTED_PROOF_TESTS=1 WARRANTED_PROOF_BUNDLE=runs/m4-tools/bundle.json \
+  uv run --locked pytest -q -m proof --durations=5 tests/test_m5_treatments.py
+```
+
+Reports and exports contain private development references for host inspection.
+They must not become worker input. Frontier/small-model comparisons, held-out
+tasks, threshold selection, and campaign cost reporting remain slice 5.

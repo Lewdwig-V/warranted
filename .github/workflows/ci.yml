@@ -153,7 +153,7 @@ jobs:
       WARRANTED_PROOF_BUNDLE: runs/m4-tools/bundle.json
       WARRANTED_PROOF_REPORTS: runs/m4-native
       WARRANTED_M4_REPORTS: runs/m4-demo
-      WARRANTED_M5_PROOF_REPORTS: runs/m5-proof-cases
+      WARRANTED_M5_TREATMENTS: runs/m5-treatments
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -174,7 +174,7 @@ jobs:
       - name: Prepare the pinned migration runtime
         run: podman pull "$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
       - name: Exercise proof verification, isolation, and receipt recovery
-        run: uv run --locked pytest -q -m proof --durations=5 tests/test_proofs_native.py tests/test_m4_fixture.py tests/test_m5_proof_cases.py
+        run: uv run --locked pytest -q -m proof --durations=5 tests/test_proofs_native.py tests/test_m4_fixture.py tests/test_m5_treatments.py
       - name: Retain proof reports and exact bundle identities
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -188,9 +188,10 @@ jobs:
             runs/m4-demo/executions.jsonl
             runs/m4-tools/bundle.json
             runs/m4-tools/build.log
-            runs/m5-proof-cases/reports/
-            runs/m5-proof-cases/exports/
-            runs/m5-proof-cases/proof-executions.jsonl
-            runs/m5-proof-cases/executions.jsonl
+            runs/m5-treatments/*/reports/
+            runs/m5-treatments/*/exports/
+            runs/m5-treatments/*/worker-dispatches.jsonl
+            runs/m5-treatments/*/proof-executions.jsonl
+            runs/m5-treatments/*/executions.jsonl
           if-no-files-found: error
           retention-days: 14

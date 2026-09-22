@@ -99,11 +99,12 @@ WARRANTED_PROOF_TESTS=1 WARRANTED_PROOF_BUNDLE=runs/m4-tools/bundle.json \
   uv run --locked pytest -q -m proof --durations=5 tests/test_m5_proof_cases.py
 ```
 
-CI runs the native demonstration once through pytest and retains its reports,
-exports, and execution witnesses. The existing M4 tests separately cover incomplete
-proofs, timeout, changed premises, and verification isolation.
+CI now runs these cases inside the [E recovery treatments](m5-contexts.md), once
+per relevant family. It retains their reports, exports, and worker/checker witnesses.
+The standalone command remains available for focused inspection. The existing M4
+tests separately cover incomplete proofs, timeout, changed premises, and isolation.
 
-The [shared context boundary](m5-contexts.md) now tests the pilot's A–E visibility rules.
-Connecting these proof cases to complete condition E recovery runs remains required.
+The [shared context boundary](m5-contexts.md) now supplies complete condition E
+recovery runs with real proof receipts and scoped application checks.
 Paid trials and model selection remain separate work. These fixed proposals demonstrate acceptance boundaries;
 they do not show that a model can discover missing requirements.

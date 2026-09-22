@@ -152,6 +152,12 @@ worker output. Podman's automatic proxy forwarding is disabled.
 On submission, the supervisor kills worker
 descendants and waits until none remain live. It then opens `result.json` without
 following links and accepts only a regular file with one link and at most 1 MiB.
+It also captures bounded regular files under `/work/workspace/` for the
+[M5 recovery treatments](m5-contexts.md). This capture rejects directory links,
+file links, special files, excess depth, and excess content. The host validates
+relative paths again before restoring bytes inside a fresh container. The capture
+transport allows 4 MiB for the encoded candidate and workspace; shell output
+retains its separate 2 MiB limit.
 The host removes the container before recording those bytes in the tool receipt.
 The checker must use that captured artifact, never a mutable workspace path.
 Neither runtime archive copies nor worker-authored capture scripts grant evidence.
