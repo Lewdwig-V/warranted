@@ -286,6 +286,11 @@ Add a controlled repository-migration fixture with changed requirements. It runs
 in local copies and uses an independent acceptance checker; no remote publishing
 or production writes are required.
 
+The [M5 implementation plan](m5-migration.md) defines the first migration,
+its preserved legacy behavior, an approved safe-repetition requirement, and five
+implementation slices. The first slice supplies fixed candidates and an independent
+checker. The fixture, recovery integration, additional proofs, and A–E trials remain planned.
+
 - [ ] Complete the same restart/changed-premise exercise in this second task family.
 - [ ] Exercise the pilot's migration regression outside the proved properties,
   retaining the declared compatibility obligations and a successful control.
