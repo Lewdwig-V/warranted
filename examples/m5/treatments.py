@@ -77,6 +77,7 @@ def snapshots(family: str, bundle: Path) -> dict[str, Snapshot]:
         "recovery.py": Path(R["__file__"]),
         "m2-host.py": Path(M2["__file__"]),
         "m4-host.py": Path(P["M4"]["__file__"]),
+        "m5-host.py": Path(M5["__file__"]),
         "contexts.py": Path(contexts.__file__),
         "worker.py": Path(worker.__file__),
         "sandbox.py": Path(sandbox.__file__),

@@ -301,7 +301,7 @@ def test_missing_treatment_checkpoint_blocks_before_new_work(tmp_path, monkeypat
 
 @pytest.mark.parametrize("family", ["csv", "migration"])
 @pytest.mark.parametrize(
-    "helper", ["m2/experiments.py", "m4/demo.py", "m5/recovery.py"]
+    "helper", ["m2/experiments.py", "m4/demo.py", "m5/recovery.py", "m5/demo.py"]
 )
 def test_changed_shared_helper_blocks_resume_before_dispatch(
     tmp_path, monkeypatch, family, helper
