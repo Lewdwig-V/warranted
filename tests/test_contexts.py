@@ -1,6 +1,7 @@
 """Worker context is an explicit disclosure, never a copy of the host ledger."""
 
 import json
+import pickle
 from dataclasses import replace
 
 import pytest
@@ -77,6 +78,8 @@ def test_attached_evidence_is_bound_to_episode_and_cannot_replace_a_snapshot(tmp
 
         first, second = note("one", b"first"), note("two", b"second")
         episode = Episode("next", "Use the note.", (), files={"notes.txt": first})
+        episode = pickle.loads(pickle.dumps(episode))
+        assert episode.files == {"notes.txt": first}
         with pytest.raises(TypeError):
             episode.files["notes.txt"] = second
         Journal(ledger, episode)

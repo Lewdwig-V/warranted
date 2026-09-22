@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from importlib.metadata import version
 from pathlib import Path
 from types import MappingProxyType
@@ -96,6 +96,13 @@ class Episode:
             for n in (self.model_reservation, self.tool_reservation)
         ):
             raise ValueError("attempt reservations must be positive integers")
+
+    def __reduce__(self):
+        # Spawned hosts reconstruct the same immutable, validated specification.
+        return type(self), tuple(
+            dict(self.files) if item.name == "files" else getattr(self, item.name)
+            for item in fields(self)
+        )
 
 
 def record_once(
