@@ -264,11 +264,17 @@ def test_native_worker_receives_only_selected_context(tmp_path, family, conditio
 from pathlib import Path
 import json
 expected = { {name: data.decode() for name, data in expected.items()}!r}
-assert set(p.name for p in Path('.').iterdir()) == set(expected) | {{'context.json'}}
+assert set(p.name for p in Path('.').iterdir()) == set(expected) | {{
+    'context.json', 'workspace'
+}}
+assert Path('workspace').is_dir() and not list(Path('workspace').iterdir())
 for name, content in expected.items():
     assert Path(name).read_text() == content
 assert not Path({str(tmp_path / "ledger")!r}).exists()
-assert not any('PRIVATE GRADING CANARY' in p.read_text() for p in Path('.').iterdir())
+assert not any(
+    'PRIVATE GRADING CANARY' in p.read_text()
+    for p in Path('.').iterdir() if p.is_file()
+)
 Path('result.json').write_text('{{"proposal":true}}')
 print('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')
 PY"""
