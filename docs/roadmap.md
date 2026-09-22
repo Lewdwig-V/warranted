@@ -1,8 +1,8 @@
 # Provisional roadmap
 
-Updated 2026-09-19. These are ordered experiments and implementation slices, not
+Updated 2026-09-22. These are ordered experiments and implementation slices, not
 delivery dates. M0, M1, the trusted local M2 slice, and M3's local scripted-model
-fixture are complete.
+fixture are complete. M4 is complete for its local fixed-proposal fixture.
 M3a is an optional experiment alongside the
 main sequence, not a prerequisite for M4–M6. Review the design when a milestone
 exposes a simpler way to meet the requirements; preserve the independent comparisons.
@@ -14,7 +14,7 @@ exposes a simpler way to meet the requirements; preserve the independent compari
 | M2 | Changed-premise recovery with explicit gates | M1 | Complete for the trusted local fixture |
 | M3 | Bounded worker and trustworthy operation recovery | M2 | Complete for the local scripted-model fixture |
 | M3a | Jev as a System 1 classifier and judge | M3; second-family evaluation in M5 | Planned, optional |
-| M4 | Independently checked Lean obligations | M2; M3 for agent trials | Planned |
+| M4 | Independently checked Lean obligations | M2; M3 for agent trials | Complete for the local fixed-proposal fixture |
 | M5 | Second task family and knowledge-workflow comparisons | M3, M4 | Planned |
 | M6 | Dream-RSI adaptation: replay-based scheduling pilot | M5; recording begins in M1 | Planned |
 
@@ -245,17 +245,18 @@ The [M4 implementation plan](m4-proof-boundary.md) defines the exact target and
 three PRs: verification, durable proof receipts, and fixture recovery. It selects
 Comparator for independent verification, subject to a pinned, tested integration.
 The [verification boundary](m4-verification.md) implements verification and durable receipts.
-Fixture applications and their recovery demonstration remain planned.
+The [fixture demonstration](m4-fixture.md) supplies supported applications,
+changed-premise recovery, and measured costs alongside the executable baseline.
 M3a remains a separate optional experiment.
 
 - [x] Pin Lean, the allowed library/axioms, and a reviewed target declaration.
-- [ ] Isolate proof generation; independently check the resulting artifact and
+- [x] Isolate proof generation; independently check the resulting artifact and
   transitive dependencies under the pinned verification policy.
 - [x] Bind receipts to exact artifacts/targets and reject weakened statements,
   `sorryAx`, unapproved axioms, and forged success labels.
-- [ ] Keep a checked theorem valid when a premise becomes unsupported, while
+- [x] Keep a checked theorem valid when a premise becomes unsupported, while
   blocking its application to the changed input.
-- [ ] Reuse the uniqueness theorem for the pilot's incomplete-target case: a
+- [x] Reuse the uniqueness theorem for the pilot's incomplete-target case: a
   candidate drops records while its output remains provably unique. The independent
   record-preservation check blocks task acceptance. Preserve proof success and
   task failure separately, alongside a successful control using the same theorem.
@@ -271,6 +272,13 @@ a Lean proof verifies a separate Python program.
 
 **Decision:** compare the additional cost with the executable-check baseline.
 Formalisation should target useful obligations rather than all exploratory claims.
+
+M4 is complete for fixed source proposals with contained Lean elaboration and
+tactics. Native tests capture one valid proof, an incomplete proof, and a short
+timeout, then kill the host before application. Two fresh resumes preserve all
+proof outcomes, the two candidates' independent task failures, and the changed
+premise. The second resume adds no verifier or checker executions. This is a
+development demonstration, not a model proof-search trial or a performance benchmark.
 
 ## M5 — Generality and the knowledge experiment
 

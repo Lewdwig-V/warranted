@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "owner": "fixture-owner",
+  "target": "Warranted.uniqueness_preserved",
+  "mapping": {"version": 1, "function": "identity", "equality": "exact"},
+  "selections": {"correct": [0, 1, 2], "dropped-row": [0, 1], "empty": []},
+  "revision": {
+    "checkpoint": "after-initial-applications",
+    "previous": "input.csv",
+    "current": "input-duplicates.csv",
+    "reason": "The separate premise experiment introduces duplicate selected identifiers."
+  },
+  "known_gaps": [
+    "Uniqueness permits record loss, including empty output.",
+    "The host parser and correspondence check are not proved in Lean.",
+    "The revision changes the separate premise experiment, not the matrix acceptance contract.",
+    "Fixed proof proposals do not measure model proof-search ability."
+  ]
+}
