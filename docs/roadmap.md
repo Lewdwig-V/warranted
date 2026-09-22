@@ -15,7 +15,7 @@ exposes a simpler way to meet the requirements; preserve the independent compari
 | M3 | Bounded worker and trustworthy operation recovery | M2 | Complete for the local scripted-model fixture |
 | M3a | Jev as a System 1 classifier and judge | M3; second-family evaluation in M5 | Planned, optional |
 | M4 | Independently checked Lean obligations | M2; M3 for agent trials | Complete for the local fixed-proposal fixture |
-| M5 | Second task family and knowledge-workflow comparisons | M3, M4 | In progress: fixed migration matrix |
+| M5 | Second task family and knowledge-workflow comparisons | M3, M4 | In progress: migration matrix and worker recovery |
 | M6 | Dream-RSI adaptation: replay-based scheduling pilot | M5; recording begins in M1 | Planned |
 
 ## M0 — Repository foundation
@@ -290,9 +290,11 @@ The [M5 implementation plan](m5-migration.md) defines the first migration,
 its preserved legacy behavior, an approved safe-repetition requirement, and five
 implementation slices. The [first fixture slice](m5-fixture.md) supplies fixed
 candidates, contained execution, and an independent checker under both contracts.
-Recovery integration, additional proofs, shared adapters, and A–E trials remain planned.
+The [worker demonstration](m5-fixture.md#worker-and-restart) adds the approved revision,
+forced host restart, correction, and repeated resume with preserved costs.
+Additional proofs, shared adapters, and A–E trials remain planned.
 
-- [ ] Complete the same restart/changed-premise exercise in this second task family.
+- [x] Complete the same restart/changed-premise exercise in this second task family.
 - [ ] Exercise the pilot's migration regression outside the proved properties,
   retaining the declared compatibility obligations and a successful control.
 - [ ] In condition E, add valid proofs for the timestamp-mistranslation and

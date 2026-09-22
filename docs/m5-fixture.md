@@ -1,9 +1,10 @@
-# M5: fixed migration candidates
+# M5: migration fixture and worker recovery
 
 The first M5 slice checks three small migration programs against two fixed contracts.
 The formats and legacy consumer are invented test cases.
 They do not define compatibility commitments for Warranted's own formats.
-Worker recovery, revision delivery, migration proofs, and A–E trials remain planned.
+The [worker demonstration](#worker-and-restart) adds revision delivery and recovery through the existing M3 integration.
+Migration proofs and A–E trials remain planned.
 
 ## Run the matrix
 
@@ -116,4 +117,76 @@ One local development run completed the matrix and reuse check in 25.00 seconds.
 The complete native M5 suite took 46.79 seconds, including timeout, forged-result, background-process, and output-limit cases.
 Batching reduced container startups from 30 to three without removing matrix cases.
 These are test timings, not evidence of improved model performance.
-Forced worker restart at the approved revision remains the [next implementation slice](m5-migration.md#five-implementation-slices).
+The timings above describe the fixed matrix. The worker demonstration adds two contained worker episodes.
+
+## Worker and restart
+
+Use a new destination with the same pinned image and rootless Podman environment:
+
+```bash
+uv run --locked python examples/m5/recovery.py start runs/m5-recovery --crash
+uv run --locked python examples/m5/recovery.py resume runs/m5-recovery
+uv run --locked python examples/m5/recovery.py resume runs/m5-recovery
+```
+
+The first command deliberately ends with SIGKILL after recording the initial report and committing the approved revision.
+The authoritative ledger remains open at that point. All candidate containers are already stopped.
+Omit `--crash` to inspect the initial report through normal process exit.
+The second command rejects the stale receipt, rejects the old one-way converter, and accepts the corrected converter.
+The third command adds no operations or dispatches.
+
+This demonstration reuses the mini-swe-agent and LangGraph integration from [M3](m3-adoption.md).
+LangGraph retains workflow checkpoints in `graph.sqlite3`. The ledger retains authoritative attempts, outcomes, and budgets.
+The host checks recorded operations before dispatch, including when a workflow resumes.
+See LangGraph's [durable execution guidance](https://docs.langchain.com/oss/python/langgraph/durable-execution) for the checkpoint and repeated-side-effect distinction.
+
+An in-process fake model supplies one fixed command for each episode.
+The command materializes the seed repository, writes `migrate.py`, runs the public example, and submits the source in `result.json`.
+The host treats that submission as a patch to the immutable seed repository.
+Extra paths fail repository integrity. Changes to workspace tests cannot change the independent checker.
+The fixed responses test integration behavior, not reasoning or model quality.
+No provider, credential, HTTP model service, or new dependency is required.
+
+The initial worker receives the initial task and seed files, including notice of the revision checkpoint.
+It cannot read the later revision or private references.
+After the initial assessment, the host records the pinned owner approval, candidate, checker receipt, and acceptance decision together.
+The checkpoint applies even when the first submission fails.
+Only then can a fresh continuation receive the revision, previous submitted source, and current independent check results.
+Private reference inputs, expected answers, and future model responses remain outside both worker workspaces.
+
+The host retains all ten private input results for each candidate in one batch.
+After the revision, it reuses those exact raw results and runs a new assessment under the revised contract.
+It preserves the old acceptance and later repetition failure separately from the corrected acceptance.
+Passing a public example or printing a success marker cannot authorize acceptance.
+
+| Recorded work | After start | After first resume | After second resume |
+| --- | --- | --- | --- |
+| Model responses | 1 | 2 | 2 |
+| Worker shell attempts | 1 | 2 | 2 |
+| Candidate batches | 1 | 2 | 2 |
+| Independent assessments | 1 | 3 | 3 |
+
+Each row uses its own synthetic attempt unit. These totals are the full run budget.
+Known completions leave no reserved units. Reports also retain measured operation time.
+An invalid patch consumes a bounded batch attempt without executing its source.
+The worker witness is `worker-dispatches.jsonl`. The batch and checker witness remains `executions.jsonl`.
+These files are separate from the ledger and workflow checkpoints.
+
+If a model or batch result is lost before recording, its reservation remains unresolved after reopening.
+The next invocation blocks all new work. This fake model has no independent receipt lookup to settle a lost result.
+M3's separate fake HTTP service tests receipt-based reconciliation.
+Changed fixture bytes, approval bytes, or environment identities also block dispatch.
+A resume without a committed revision fails explicitly.
+
+Reports and exports belong to host inspection and include private development evidence.
+Never supply the whole run directory or these exports as worker context.
+CI runs one forced-kill demonstration with two fresh resumes and retains its evidence with the M5 matrix artifact.
+Run its fast and native checks separately:
+
+```bash
+uv run --locked pytest -q -m 'not container' tests/test_m5_recovery.py
+WARRANTED_CONTAINER_TESTS=1 uv run --locked pytest -q -m container --durations=5 tests/test_m5_recovery.py
+```
+
+The [next slice](m5-migration.md#five-implementation-slices) adds supported migration and timestamp proofs.
+Shared adapters, A–E treatments, and measured model trials remain planned.

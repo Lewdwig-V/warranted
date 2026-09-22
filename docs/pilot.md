@@ -2,7 +2,7 @@
 
 Status: the M1 walkthrough, M2 experiments, M3 scripted worker demonstration, and
 M4 fixed-proposal proof fixture are implemented within their documented local scopes.
-The first M5 slice adds a fixed migration matrix under two independent contracts.
+M5 adds a fixed migration matrix and scripted worker recovery across an approved contract revision.
 Agent trials and benchmark comparisons remain planned.
 The task families below exercise the design without adopting another harness's
 interfaces.
@@ -359,8 +359,9 @@ exports, host reports, and execution counter in its `m1-walkthrough` artifact fo
 The [M5 implementation plan](m5-migration.md) fixes the first development case:
 rename configuration fields, preserve an optional legacy label, then add an
 owner-approved requirement for safe repetition. The [first fixture slice](m5-fixture.md)
-implements the fixed candidate matrix and independent checker. Delivery of the revision
-to a worker and forced restart remain planned.
+implements the fixed candidate matrix and independent checker.
+The [worker demonstration](m5-fixture.md#worker-and-restart) adds revision delivery, a forced host kill, and repeated resume without new work.
+It uses a fixed fake model and retains costs, independent failures, and blocked unknown outcomes.
 
 Provide a small local repository containing configuration, a consumer, and tests.
 Ask for a migration between two explicit formats or APIs while preserving declared

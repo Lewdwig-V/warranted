@@ -13,6 +13,6 @@
   "known_gaps": [
     "This is a finite development fixture, not a proof for all Python programs.",
     "The checker enforces declared behavior and does not discover unstated requirements.",
-    "The matrix compares two fixed contracts; revision delivery and worker restart are the next slice."
+    "The fixed matrix and scripted recovery run do not measure model quality or held-out performance."
   ]
 }

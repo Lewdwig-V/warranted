@@ -67,7 +67,11 @@ legacy consumer, an approved requirement for safe repetition, and five implement
 The [first fixture slice](docs/m5-fixture.md) checks three fixed migration programs
 under both contracts in isolated containers. It retains independent failures and
 reuses completed executions and decisions. These are synthetic fixture formats,
-not compatibility commitments for Warranted. Worker recovery and A–E comparisons remain planned.
+not compatibility commitments for Warranted.
+The [worker demonstration](docs/m5-fixture.md#worker-and-restart) now delivers the approved
+revision across a forced host kill. It rejects stale evidence, accepts a correction,
+and resumes again without repeating work. The model responses are fixed.
+Additional proofs and A–E comparisons remain planned.
 
 ## What we are building
 

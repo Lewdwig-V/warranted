@@ -2,7 +2,8 @@
 
 Implementation plan, 2026-09-22. M4 is complete for its fixed development fixture.
 The [first fixture slice](m5-fixture.md) implements the fixed migration matrix and an independent checker.
-Worker recovery, the additional proofs, shared adapters, and A–E comparisons remain planned.
+The [worker demonstration](m5-fixture.md#worker-and-restart) implements the second slice with a fixed fake model and forced restart.
+The additional proofs, shared adapters, and A–E comparisons remain planned.
 
 ## First migration task
 
