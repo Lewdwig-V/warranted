@@ -15,7 +15,7 @@ exposes a simpler way to meet the requirements; preserve the independent compari
 | M3 | Bounded worker and trustworthy operation recovery | M2 | Complete for the local scripted-model fixture |
 | M3a | Jev as a System 1 classifier and judge | M3; second-family evaluation in M5 | Planned, optional |
 | M4 | Independently checked Lean obligations | M2; M3 for agent trials | Complete for the local fixed-proposal fixture |
-| M5 | Second task family and knowledge-workflow comparisons | M3, M4 | In progress: migration matrix and worker recovery |
+| M5 | Second task family and knowledge-workflow comparisons | M3, M4 | In progress: fixed A–E recovery; model trials planned |
 | M6 | Dream-RSI adaptation: replay-based scheduling pilot | M5; recording begins in M1 | Planned |
 
 ## M0 — Repository foundation
@@ -294,15 +294,15 @@ The [worker demonstration](m5-fixture.md#worker-and-restart) adds the approved r
 forced host restart, correction, and repeated resume with preserved costs.
 The [supported proof cases](m5-proofs.md) preserve all three narrow proof successes,
 independent task failures, and successful controls across a forced restart.
-The [shared context boundary](m5-contexts.md) supplies captured worker files,
-shared submission capture, and A–E disclosure tests for both fixtures.
-Complete A–E recovery runs and trials remain planned. The standalone proof cases
-are ready for integration with condition E.
+The [A–E treatment runner](m5-contexts.md) uses captured workspace files and notes,
+permitted history, updated models, and dependency reports across both fixtures.
+Condition E includes the three supported proof cases and their full attempt costs.
+Fixed workers recover through a host kill and repeated resume. Model trials remain planned.
 
 - [x] Complete the same restart/changed-premise exercise in this second task family.
 - [x] Exercise the pilot's migration regression outside the proved properties,
   retaining the declared compatibility obligations and a successful control.
-- [ ] In condition E, add valid proofs for the timestamp-mistranslation and
+- [x] In condition E, add valid proofs for the timestamp-mistranslation and
   migration-regression cases, retaining M4's incomplete-target case and successful
   controls for all three.
 - [x] Derive the smallest shared adapter boundary from both working fixtures.

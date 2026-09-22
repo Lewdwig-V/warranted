@@ -11,28 +11,39 @@ import base64
 import hashlib
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from time import perf_counter_ns
 
 from warranted.containers import SandboxFailure, _run, require_runtime
-from warranted.ledger import Ledger, Outcome, Request, Result
+from warranted.ledger import Ledger, Outcome, Request, Result, _json_object
 from warranted.worker import AttemptResult, Episode, input_files
 
 IMAGE = (
     "docker.io/library/python@sha256:"
     "72d3d75f2639ab82b34b29390ad3d6e0827c775befee94edda8e9976818f488d"
 )
-SANDBOX_ID = "podman-rootless-v2/" + IMAGE
+SANDBOX_ID = "podman-rootless-v3/" + IMAGE
 CANDIDATE_LIMIT = 1024 * 1024
 
 # This code comes from the host, never the worker's workspace or environment.
 _LOAD = """
 import base64, json, os, sys
 os.mkdir('/tmp/warranted-host', 0o700)
-for name, encoded in json.load(sys.stdin).items():
+payload = json.load(sys.stdin)
+for name, encoded in payload['inputs'].items():
     with open('/work/' + name, 'xb') as file:
         file.write(base64.b64decode(encoded, validate=True))
     os.chmod('/work/' + name, 0o444)
+os.setgroups([])
+os.setgid(1000)
+os.setuid(1000)
+os.mkdir('/work/workspace')
+for name, encoded in payload['workspace'].items():
+    path = '/work/workspace/' + name
+    parent = os.path.dirname(path)
+    os.makedirs(parent, exist_ok=True)
+    with open(path, 'xb') as file:
+        file.write(base64.b64decode(encoded, validate=True))
 """
 _EXECUTE = """
 import subprocess, sys
@@ -74,8 +85,63 @@ with os.fdopen(fd, 'rb') as file:
     data = file.read(1048577)
     if len(data) > 1048576:
         raise ValueError('candidate exceeds limit')
-print(json.dumps({'result.json': base64.b64encode(data).decode()}))
+captured = {'result.json': base64.b64encode(data).decode()}
+workspace, size = {}, 0
+workspace_dir = os.open('workspace', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=directory)
+for parent, dirs, files, directory in os.fwalk(
+        '.', dir_fd=workspace_dir, follow_symlinks=False):
+    if len(Path(parent).parts) > 16:
+        raise ValueError('workspace exceeds depth limit')
+    for name in dirs:
+        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        if not stat.S_ISDIR(info.st_mode):
+            raise ValueError('workspace contains a directory link')
+    for name in sorted(files):
+        path = str(Path(parent, name))
+        if len(workspace) >= 128 or len(Path(path).parts) > 16:
+            raise ValueError('workspace exceeds file or depth limit')
+        with os.fdopen(os.open(name, flags, dir_fd=directory), 'rb') as file:
+            info = os.fstat(file.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError('workspace requires regular files with one link')
+            data = file.read(1048577 - size)
+        size += len(data)
+        if size > 1048576:
+            raise ValueError('workspace exceeds size limit')
+        workspace[path] = base64.b64encode(data).decode()
+encoded = json.dumps(workspace, sort_keys=True).encode()
+captured['workspace.json'] = base64.b64encode(encoded).decode()
+print(json.dumps(captured))
 """
+
+
+def decode_workspace(data: bytes) -> dict[str, str]:
+    """Validate an untrusted bounded file snapshot before restoring any bytes."""
+    if len(data) > 2 * CANDIDATE_LIMIT:
+        raise ValueError("workspace exceeds encoded size limit")
+    files = json.loads(data, object_pairs_hook=_json_object)
+    if type(files) is not dict or len(files) > 128:
+        raise ValueError("workspace requires at most 128 files")
+    size = 0
+    for name, encoded in files.items():
+        path = PurePosixPath(name)
+        if (
+            not path.parts
+            or path.is_absolute()
+            or str(path) != name
+            or ".." in path.parts
+            or len(path.parts) > 16
+            or "\x00" in name
+            or type(encoded) is not str
+        ):
+            raise ValueError("unsafe workspace entry")
+        if any(str(parent) in files for parent in path.parents):
+            raise ValueError("workspace file conflicts with a directory")
+        size += len(base64.b64decode(encoded, validate=True))
+        if size > CANDIDATE_LIMIT:
+            raise ValueError("workspace exceeds size limit")
+    return files
 
 
 class Sandbox:
@@ -86,7 +152,7 @@ class Sandbox:
             raise ValueError("episode must pin the container environment")
         if any(
             not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}", name)
-            or name in {"context.json", "result.json"}
+            or name in {"context.json", "result.json", "workspace"}
             for name in (*episode.inputs, *episode.files)
         ):
             raise ValueError("worker input names must be safe, distinct basenames")
@@ -154,13 +220,24 @@ class Sandbox:
         )
         with Ledger.open(self.root) as ledger:
             files = input_files(ledger, self.episode)
+            workspace = (
+                decode_workspace(ledger.read_artifact(self.episode.workspace.artifact))
+                if self.episode.workspace
+                else {}
+            )
         files["context.json"] = json.dumps(
             {"authoritative": False, "files": sorted(files)}, sort_keys=True
         ).encode()
         if sum(map(len, files.values())) > CANDIDATE_LIMIT:
             raise SandboxFailure("permitted context exceeds limit")
         encoded = json.dumps(
-            {name: base64.b64encode(data).decode() for name, data in files.items()}
+            {
+                "inputs": {
+                    name: base64.b64encode(data).decode()
+                    for name, data in files.items()
+                },
+                "workspace": workspace,
+            }
         ).encode()
         self._checked(
             [
@@ -228,15 +305,17 @@ class Sandbox:
                 and lines[0].strip() == b"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
             ):
                 captured = _run(
-                    ["exec", "--user=0:0", self.name, "python", "-I", "-c", _CAPTURE]
+                    ["exec", "--user=0:0", self.name, "python", "-I", "-c", _CAPTURE],
+                    output_limit=4 * CANDIDATE_LIMIT,
                 )
                 if captured.returncode:
                     code, outcome = 1, Outcome.FAILED
                     raw["diagnostic"] = b"candidate capture failed\n" + captured.stderr
                 else:
-                    raw["candidate/result.json"] = base64.b64decode(
-                        json.loads(captured.stdout)["result.json"], validate=True
-                    )
+                    for name, encoded in json.loads(captured.stdout).items():
+                        raw["candidate/" + name] = base64.b64decode(
+                            encoded, validate=True
+                        )
                 self.close()
         except SandboxFailure as error:
             # Cleanup must succeed before claiming a known stopped attempt.

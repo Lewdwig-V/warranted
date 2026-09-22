@@ -8,6 +8,7 @@ from dataclasses import replace
 
 import pytest
 
+from warranted.acceptance import Evidence
 from warranted.ledger import Ledger, Manifest, Outcome, Result, Snapshot
 from warranted.sandbox import SANDBOX_ID, Sandbox
 from warranted.worker import AttemptResult, Episode, UnknownOutcome, run_workflow
@@ -183,6 +184,53 @@ def test_raw_invalid_utf8_survives_capture(tmp_path):
 
 
 SUBMIT = "printf '{}' > result.json; printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'"
+
+
+def test_workspace_is_captured_and_restored_writable_after_restart(tmp_path):
+    episode = setup(tmp_path)
+    run(
+        tmp_path,
+        episode,
+        "mkdir workspace/repo; printf 'pass' > workspace/repo/main.py; "
+        "printf '\\377' > workspace/notes.md; " + SUBMIT,
+    )
+    with Ledger.open(tmp_path / "ledger") as ledger:
+        tool = next(
+            op for op in ledger.operations() if op.request.origin.kind == "tool"
+        )
+        workspace = Evidence.captured(
+            tool.completion.observation, "candidate/workspace.json"
+        )
+    resumed = replace(
+        episode, episode_id="resumed", continues=episode.episode_id, workspace=workspace
+    )
+    result, _ = run(
+        tmp_path,
+        resumed,
+        "python - <<'PY'\n"
+        "from pathlib import Path\n"
+        "assert Path('workspace/repo/main.py').read_bytes() == b'pass'\n"
+        "assert Path('workspace/notes.md').read_bytes() == b'\\xff'\n"
+        "Path('workspace/notes.md').write_text('continued')\n"
+        "PY\ntest $? = 0 && " + SUBMIT,
+    )
+    assert result["exit_status"] == "Submitted"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "ln -s /etc/passwd workspace/notes",
+        "rmdir workspace; ln -s /tmp workspace",
+        "mkfifo workspace/notes",
+        "mkdir workspace/repo; ln -s /etc workspace/repo/config",
+    ],
+)
+def test_workspace_links_and_special_files_fail_capture(tmp_path, command):
+    episode = setup(tmp_path)
+    result, raw = run(tmp_path, episode, command + "; " + SUBMIT)
+    assert result["exit_status"] != "Submitted"
+    assert "candidate/result.json" not in raw
 
 
 def capture_crash(root, episode, pipe, when):

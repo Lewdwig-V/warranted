@@ -187,13 +187,17 @@ def validate(ledger: Ledger, bundle: Path) -> None:
             raise ValueError("fixture, bundle, or host changed: " + name)
 
 
-def proof_work(host, bundle: Path) -> tuple[dict, dict]:
+def proof_work(
+    host, bundle: Path, targets=("uniqueness", "migration", "timestamp")
+) -> tuple[dict, dict]:
     theorems, outcomes = {}, {}
     for target_id, source, operation_id in (
         ("uniqueness", "Solution.lean", "m4-proof/control"),
         ("migration", "proof/migration", "m5-proof/migration"),
         ("timestamp", "proof/timestamp", "m5-proof/timestamp"),
     ):
+        if target_id not in targets:
+            continue
         adapter = Proofs(host.ledger, host.session, bundle, target_id=target_id)
         if adapter.target.artifact != host.ref("target/" + target_id).artifact:
             raise ValueError("verifier target differs from the approved fixture target")
@@ -301,25 +305,25 @@ def csv_cases(host, theorems: dict) -> dict:
     return matrix
 
 
-def migration_cases(host, theorem: Evidence) -> dict:
+def migration_cases(host, theorem: Evidence, prefix: str = "migration/") -> dict:
     ledger, root, session = host.ledger, host.root, host.session
-    cases_ref = host.ref("migration/references.json")
+    cases_ref = host.ref(prefix + "references.json")
     cases = host.read(cases_ref)
-    policy = host.ref("migration/policy-revised.json")
-    revision = host.ref("migration/contracts.json")
+    policy = host.ref(prefix + "policy-revised.json")
+    revision = host.ref(prefix + "contracts.json")
     fields = host.read(policy)["requirements"]
     matrix = {}
     for name in ("drop-label", "complete"):
-        target = host.ref(f"migration/candidate-{name}.json")
+        target = host.ref(f"{prefix}candidate-{name}.json")
         source = M5["candidate_source"](ledger.read_artifact(target.artifact))
         req = M5["request"](
             ledger,
             "migration-batch",
             (
                 target.name,
-                "migration/host.py",
-                "migration/sandbox.py",
-                "migration/containers.py",
+                prefix + "host.py",
+                prefix + "sandbox.py",
+                prefix + "containers.py",
                 cases_ref.name,
             ),
         )
@@ -354,8 +358,8 @@ def migration_cases(host, theorem: Evidence) -> dict:
                 policy.name,
                 revision.name,
                 cases_ref.name,
-                "migration/repository.json",
-                "migration/host.py",
+                prefix + "repository.json",
+                prefix + "host.py",
             ),
             evidence,
         )

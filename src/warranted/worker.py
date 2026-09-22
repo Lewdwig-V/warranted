@@ -61,6 +61,7 @@ class Episode:
     continues: str | None = None
     model_service: str | None = None
     files: Mapping[str, Evidence] = field(default_factory=dict)
+    workspace: Evidence | None = None
 
     def __post_init__(self):
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", self.episode_id):
@@ -80,6 +81,8 @@ class Episode:
         if set(self.files) & set(self.inputs):
             raise ValueError("episode filename repeats a snapshot input")
         object.__setattr__(self, "files", MappingProxyType(dict(self.files)))
+        if self.workspace is not None and type(self.workspace) is not Evidence:
+            raise ValueError("workspace requires captured evidence")
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("episode step limit must be between 1 and 100")
         if self.continues is not None and (
@@ -142,7 +145,7 @@ def input_files(ledger: Ledger, episode: Episode) -> dict[str, bytes]:
         for name in episode.inputs
     } | dict(episode.files)
     inputs = {}
-    for ref in refs.values():
+    for ref in (*refs.values(), *((episode.workspace,) if episode.workspace else ())):
         if ref.name in inputs and inputs[ref.name] != ref.artifact:
             raise ValueError("conflicting context evidence")
         inputs[ref.name] = ref.artifact
@@ -163,6 +166,11 @@ def input_files(ledger: Ledger, episode: Episode) -> dict[str, bytes]:
 
 def submitted_candidate(ledger: Ledger, episode_id: str) -> Evidence:
     """Find the single captured submission, never a worker-supplied host path."""
+    return submitted_files(ledger, episode_id)["result.json"]
+
+
+def submitted_files(ledger: Ledger, episode_id: str) -> dict[str, Evidence]:
+    """Resolve the files from one exact completed submission."""
     matches = [
         op
         for op in ledger.operations()
@@ -173,7 +181,12 @@ def submitted_candidate(ledger: Ledger, episode_id: str) -> Evidence:
     if len(matches) != 1:
         raise ValueError("submission lacks one exact captured candidate")
     operation = ledger.lookup(matches[0].request)
-    return Evidence.captured(operation.completion.observation, "candidate/result.json")
+    observation = operation.completion.observation
+    return {
+        name.removeprefix("candidate/"): Evidence.captured(observation, name)
+        for name in observation.artifacts
+        if name.startswith("candidate/")
+    }
 
 
 class Journal:
@@ -186,7 +199,10 @@ class Journal:
         inputs = {
             name: ledger.project.snapshots[name].artifact for name in episode.inputs
         }
-        for ref in episode.files.values():
+        for ref in (
+            *episode.files.values(),
+            *((episode.workspace,) if episode.workspace else ()),
+        ):
             if ref.name in inputs and inputs[ref.name] != ref.artifact:
                 raise ValueError("conflicting context evidence")
             inputs[ref.name] = ref.artifact

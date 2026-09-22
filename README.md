@@ -74,9 +74,10 @@ and resumes again without repeating work. The model responses are fixed.
 The [supported proof cases](docs/m5-proofs.md) add migration and timestamp targets
 alongside M4 uniqueness. All three retain successful controls and candidates whose
 supported narrow proofs leave independent task failures intact across restart.
-The [shared context boundary](docs/m5-contexts.md) binds recorded files to worker
-episodes and tests A–E disclosure rules against both fixtures.
-Connecting those contexts to complete A–E recovery runs and measured comparisons remains planned.
+The [A–E treatment runner](docs/m5-contexts.md) now connects both fixtures to the
+shared context boundary. It preserves workspace files and notes, updates models
+and dependency reports, and charges E for real proof work across restart.
+Credential-free tests cover all five conditions. Measured model comparisons remain planned.
 
 ## What we are building
 
