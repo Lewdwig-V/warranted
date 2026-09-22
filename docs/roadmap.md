@@ -301,6 +301,8 @@ Fixed workers recover through a host kill and repeated resume. Model trials rema
 The [scripted trial ledger](m5-migration.md#scripted-trial-accounting) predeclares
 development runs and keeps missing runs and failed attempts in the report.
 It does not establish model quality, held-out results, or full campaign costs.
+The [local model probe](m5-migration.md#local-model-probe) adds an OpenAI-compatible
+attempt adapter with offline tests. Live A–E integration remains planned.
 
 - [x] Complete the same restart/changed-premise exercise in this second task family.
 - [x] Exercise the pilot's migration regression outside the proved properties,
