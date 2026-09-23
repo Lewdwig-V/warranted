@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from warranted import attempts, proofs
+from warranted import proofs
 from warranted import sandbox as sandbox_module
 from warranted.containers import PODMAN_COMMAND_TIMEOUT_SECONDS
 from warranted.contexts import Condition
@@ -406,6 +406,7 @@ def test_live_validation_does_not_poll_completed_runtime(tmp_path, monkeypatch):
         "oversized",
         "partial-timeout",
         "short-body",
+        "drip",
     ],
 )
 def test_runtime_failure_is_settled_without_inference(
@@ -458,12 +459,15 @@ def test_runtime_failure_is_settled_without_inference(
             monkeypatch.setitem(runtime_scope, "METADATA_REQUEST_TIMEOUT_SECONDS", 0.1)
         elif failure == "short-body":
             metadata["short"] = True
+        elif failure == "drip":
+            metadata["drip"] = True
+            monkeypatch.setitem(runtime_scope, "METADATA_REQUEST_TIMEOUT_SECONDS", 0.2)
         else:
 
             def unavailable(*_args):
                 raise TimeoutError("metadata unavailable")
 
-            monkeypatch.setitem(runtime_scope, "build_opener", unavailable)
+            monkeypatch.setitem(runtime_scope, "http_response", unavailable)
 
         with pytest.raises(RuntimeError):
             invoke()
@@ -484,13 +488,19 @@ def test_runtime_failure_is_settled_without_inference(
                         tags={"models": [metadata["model"]]}, show=metadata["show"]
                     )
                 for endpoint, value in expected_responses.items():
-                    assert ledger.read_artifact(
+                    observed = ledger.read_artifact(
                         completion.observation.artifacts[f"api/{endpoint}-response"]
-                    ) == (
+                    )
+                    wire = (
                         value
                         if isinstance(value, bytes)
                         else json.dumps(value).encode()
                     )
+                    if failure == "drip":
+                        assert 0 < len(observed) < len(wire)
+                        assert wire.startswith(observed)
+                    else:
+                        assert observed == wire
                     assert json.loads(
                         ledger.read_artifact(
                             completion.observation.artifacts[
@@ -511,7 +521,7 @@ def test_runtime_failure_is_settled_without_inference(
 
         monkeypatch.setitem(
             runtime_scope,
-            "build_opener",
+            "http_response",
             lambda *_args: pytest.fail("completed failure polled the service again"),
         )
         with pytest.raises(RuntimeError):
@@ -810,7 +820,10 @@ def test_changed_shared_helper_blocks_resume_before_dispatch(
 
 
 @pytest.mark.parametrize("family", ["csv", "migration"])
-@pytest.mark.parametrize("adapter", ["local_model", "chat_completions", "attempts"])
+@pytest.mark.parametrize(
+    "adapter",
+    ["local_model", "chat_completions", "attempts", "worker", "acceptance", "ledger"],
+)
 def test_changed_model_adapter_blocks_resume_before_dispatch(
     tmp_path, monkeypatch, family, adapter
 ):
@@ -820,9 +833,7 @@ def test_changed_model_adapter_blocks_resume_before_dispatch(
     changed = (
         Path(demo["LOCAL"]["__file__"])
         if adapter == "local_model"
-        else Path(
-            attempts.__file__ if adapter == "attempts" else demo[adapter].__file__
-        )
+        else Path(demo["LOCAL"]["chat_completions"].__file__).with_name(adapter + ".py")
     )
     read_bytes = Path.read_bytes
 

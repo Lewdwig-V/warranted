@@ -8,22 +8,33 @@ from dataclasses import replace
 from http.client import RemoteDisconnected
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from time import monotonic
 
 import pytest
 from minisweagent.exceptions import FormatError
 
-from warranted import attempts
 from warranted.chat_completions import LocalChatCompletions
 from warranted.ledger import Ledger, Manifest, OperationConflict, Outcome
 from warranted.worker import Episode, Journal, UnknownOutcome, WorkerModel
 
 
 @contextmanager
-def server(body=None, status=200, drop=False, metadata=None):
+def server(body=None, status=200, drop=False, metadata=None, drip=None):
     calls = []
     release_metadata = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
+        def write_body(self, wire, slow=False):
+            size = max(1, len(wire) // 10) if slow else len(wire)
+            for offset in range(0, len(wire), size):
+                try:
+                    self.wfile.write(wire[offset : offset + size])
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+                if slow and release_metadata.wait(0.15):
+                    return
+
         def do_GET(self):
             calls.append((self.path, None))
             value = (
@@ -36,8 +47,7 @@ def server(body=None, status=200, drop=False, metadata=None):
             if metadata.get("short"):
                 self.send_header("Content-Length", str(len(wire) + 1))
             self.end_headers()
-            self.wfile.write(wire)
-            self.wfile.flush()
+            self.write_body(wire, metadata.get("drip", False))
             if metadata.get("stall"):
                 release_metadata.wait()
 
@@ -56,13 +66,19 @@ def server(body=None, status=200, drop=False, metadata=None):
             if drop == "before":
                 self.close_connection = True
                 return
+            if drip == "headers":
+                self.write_body(
+                    b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n", True
+                )
+                self.write_body(body)
+                return
             self.send_response(status)
             if drop == "partial":
                 self.send_header("Content-Length", str(len(body) + 1))
             if status == 307:
                 self.send_header("Location", "/redirected")
             self.end_headers()
-            self.wfile.write(body)
+            self.write_body(body, drip == "body")
 
         def log_message(self, *_):
             pass
@@ -146,6 +162,25 @@ def test_lost_response_keeps_reservation_and_never_retries(tmp_path, drop):
             ledger.accounting()["model"].spent,
             ledger.accounting()["model"].reserved,
         ) == (0, 1)
+
+
+@pytest.mark.parametrize("phase", ["headers", "body"])
+def test_drip_response_has_total_deadline_and_stays_unknown(tmp_path, phase):
+    with server(response(), drip=phase) as (url, calls):
+        client = LocalChatCompletions(url, "gemma4:26b", timeout_seconds=1)
+        root = tmp_path / "deadline"
+        setup(root, client)
+        started = monotonic()
+        with pytest.raises(TimeoutError):
+            query(root, client)
+        assert monotonic() - started < 2
+        with pytest.raises(UnknownOutcome):
+            query(root, client)
+        assert len(calls) == 1
+        with Ledger.open(root) as ledger:
+            assert ledger.operations()[0].state == "unknown"
+            balance = ledger.accounting()["model"]
+            assert (balance.spent, balance.reserved) == (0, 1)
 
 
 def test_oversized_prompt_is_known_local_failure(tmp_path):
@@ -336,7 +371,9 @@ def test_probe_rejects_cloud_and_changed_model_then_reuses_offline(tmp_path):
     assert probe["run"](tmp_path / "good") == {"command": "true", "executed": False}
 
 
-@pytest.mark.parametrize("adapter", ["chat_completions", "attempts"])
+@pytest.mark.parametrize(
+    "adapter", ["chat_completions", "attempts", "worker", "acceptance", "ledger"]
+)
 def test_probe_rejects_changed_adapter_before_inference(tmp_path, monkeypatch, adapter):
     probe = runpy.run_path(
         str(Path(__file__).resolve().parents[1] / "examples/m5/local_model.py")
@@ -350,9 +387,7 @@ def test_probe_rejects_changed_adapter_before_inference(tmp_path, monkeypatch, a
         client = LocalChatCompletions(url, "gemma4:26b")
         root = tmp_path / "adapter-changed"
         probe["initialize"](root, client)
-        changed = Path(
-            attempts.__file__ if adapter == "attempts" else probe[adapter].__file__
-        )
+        changed = Path(probe["chat_completions"].__file__).with_name(adapter + ".py")
         read_bytes = Path.read_bytes
 
         def changed_bytes(path):

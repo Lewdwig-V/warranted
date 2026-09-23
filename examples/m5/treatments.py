@@ -16,8 +16,6 @@ from uuid import uuid4
 os.environ["MSWEA_SILENT_STARTUP"] = "1"
 
 from warranted import (  # noqa: E402
-    attempts,
-    chat_completions,
     containers,
     contexts,
     sandbox,
@@ -114,11 +112,9 @@ def snapshots(
             )
         }
     captured.update((CSV if family == "csv" else R)["snapshots"]())
+    captured.update(LOCAL["implementation"]())
     for name, path in {
         "treatments.py": Path(__file__),
-        "local_model.py": Path(LOCAL["__file__"]),
-        "chat_completions.py": Path(chat_completions.__file__),
-        "attempts.py": Path(attempts.__file__),
         "recovery.py": Path(R["__file__"]),
         "m2-host.py": Path(M2["__file__"]),
         "m4-host.py": Path(P["M4"]["__file__"]),

@@ -223,7 +223,7 @@ It sends one text request per attempt, with redirects and environment proxies di
 It does not use provider credentials, SDK retries, streaming, or automatic model fallback.
 
 The project snapshot `model-api` records the endpoint, model tag, seed, output limit,
-socket timeout, and fixed request parameters.
+total request timeout, and fixed request parameters.
 The episode's service identity binds that configuration.
 Only permitted message roles and text enter the request.
 Worker metadata and the private ledger stay outside the prompt.
@@ -240,7 +240,8 @@ Its reservation survives restart and blocks another dispatch.
 This API provides no durable lookup by Warranted operation identity.
 The adapter therefore cannot reconcile a lost response.
 Completed responses reuse the journal without another HTTP request.
-The socket timeout does not impose a total deadline or prove that server computation stopped.
+Each request has a total deadline covering connection, headers, and body reads.
+At the deadline, the host shuts down that request's socket; this does not prove that server computation stopped.
 The adapter bounds request and response bodies at 2 MiB.
 
 Use an installed local Ollama model for the explicit probe:
@@ -254,6 +255,7 @@ uv run --locked python examples/m5/local_model.py run runs/gemma-probe
 
 `init` reads metadata without requesting inference.
 It records the model digest, quantization details, model configuration, and server version.
+The probe and treatment runs snapshot all Warranted Python source files and the local probe script, and reject source changes before dispatch or reuse.
 It rejects cloud-backed model metadata and does not download models.
 `run` compares that metadata before the single allowed inference request.
 It asks for `{"command":"true"}` and prints the result without executing it.
