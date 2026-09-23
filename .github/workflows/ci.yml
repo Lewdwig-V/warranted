@@ -199,7 +199,13 @@ jobs:
       - name: Prepare the pinned migration runtime
         run: |
           runtime_image="$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
-          podman pull --policy=missing "$runtime_image"
+          if podman image exists "$runtime_image"; then
+            :
+          else
+            image_status=$?
+            if [ "$image_status" -ne 1 ]; then exit "$image_status"; fi
+            podman pull "$runtime_image"
+          fi
           test "$(podman info --format '{{.Store.GraphRoot}}')" = "$GITHUB_WORKSPACE/runs/podman-data/containers/storage"
       - name: Exercise proof verification, isolation, and receipt recovery
         run: |
