@@ -452,6 +452,14 @@ def test_runtime_failure_is_settled_without_inference(
             assert completion.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
             assert completion.result.usage == {"model": 0}
             assert ledger.read_artifact(completion.observation.artifacts["diagnostic"])
+            if failure == "changed":
+                observed = ledger.read_artifact(
+                    completion.observation.artifacts["runtime.json"]
+                )
+                assert json.loads(observed) == metadata
+                assert observed != ledger.read_artifact(
+                    ledger.project.snapshots["runtime"].artifact
+                )
             balance = ledger.accounting()["model"]
             assert (balance.spent, balance.reserved) == (0, 0)
 

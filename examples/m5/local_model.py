@@ -60,11 +60,14 @@ def runtime_failure(
 ) -> AttemptResult | None:
     """Settle metadata errors without treating an unsent inference as unknown."""
     started = monotonic_ns()
+    raw = {}
     try:
-        if runtime(client) != expected:
+        raw["runtime.json"] = runtime(client)
+        if raw["runtime.json"] != expected:
             raise ValueError("local model or server changed since initialization")
     except Exception as error:
         # This scope only reads metadata. Inference dispatch stays outside it.
+        raw["diagnostic"] = f"{type(error).__name__}: {error}".encode()
         return AttemptResult(
             Result(
                 Outcome.INFRASTRUCTURE_FAILURE,
@@ -72,7 +75,7 @@ def runtime_failure(
                 {"model": 0},
                 monotonic_ns() - started,
             ),
-            {"diagnostic": f"{type(error).__name__}: {error}".encode()},
+            raw,
         )
     return None
 
