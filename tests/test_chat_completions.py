@@ -24,14 +24,16 @@ def server(body=None, status=200, drop=False, metadata=None):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             calls.append((self.path, None))
-            self.send_response(200)
+            self.send_response(metadata.get("status", 200))
             self.end_headers()
             value = (
                 metadata["version"]
                 if self.path == "/api/version"
                 else {"models": [metadata["model"]]}
             )
-            self.wfile.write(json.dumps(value).encode())
+            self.wfile.write(
+                value if isinstance(value, bytes) else json.dumps(value).encode()
+            )
 
         def do_POST(self):
             calls.append(

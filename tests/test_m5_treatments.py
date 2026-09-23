@@ -395,7 +395,10 @@ def test_live_validation_does_not_poll_completed_runtime(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("entrypoint", ["probe", "treatment"])
-@pytest.mark.parametrize("failure", ["changed", "timeout", "malformed"])
+@pytest.mark.parametrize(
+    "failure",
+    ["changed", "timeout", "malformed", "bad-json", "http-error", "oversized"],
+)
 def test_runtime_failure_is_settled_without_inference(
     tmp_path, monkeypatch, entrypoint, failure
 ):
@@ -433,6 +436,13 @@ def test_runtime_failure_is_settled_without_inference(
             metadata["model"]["digest"] = "b" * 64
         elif failure == "malformed":
             metadata["show"] = []
+        elif failure == "bad-json":
+            metadata["version"] = b'{"version": invalid}'
+        elif failure == "http-error":
+            metadata["version"] = b'{"error":"unavailable"}'
+            metadata["status"] = 503
+        elif failure == "oversized":
+            metadata["version"] = b"x" * (2 * 1024 * 1024 + 1)
         else:
 
             def unavailable(*_args):
@@ -452,6 +462,27 @@ def test_runtime_failure_is_settled_without_inference(
             assert completion.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
             assert completion.result.usage == {"model": 0}
             assert ledger.read_artifact(completion.observation.artifacts["diagnostic"])
+            if failure != "timeout":
+                expected_responses = {"version": metadata["version"]}
+                if failure in {"changed", "malformed"}:
+                    expected_responses.update(
+                        tags={"models": [metadata["model"]]}, show=metadata["show"]
+                    )
+                for endpoint, value in expected_responses.items():
+                    assert ledger.read_artifact(
+                        completion.observation.artifacts[f"api/{endpoint}-response"]
+                    ) == (
+                        value
+                        if isinstance(value, bytes)
+                        else json.dumps(value).encode()
+                    )
+                    assert json.loads(
+                        ledger.read_artifact(
+                            completion.observation.artifacts[
+                                f"api/{endpoint}-status.json"
+                            ]
+                        )
+                    ) == metadata.get("status", 200)
             if failure == "changed":
                 observed = ledger.read_artifact(
                     completion.observation.artifacts["runtime.json"]
@@ -506,7 +537,7 @@ def test_live_runtime_is_checked_before_each_model_dispatch(tmp_path, monkeypatc
     monkeypatch.setitem(
         scope["LOCAL"]["runtime_failure"].__globals__,
         "runtime",
-        lambda _client: next(polls),
+        lambda _client, _raw: next(polls),
     )
 
     def workflow(*_args, **kwargs):

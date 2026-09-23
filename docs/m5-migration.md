@@ -259,6 +259,7 @@ It rejects cloud-backed model metadata and does not download models.
 It asks for `{"command":"true"}` and prints the result without executing it.
 Repeated `run` commands reuse the recorded response, even with Ollama stopped.
 If metadata changes or its request fails before inference, the host records an infrastructure failure with zero model usage.
+The failure receipt retains each received metadata response and its HTTP status, including malformed JSON and a bounded prefix of oversized responses.
 It releases the reservation and reuses that failure on later runs without polling Ollama again.
 Keep failed probe directories when preparing a new probe.
 

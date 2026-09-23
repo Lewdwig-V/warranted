@@ -7,6 +7,7 @@ import json
 import re
 from pathlib import Path
 from time import monotonic_ns
+from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 
 from warranted import chat_completions
@@ -20,8 +21,10 @@ PROMPT = 'Return exactly this JSON object: {"command":"true"}. No other text.'
 METADATA_REQUEST_TIMEOUT_SECONDS = 10
 
 
-def runtime(client: LocalChatCompletions) -> bytes:
+def runtime(client: LocalChatCompletions, raw: dict[str, bytes] | None = None) -> bytes:
     """Read Ollama metadata only; reject cloud-backed models before inference."""
+    if raw is None:
+        raw = {}
     opener = build_opener(ProxyHandler({}), _NoRedirect())
 
     def read(path, payload=None):
@@ -30,10 +33,18 @@ def runtime(client: LocalChatCompletions) -> bytes:
             data=None if payload is None else _encode(payload),
             headers={"Content-Type": "application/json"},
         )
-        with opener.open(request, timeout=METADATA_REQUEST_TIMEOUT_SECONDS) as response:
+        try:
+            response = opener.open(request, timeout=METADATA_REQUEST_TIMEOUT_SECONDS)
+        except HTTPError as error:
+            response = error
+        with response:
+            raw[f"{path.lstrip('/')}-status.json"] = _encode(response.status)
             data = response.read(MAX_BYTES + 1)
+            raw[f"{path.lstrip('/')}-response"] = data
         if len(data) > MAX_BYTES:
             raise ValueError("model metadata exceeds byte limit")
+        if response.status != 200:
+            raise ValueError(f"metadata HTTP status {response.status}")
         return json.loads(data, object_pairs_hook=_json_object)
 
     version = read("/api/version")
@@ -62,7 +73,7 @@ def runtime_failure(
     started = monotonic_ns()
     raw = {}
     try:
-        raw["runtime.json"] = runtime(client)
+        raw["runtime.json"] = runtime(client, raw)
         if raw["runtime.json"] != expected:
             raise ValueError("local model or server changed since initialization")
     except Exception as error:
