@@ -288,6 +288,16 @@ A further one-run experiment used a new plan at
 `runs/m5-qwen-dev-20260923-inputs`, digest
 `1117756db7b2b1a15352f591f4e521f3570a774935cf7ba440318dd130459114`.
 Its temporary prompt named `tool-targets.json` and the workspace explicitly.
+The complete temporary episode instruction, retained here because local run
+ledgers are ignored by Git, was:
+
+```text
+Use at most four shell commands. In the first command, inspect task.md, context.json, tools.md, tool-targets.json, repository-files.json if present, and the workspace together. Create and test result.json, then submit it. The final command must start with `printf '%s\n' COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT;` so the marker is the first stdout line. On continuation, use the restored workspace and current feedback.
+```
+
+The pinned `treatments.py` snapshot has SHA-256 digest
+`1a8ba1fa5f2c84b06e51de45188a547cff171501ca1096d0726ca6b85624b3e7`;
+the instruction above is the only source change from the merged version.
 Qwen still used a second command to inspect empty workspace files. It wrote
 `migrate.py` on command three. Its fourth model response exceeded the 1,536-token
 limit while generating a long test command, so the model attempt failed and no
