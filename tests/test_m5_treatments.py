@@ -232,6 +232,101 @@ def test_sandbox_uses_the_episode_timeout_for_container_and_process(
     assert launch[-2:] == ["sleep", "351"]
 
 
+@pytest.mark.parametrize("model_timeout", [1, 10, 300])
+def test_live_workspace_survives_four_actions_near_call_timeouts(
+    tmp_path, monkeypatch, model_timeout
+):
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    client = demo["local_client"](
+        "gemma4:26b",
+        base_url="http://127.0.0.1:11434/v1",
+        max_tokens=64,
+        timeout=model_timeout,
+    )
+    root = tmp_path / "live-timeouts"
+    demo["initialize"](
+        root,
+        "csv",
+        Condition.A,
+        bundle,
+        model_client=client,
+        model_runtime=b"pinned runtime",
+    )
+    with Ledger.open(root / "ledger") as ledger:
+        host = demo["M2"]["Experiment"](ledger, ledger.start_session(), root)
+        episode = demo["prepare"](host, "csv", Condition.A, "initial", None, {}, client)
+        project = ledger.project
+
+    elapsed = 0
+    container = {}
+
+    def run(args, _data=b"", **_kwargs):
+        nonlocal elapsed
+        elapsed += PODMAN_COMMAND_TIMEOUT_SECONDS - 1
+        code, output = 0, b""
+        if args[0] == "run":
+            timeout = int(
+                next(
+                    arg.split("=", 1)[1] for arg in args if arg.startswith("--timeout=")
+                )
+            )
+            container["expires"] = elapsed + timeout
+        elif args[:2] == ["container", "exists"]:
+            code = int(not container)
+        elif args[0] == "inspect":
+            output = json.dumps(
+                [
+                    {
+                        "State": {
+                            "Running": elapsed < container["expires"],
+                            "Paused": False,
+                        }
+                    }
+                ]
+            ).encode()
+        elif args[0] == "rm":
+            container.clear()
+        elif args[0] == "exec":
+            if elapsed >= container["expires"]:
+                code = 125
+            elif args[-1] == "/tmp/warranted-host/status":
+                output = b"0"
+            elif args[-1] == sandbox_module._CAPTURE:
+                output = json.dumps(
+                    {
+                        name: base64.b64encode(b"{}").decode()
+                        for name in ("result.json", "workspace.json")
+                    }
+                ).encode()
+            elif args[-2] == sandbox_module._EXECUTE:
+                output = args[-1].encode()
+        return subprocess.CompletedProcess(args, code, output, b"")
+
+    monkeypatch.setattr(sandbox_module, "_run", run)
+    monkeypatch.setattr(sandbox_module, "require_runtime", lambda: run(["info"]))
+    with sandbox_module.Sandbox(root / "ledger", episode) as boundary:
+        for index in range(1, 5):
+            # Three metadata requests and one inference before each shell action.
+            elapsed += 3 * (10 - 1) + client.timeout_seconds - 1
+            request = Request(
+                Origin(
+                    f"episode/{episode.episode_id}/tool/{index}",
+                    "tool",
+                    "test",
+                    "1",
+                    {},
+                ),
+                project,
+            )
+            command = (
+                "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" if index == 4 else "working"
+            )
+            result = boundary(request, json.dumps({"command": command}).encode())
+            assert result.result.outcome is Outcome.SUCCEEDED, result.raw
+        assert "candidate/result.json" in result.raw
+    assert not container
+
+
 def test_unknown_live_attempt_blocks_before_runtime_poll(tmp_path, monkeypatch):
     demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
     client = demo["local_client"](
@@ -251,12 +346,7 @@ def test_unknown_live_attempt_blocks_before_runtime_poll(tmp_path, monkeypatch):
     )
     with Ledger.open(root / "ledger") as ledger:
         host = demo["M2"]["Experiment"](ledger, ledger.start_session(), root)
-        episode = demo["prepare"](host, "csv", Condition.A, "initial", None, {}, client)
-        assert episode.container_timeout_seconds == (
-            4 * client.timeout_seconds
-            + (7 + 2 * 4) * PODMAN_COMMAND_TIMEOUT_SECONDS
-            + 60
-        )
+        demo["prepare"](host, "csv", Condition.A, "initial", None, {}, client)
         session = ledger.start_session()
         request = Request(
             Origin("episode/initial/model/1", "model", client.service_id, "1", {}),

@@ -219,8 +219,9 @@ command exits when it kills the host after the approved checkpoint. Local runs
 pin the model and runtime before each new inference request. Changed or missing
 metadata records an infrastructure failure with zero model usage and releases
 the reservation. Repeated calls reuse that failure without polling Ollama.
-Each live episode pins a container lifetime long enough
-for its four request timeouts and the bounded shell calls. The report sums
+Each live episode budgets its container lifetime for four inference socket
+timeouts, three metadata socket timeouts per turn, and all bounded Podman calls.
+Socket timeouts do not set a total HTTP request deadline. The report sums
 recorded prompt and completion tokens across live-model runs. Fixed scripted
 runs keep token totals unreported.
 One repetition of these two fixtures is development evidence, not a set of

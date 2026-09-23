@@ -17,6 +17,7 @@ from warranted.ledger import Ledger, Manifest, Outcome, Result, Snapshot, _json_
 from warranted.worker import AttemptResult, Episode, Journal, WorkerModel
 
 PROMPT = 'Return exactly this JSON object: {"command":"true"}. No other text.'
+METADATA_REQUEST_TIMEOUT_SECONDS = 10
 
 
 def runtime(client: LocalChatCompletions) -> bytes:
@@ -29,7 +30,7 @@ def runtime(client: LocalChatCompletions) -> bytes:
             data=None if payload is None else _encode(payload),
             headers={"Content-Type": "application/json"},
         )
-        with opener.open(request, timeout=10) as response:
+        with opener.open(request, timeout=METADATA_REQUEST_TIMEOUT_SECONDS) as response:
             data = response.read(MAX_BYTES + 1)
         if len(data) > MAX_BYTES:
             raise ValueError("model metadata exceeds byte limit")

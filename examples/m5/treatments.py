@@ -511,10 +511,12 @@ def prepare(host, family, condition, phase, old, proofs, model_client=None):
     max_steps = 4
     container_timeout = 120
     if model_client:
-        # Setup, two Podman calls per action, then capture and cleanup.
-        podman_calls = 7 + 2 * max_steps
+        # Creation/load, capture, and cleanup, plus five calls per action:
+        # info, exists, inspect, exec, and status.
+        podman_calls = 7 + 5 * max_steps
+        metadata_seconds = 3 * LOCAL["METADATA_REQUEST_TIMEOUT_SECONDS"]
         container_timeout = (
-            max_steps * model_client.timeout_seconds
+            max_steps * (model_client.timeout_seconds + metadata_seconds)
             + podman_calls * PODMAN_COMMAND_TIMEOUT_SECONDS
             + 60
         )
