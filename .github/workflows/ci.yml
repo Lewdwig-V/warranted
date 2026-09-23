@@ -169,7 +169,7 @@ jobs:
           uv sync --locked
       - name: Restore the pinned verifier image
         id: proof-cache
-        uses: actions/cache/restore@55cc8345863c7c4cc66a329aec7e433d2d1c52a9 # v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             runs/m4-tools/bundle.json
@@ -201,7 +201,7 @@ jobs:
           exit "$failed"
       - name: Save the pinned verifier image
         if: success() && steps.proof-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7c4cc66a329aec7e433d2d1c52a9 # v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             runs/m4-tools/bundle.json
