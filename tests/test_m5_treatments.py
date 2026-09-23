@@ -117,6 +117,68 @@ def scripted(tmp_path, monkeypatch, family, condition, *, spontaneous=False):
     return demo, root, bundle
 
 
+def test_live_worker_client_pins_the_strict_command_schema():
+    demo = runpy.run_path(str(SCRIPT))
+    client = demo["local_client"](
+        "qwen3.8:27b",
+        base_url="http://127.0.0.1:11434/v1",
+        max_tokens=1536,
+        timeout=180,
+    )
+    parameters = client.parameters
+    assert parameters["reasoning_effort"] == "none"
+    assert parameters["temperature"] == 0
+    assert parameters["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "worker_command",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"],
+                "additionalProperties": False,
+            },
+        },
+    }
+    assert json.loads(client.snapshot.data)["parameters"] == parameters
+
+
+def test_multistep_episode_reuses_one_sandbox(tmp_path, monkeypatch):
+    demo = runpy.run_path(str(SCRIPT))
+    instances = []
+
+    class Sandbox:
+        def __init__(self, *_):
+            self.calls = 0
+            instances.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def __call__(self, *_):
+            self.calls += 1
+
+    def workflow(*_, environment, **__):
+        environment(None, b"first command")
+        environment(None, b"second command")
+        return {"exit_status": "Submitted"}
+
+    globals_ = demo["propose"].__globals__
+    monkeypatch.setitem(globals_, "Sandbox", Sandbox)
+    monkeypatch.setitem(globals_, "run_workflow", workflow)
+    monkeypatch.setitem(demo["R"], "witness", lambda *_: None)
+    demo["propose"](
+        tmp_path,
+        type("Episode", (), {"episode_id": "initial"})(),
+    )
+    assert len(instances) == 1
+    assert instances[0].calls == 2
+
+
 def assert_recovered(report, family, condition):
     assert report["old_candidate"]["old_receipt"] == "stale"
     assert report["old_candidate"]["status"] == "rejected"
@@ -203,6 +265,16 @@ def test_full_recovery_keeps_task_checks_costs_and_visibility(
             assert dependencies["current"]["applicability"] == "current"
             assert dependencies["current"]["validation"] == "unproved"
         episodes = [o for o in ledger.history() if o.origin.kind == "episode"]
+        episode_specs = [
+            json.loads(ledger.read_artifact(event.artifacts["episode.json"]))["episode"]
+            for event in episodes
+        ]
+        assert [episode["max_steps"] for episode in episode_specs] == [4, 4]
+        assert all(
+            "printf '%s\\n' COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT;"
+            in episode["objective"]
+            for episode in episode_specs
+        )
         spec = json.loads(ledger.read_artifact(episodes[1].artifacts["episode.json"]))
         restored = spec["episode"]["workspace"]
         assert restored["name"] in episodes[1].origin.inputs

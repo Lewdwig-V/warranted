@@ -1,4 +1,4 @@
-"""Fixed A–E workers across an approved revision; no live model calls."""
+"""Run fixed or local-model A–E workers across an approved revision."""
 
 import argparse
 import base64
@@ -7,6 +7,7 @@ import json
 import os
 import runpy
 import signal
+from contextlib import ExitStack
 from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
@@ -17,6 +18,7 @@ os.environ["MSWEA_SILENT_STARTUP"] = "1"
 from warranted import contexts, sandbox, worker  # noqa: E402
 from warranted import proofs as verifier
 from warranted.acceptance import Evidence, _encode  # noqa: E402
+from warranted.chat_completions import LocalChatCompletions  # noqa: E402
 from warranted.contexts import Condition, capture_context, capture_history  # noqa: E402
 from warranted.exports import export_evidence  # noqa: E402
 from warranted.ledger import (  # noqa: E402
@@ -40,14 +42,46 @@ from warranted.worker import (  # noqa: E402
 )
 
 HERE = Path(__file__).resolve().parent
+LOCAL = runpy.run_path(str(HERE / "local_model.py"))
 P = runpy.run_path(str(HERE / "proof_cases.py"))
 R = runpy.run_path(str(HERE / "recovery.py"))
 CSV = runpy.run_path(str(HERE.parent / "m3/demo.py"))
 M2, M5 = P["M2"], R["M5"]
-CAPS = {"model": 2, "tool": 2, "proof": 4, "synthetic-work": 24, "batch": 4, "check": 5}
+CAPS = {"model": 8, "tool": 8, "proof": 4, "synthetic-work": 24, "batch": 4, "check": 5}
 
 
-def snapshots(family: str, bundle: Path) -> dict[str, Snapshot]:
+class WorkerChat(LocalChatCompletions):
+    @property
+    def parameters(self):
+        return {
+            **super().parameters,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "worker_command",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {"command": {"type": "string"}},
+                        "required": ["command"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+        }
+
+
+def local_client(model: str | None, *, base_url: str, max_tokens: int, timeout: int):
+    return WorkerChat(base_url, model, max_tokens, timeout) if model else None
+
+
+def local_runtime(client):
+    return LOCAL["runtime"](client)
+
+
+def snapshots(
+    family: str, bundle: Path, *, model_client=None, model_runtime: bytes | None = None
+) -> dict[str, Snapshot]:
     captured = P["snapshots"](bundle)
     if family == "csv":
         captured = {
@@ -161,20 +195,38 @@ def snapshots(family: str, bundle: Path) -> dict[str, Snapshot]:
         "m5/tool-contract",
         "1",
     )
+    if model_client:
+        captured["model-api"] = model_client.snapshot
+        captured["runtime"] = Snapshot(
+            model_runtime or local_runtime(model_client),
+            "ollama-local",
+            "1",
+        )
     return captured
 
 
-def environment(family: str, condition: Condition) -> dict:
-    return {
+def environment(family: str, condition: Condition, model_client=None) -> dict:
+    result = {
         **(CSV if family == "csv" else R)["environment"](),
         "family": family,
         "condition": str(condition),
-        "policy": "m5-fixed-treatments-v1",
-        "model": "m5-fixed-two-proposals-v1",
+        "policy": "m5-live-treatments-v1" if model_client else "m5-fixed-treatments-v1",
+        "model": model_client.model if model_client else "m5-fixed-two-proposals-v1",
     }
+    if model_client:
+        result["model_service"] = model_client.service_id
+    return result
 
 
-def initialize(root: Path, family: str, condition: Condition, bundle: Path) -> None:
+def initialize(
+    root: Path,
+    family: str,
+    condition: Condition,
+    bundle: Path,
+    *,
+    model_client=None,
+    model_runtime: bytes | None = None,
+) -> None:
     root.mkdir(parents=True)
     with Ledger.create(
         root / "ledger",
@@ -183,21 +235,29 @@ def initialize(root: Path, family: str, condition: Condition, bundle: Path) -> N
             "1",
             str(uuid4()),
             str(uuid4()),
-            environment(family, condition),
+            environment(family, condition, model_client),
             CAPS,
         ),
-        snapshots(family, bundle),
+        snapshots(
+            family,
+            bundle,
+            model_client=model_client,
+            model_runtime=model_runtime,
+        ),
     ):
         pass
 
 
-def validate(ledger: Ledger, bundle: Path) -> tuple[str, Condition]:
+def validate(
+    ledger: Ledger, bundle: Path, *, model_client=None
+) -> tuple[str, Condition]:
     env = ledger.project.manifest.environment
     family, condition = env["family"], Condition(env["condition"])
     captured = snapshots(family, bundle)
     if (
-        env != environment(family, condition)
-        or captured.keys() != ledger.project.snapshots.keys()
+        env != environment(family, condition, model_client)
+        or (captured := snapshots(family, bundle, model_client=model_client)).keys()
+        != ledger.project.snapshots.keys()
     ):
         raise ValueError("fixture or environment changed")
     for name, value in captured.items():
@@ -247,7 +307,7 @@ def assess(host, family, target, old_receipt=None):
     }
 
 
-def prepare(host, family, condition, phase, old, proofs):
+def prepare(host, family, condition, phase, old, proofs, model_client=None):
     revised = phase == "revised"
     if revised and checkpoint(host, family) is None:
         raise ValueError("revised context requires a committed revision")
@@ -435,21 +495,28 @@ def prepare(host, family, condition, phase, old, proofs):
     files = capture_context(host.ledger, host.session, phase, layers)
     return Episode(
         phase,
-        "Read task.md and tools.md, inspect the current files, and submit result.json. "
-        "On continuation, use the restored workspace and current feedback.",
+        "Use at most four shell commands. Combine task and input inspection in "
+        "your first command. Create and test result.json, then submit it. The "
+        "final command must start with `printf '%s\\n' "
+        "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT;` so the marker is the first "
+        "stdout line. On continuation, use the restored workspace and current "
+        "feedback.",
         (),
-        model="m5-fixed-two-proposals-v1",
+        model=model_client.model if model_client else "m5-fixed-two-proposals-v1",
+        model_service=model_client.service_id if model_client else None,
         environment=SANDBOX_ID,
-        max_steps=1,
+        max_steps=4,
         continues="initial" if revised else None,
         files=files,
         workspace=workspace,
     )
 
 
-def propose(root: Path, episode: Episode):
+def propose(root: Path, episode: Episode, model_client=None):
     def model(request, payload):
         R["witness"](root, request)
+        if model_client:
+            return model_client(request, payload)
         with Ledger.open(root / "ledger") as ledger:
             data = ledger.read_artifact(
                 ledger.project.snapshots[f"model-{episode.episode_id}.json"].artifact
@@ -458,18 +525,25 @@ def propose(root: Path, episode: Episode):
             Result(Outcome.SUCCEEDED, 0, {"model": 1}, 0), {"response": data}
         )
 
-    def execute(request, payload):
-        R["witness"](root, request)
-        with Sandbox(root / "ledger", episode) as isolated:
+    isolated = None
+    with ExitStack() as sandbox_scope:
+
+        def execute(request, payload):
+            nonlocal isolated
+            R["witness"](root, request)
+            if isolated is None:
+                isolated = sandbox_scope.enter_context(
+                    Sandbox(root / "ledger", episode)
+                )
             return isolated(request, payload)
 
-    result = run_workflow(
-        root / "ledger",
-        root / "graph.sqlite3",
-        episode,
-        model=model,
-        environment=execute,
-    )
+        result = run_workflow(
+            root / "ledger",
+            root / "graph.sqlite3",
+            episode,
+            model=model,
+            environment=execute,
+        )
     if result.get("exit_status") != "Submitted":
         raise RuntimeError("worker did not submit")
 
@@ -569,7 +643,9 @@ def assurance(host, family, target, theorems):
     }
 
 
-def demonstrate(stage: str, root: Path, bundle: Path, *, crash=False):
+def demonstrate(
+    stage: str, root: Path, bundle: Path, *, crash=False, model_client=None
+):
     execute = verifier._verify
 
     def witnessed(data, captured, *, target_id, seconds):
@@ -583,13 +659,13 @@ def demonstrate(stage: str, root: Path, bundle: Path, *, crash=False):
         return execute(data, captured, target_id=target_id, seconds=seconds)
 
     with patch.object(verifier, "_verify", witnessed):
-        return run_stage(stage, root, bundle, crash=crash)
+        return run_stage(stage, root, bundle, crash=crash, model_client=model_client)
 
 
-def run_stage(stage: str, root: Path, bundle: Path, *, crash=False):
+def run_stage(stage: str, root: Path, bundle: Path, *, crash=False, model_client=None):
     phase = "initial" if stage == "start" else "revised"
     with Ledger.open(root / "ledger") as ledger:
-        family, condition = validate(ledger, bundle)
+        family, condition = validate(ledger, bundle, model_client=model_client)
         unresolved(ledger)
         before = len(ledger.operations())
         host = M2["Experiment"](ledger, ledger.start_session(), root)
@@ -628,8 +704,8 @@ def run_stage(stage: str, root: Path, bundle: Path, *, crash=False):
             if revision
             else None
         )
-        episode = prepare(host, family, condition, phase, old, proofs)
-    propose(root, episode)
+        episode = prepare(host, family, condition, phase, old, proofs, model_client)
+    propose(root, episode, model_client)
     with Ledger.open(root / "ledger") as ledger:
         host = M2["Experiment"](ledger, ledger.start_session(), root)
         target = submitted_candidate(ledger, phase)
@@ -737,20 +813,38 @@ def main():
         "--condition", type=Condition, choices=list(Condition), required=True
     )
     parser.add_argument("--bundle", type=Path, required=True)
+    parser.add_argument("--local-model")
+    parser.add_argument("--base-url", default="http://127.0.0.1:11434/v1")
+    parser.add_argument("--max-tokens", type=int, default=1536)
+    parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--crash", action="store_true")
     args = parser.parse_args()
     if args.crash and args.stage != "start":
         parser.error("--crash requires start")
     root, bundle = args.root.resolve(), args.bundle.resolve()
+    model_client = local_client(
+        args.local_model,
+        base_url=args.base_url,
+        max_tokens=args.max_tokens,
+        timeout=args.timeout,
+    )
     if args.stage == "start" and not (root / "ledger").exists():
-        initialize(root, args.family, args.condition, bundle)
+        initialize(
+            root,
+            args.family,
+            args.condition,
+            bundle,
+            model_client=model_client,
+        )
     with Ledger.open(root / "ledger") as ledger:
         if (args.family, str(args.condition)) != (
             ledger.project.manifest.environment["family"],
             ledger.project.manifest.environment["condition"],
         ):
             raise ValueError("family or condition changed")
-    report = demonstrate(args.stage, root, bundle, crash=args.crash)
+    report = demonstrate(
+        args.stage, root, bundle, crash=args.crash, model_client=model_client
+    )
     print(json.dumps(report, indent=2))
     return (
         0

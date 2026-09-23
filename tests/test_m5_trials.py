@@ -9,7 +9,7 @@ from test_m5_treatments import SCRIPT, scripted
 
 from warranted import proofs
 from warranted.contexts import Condition
-from warranted.ledger import Ledger, Origin, Outcome, Request, Result
+from warranted.ledger import Ledger, Origin, Outcome, Request, Result, Snapshot
 
 TRIALS = runpy.run_path(str(SCRIPT.with_name("trials.py")))
 
@@ -98,6 +98,69 @@ def test_plan_preserves_all_slots_and_rejects_replaced_run(tmp_path, monkeypatch
     assert all(g["planned"] == 2 and g["qualified"] == 0 for g in summary["groups"])
     with pytest.raises(FileExistsError):
         TRIALS["initialize"](root, bundle)
+
+
+def test_live_trial_report_retains_token_totals_and_unknown_model_usage(
+    tmp_path, monkeypatch
+):
+    _, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    client = type(
+        "Client",
+        (),
+        {
+            "model": "qwen3.8:27b",
+            "service_id": "local-chat-completions/test",
+            "snapshot": Snapshot(b"pinned API configuration", "test-api", "1"),
+        },
+    )()
+    monkeypatch.setitem(TRIALS["T"], "local_runtime", lambda _: b"pinned runtime")
+    root = tmp_path / "live-campaign"
+    TRIALS["initialize"](root, bundle, model_client=client)
+    first = root / "runs/001-csv-A/ledger"
+    with Ledger.open(first) as ledger:
+        session = ledger.start_session()
+        request = Request(
+            Origin("episode/initial/model/1", "model", client.service_id, "1", {}),
+            ledger.project,
+        )
+        ledger.reserve(session, request, {"model": 1})
+        ledger.begin(session, request)
+        ledger.complete(
+            session,
+            request,
+            Result(Outcome.SUCCEEDED, 0, {"model": 1}, 1),
+            {
+                "response": b'{"command":"true"}',
+                "tokens.json": json.dumps(
+                    {"prompt_tokens": 11, "completion_tokens": 3, "total_tokens": 14}
+                ).encode(),
+            },
+        )
+        lost = Request(
+            Origin("episode/initial/model/2", "model", client.service_id, "1", {}),
+            ledger.project,
+        )
+        ledger.reserve(session, lost, {"model": 1})
+        ledger.begin(session, lost)
+    summary = TRIALS["report"](root)
+    row = summary["trials"][0]
+    assert summary["plan"]["scope"] == "development"
+    assert summary["plan"]["model"]["name"] == "qwen3.8:27b"
+    assert row["token_usage"] == {
+        "model_attempts": 2,
+        "reported_requests": 1,
+        "prompt_tokens": 11,
+        "completion_tokens": 3,
+        "total_tokens": 14,
+        "complete": False,
+    }
+    assert row["reserved"]["model"] == 1
+    assert summary["model_token_usage"] == {
+        "prompt_tokens": 11,
+        "completion_tokens": 3,
+        "total_tokens": 14,
+        "complete": False,
+    }
 
 
 @pytest.mark.parametrize("failure", ["unknown", "unproved"])
