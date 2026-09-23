@@ -81,6 +81,10 @@ Credential-free tests cover all five conditions.
 [Scripted trial accounting](docs/m5-migration.md#scripted-trial-accounting) now
 pins a development trial list and reports committed results, failures, missing
 runs, and recorded usage. Measured model comparisons remain planned.
+A [local chat adapter](docs/m5-migration.md#local-model-probe) now supports the
+OpenAI-compatible endpoint served by Ollama. Offline tests cover failed attempts,
+lost responses, and reuse. An explicit one-request probe records model metadata
+and token counts without executing generated commands.
 
 ## What we are building
 

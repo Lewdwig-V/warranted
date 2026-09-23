@@ -213,6 +213,72 @@ An interrupted setup has no complete plan and cannot run as a campaign.
 Keep its directory for diagnosis and prepare a new plan before starting work.
 This slice adds no provider adapter, spending authority, thresholds, or final task split.
 
+## Local model probe
+
+`LocalChatCompletions` supplies the worker's model boundary through a local
+OpenAI-compatible `/v1/chat/completions` endpoint.
+The wire format follows [Ollama's compatibility API](https://docs.ollama.com/api/openai-compatibility).
+The adapter uses Python's standard library and the existing host journal.
+It sends one text request per attempt, with redirects and environment proxies disabled.
+It does not use provider credentials, SDK retries, streaming, or automatic model fallback.
+
+The project snapshot `model-api` records the endpoint, model tag, seed, output limit,
+socket timeout, and fixed request parameters.
+The episode's service identity binds that configuration.
+Only permitted message roles and text enter the request.
+Worker metadata and the private ledger stay outside the prompt.
+The host retains the exact HTTP request, response body, status, and elapsed time.
+Valid token counts enter a separate `tokens.json` artifact.
+The ledger's `model` unit counts attempts, not tokens or money.
+HTTP failures and malformed replies each consume one attempt.
+Missing token counts remain unmeasured and block successful completion.
+Truncated output and reported output above the requested limit cannot produce worker actions.
+Malformed command text remains recorded before the worker rejects it.
+
+A timeout, dropped connection, or oversized response leaves the attempt unknown.
+Its reservation survives restart and blocks another dispatch.
+This API provides no durable lookup by Warranted operation identity.
+The adapter therefore cannot reconcile a lost response.
+Completed responses reuse the journal without another HTTP request.
+The socket timeout does not impose a total deadline or prove that server computation stopped.
+The adapter bounds request and response bodies at 2 MiB.
+
+Use an installed local Ollama model for the explicit probe:
+
+```bash
+uv run --locked python examples/m5/local_model.py init runs/gemma-probe \
+  --model gemma4:26b --max-tokens 64 --timeout 120
+uv run --locked python examples/m5/local_model.py run runs/gemma-probe
+uv run --locked python examples/m5/local_model.py run runs/gemma-probe
+```
+
+`init` reads metadata without requesting inference.
+It records the model digest, quantization details, model configuration, and server version.
+It rejects cloud-backed model metadata and does not download models.
+`run` compares that metadata before the single allowed inference request.
+It asks for `{"command":"true"}` and prints the result without executing it.
+Repeated `run` commands reuse the recorded response, even with Ollama stopped.
+A failed preflight leaves the reserved attempt blocked for inspection.
+Keep failed probe directories when preparing a new probe.
+
+The host trusts the local server and must prevent concurrent model or server changes.
+Metadata comparison is not an atomic attestation of the weights used for generation.
+The compatible API does not configure Ollama's context size.
+Server context defaults, prompt truncation, and hardware costs remain outside this probe's guarantees.
+Temperature zero and a recorded seed do not establish reproducible model output.
+This probe establishes connectivity and response handling only.
+It does not measure task quality, execute a treatment, or grant spending authority.
+Live A–E trials still need equal worker capabilities, persistent workspaces, and fixed inference budgets.
+Keep model downloads and inference outside ordinary tests and GitHub checks.
+
+The first local development probe on 2026-09-22 used Ollama 0.32.9 and
+`gemma4:26b` with Q4_K_M weights, digest
+`5571076f3d70050487b26b341705799e0ab29b808164f90d20d4cf84f699d251`.
+It requested at most 64 output tokens and timed out after 120 seconds without a response.
+The ledger retained an unknown attempt with one reserved model unit and no token counts.
+A repeated invocation stopped at that unknown attempt without another HTTP dispatch.
+This is a failed connectivity probe, not a model-quality result.
+
 ## Trial decisions still required
 
 Before paid development trials, choose available provider/model versions and an explicit total spending cap.
