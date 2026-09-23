@@ -170,15 +170,17 @@ jobs:
           uv sync --locked
       - name: Identify Podman storage version
         id: podman
-        run: echo "version=$(podman --version | awk '{print $3}')" >> "$GITHUB_OUTPUT"
-      - name: Restore native Podman image storage
+        run: |
+          echo "version=$(podman --version | awk '{print $3}')" >> "$GITHUB_OUTPUT"
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+      - name: Restore cached Podman storage archive
         id: podman-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
-            runs/podman-data/containers/storage
+            runs/podman-storage.tar
             runs/m4-tools/bundle.json
-          key: proof-store-v1-ubuntu-24.04-podman-${{ steps.podman.outputs.version }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/build_proof_bundle.py', 'src/warranted/containers.py', 'src/warranted/proofs.py', 'src/warranted/proof/**', 'src/warranted/sandbox.py') }}
+          key: proof-store-v1-ubuntu-24.04-podman-${{ steps.podman.outputs.version }}-uid-${{ steps.podman.outputs.uid }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/build_proof_bundle.py', 'src/warranted/containers.py', 'src/warranted/proofs.py', 'src/warranted/proof/**', 'src/warranted/sandbox.py') }}
       - name: Restore verifier image for cache migration
         id: verifier-cache
         if: steps.podman-cache.outputs.cache-hit != 'true'
@@ -196,6 +198,11 @@ jobs:
       - name: Load the cached pinned verifier
         if: steps.podman-cache.outputs.cache-hit != 'true' && steps.verifier-cache.outputs.cache-hit == 'true'
         run: podman load --input runs/m4-tools/proof-image.oci
+      - name: Unpack cached Podman image storage
+        if: steps.podman-cache.outputs.cache-hit == 'true'
+        run: |
+          mkdir -p runs/podman-data/containers
+          sudo tar --xattrs --xattrs-include='*' --acls --numeric-owner -xf runs/podman-storage.tar -C runs/podman-data/containers
       - name: Prepare the pinned migration runtime
         run: |
           runtime_image="$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
@@ -223,10 +230,15 @@ jobs:
           exit "$failed"
       - name: Save native Podman image storage
         if: success() && steps.podman-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo tar --xattrs --xattrs-include='*' --acls --numeric-owner -cf runs/podman-storage.tar -C runs/podman-data/containers storage
+          sudo chown "$(id -u):$(id -g)" runs/podman-storage.tar
+      - name: Cache native Podman image storage
+        if: success() && steps.podman-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
-            runs/podman-data/containers/storage
+            runs/podman-storage.tar
             runs/m4-tools/bundle.json
           key: ${{ steps.podman-cache.outputs.cache-primary-key }}
       - name: Retain proof reports and exact bundle identities
