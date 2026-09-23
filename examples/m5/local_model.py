@@ -10,7 +10,7 @@ from time import monotonic_ns
 from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 
-from warranted import chat_completions
+from warranted import attempts, chat_completions
 from warranted.acceptance import _encode
 from warranted.attempts import _NoRedirect
 from warranted.chat_completions import MAX_BYTES, LocalChatCompletions
@@ -39,10 +39,20 @@ def runtime(client: LocalChatCompletions, raw: dict[str, bytes] | None = None) -
             response = error
         with response:
             raw[f"{path.lstrip('/')}-status.json"] = _encode(response.status)
-            data = response.read(MAX_BYTES + 1)
-            raw[f"{path.lstrip('/')}-response"] = data
+            data = bytearray()
+            try:
+                while len(data) <= MAX_BYTES:
+                    chunk = response.read1(min(64 * 1024, MAX_BYTES + 1 - len(data)))
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+            finally:
+                raw[f"{path.lstrip('/')}-response"] = bytes(data)
         if len(data) > MAX_BYTES:
             raise ValueError("model metadata exceeds byte limit")
+        length = response.headers.get("Content-Length")
+        if length is not None and int(length) != len(data):
+            raise ValueError("incomplete model metadata response")
         if response.status != 200:
             raise ValueError(f"metadata HTTP status {response.status}")
         return json.loads(data, object_pairs_hook=_json_object)
@@ -112,6 +122,11 @@ def initialize(root: Path, client: LocalChatCompletions) -> None:
                 "m5/model-adapter/chat-completions.py",
                 "1",
             ),
+            "attempts.py": Snapshot(
+                Path(attempts.__file__).read_bytes(),
+                "m5/model-adapter/attempts.py",
+                "1",
+            ),
             "local-model.py": Snapshot(
                 Path(__file__).read_bytes(), "m5/model-adapter/local-model.py", "1"
             ),
@@ -124,6 +139,7 @@ def run(root: Path) -> dict:
     with Ledger.open(root) as ledger:
         for name, source in (
             ("chat-completions.py", Path(chat_completions.__file__)),
+            ("attempts.py", Path(attempts.__file__)),
             ("local-model.py", Path(__file__)),
         ):
             if (

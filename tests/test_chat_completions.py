@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from minisweagent.exceptions import FormatError
 
+from warranted import attempts
 from warranted.chat_completions import LocalChatCompletions
 from warranted.ledger import Ledger, Manifest, OperationConflict, Outcome
 from warranted.worker import Episode, Journal, UnknownOutcome, WorkerModel
@@ -20,20 +21,25 @@ from warranted.worker import Episode, Journal, UnknownOutcome, WorkerModel
 @contextmanager
 def server(body=None, status=200, drop=False, metadata=None):
     calls = []
+    release_metadata = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             calls.append((self.path, None))
-            self.send_response(metadata.get("status", 200))
-            self.end_headers()
             value = (
                 metadata["version"]
                 if self.path == "/api/version"
                 else {"models": [metadata["model"]]}
             )
-            self.wfile.write(
-                value if isinstance(value, bytes) else json.dumps(value).encode()
-            )
+            wire = value if isinstance(value, bytes) else json.dumps(value).encode()
+            self.send_response(metadata.get("status", 200))
+            if metadata.get("short"):
+                self.send_header("Content-Length", str(len(wire) + 1))
+            self.end_headers()
+            self.wfile.write(wire)
+            self.wfile.flush()
+            if metadata.get("stall"):
+                release_metadata.wait()
 
         def do_POST(self):
             calls.append(
@@ -69,6 +75,7 @@ def server(body=None, status=200, drop=False, metadata=None):
         try:
             yield f"http://127.0.0.1:{httpd.server_port}/v1", calls
         finally:
+            release_metadata.set()
             httpd.shutdown()
             thread.join()
 
@@ -329,7 +336,8 @@ def test_probe_rejects_cloud_and_changed_model_then_reuses_offline(tmp_path):
     assert probe["run"](tmp_path / "good") == {"command": "true", "executed": False}
 
 
-def test_probe_rejects_changed_adapter_before_inference(tmp_path, monkeypatch):
+@pytest.mark.parametrize("adapter", ["chat_completions", "attempts"])
+def test_probe_rejects_changed_adapter_before_inference(tmp_path, monkeypatch, adapter):
     probe = runpy.run_path(
         str(Path(__file__).resolve().parents[1] / "examples/m5/local_model.py")
     )
@@ -342,7 +350,9 @@ def test_probe_rejects_changed_adapter_before_inference(tmp_path, monkeypatch):
         client = LocalChatCompletions(url, "gemma4:26b")
         root = tmp_path / "adapter-changed"
         probe["initialize"](root, client)
-        changed = Path(probe["chat_completions"].__file__)
+        changed = Path(
+            attempts.__file__ if adapter == "attempts" else probe[adapter].__file__
+        )
         read_bytes = Path.read_bytes
 
         def changed_bytes(path):

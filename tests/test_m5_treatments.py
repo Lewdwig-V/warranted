@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from warranted import proofs
+from warranted import attempts, proofs
 from warranted import sandbox as sandbox_module
 from warranted.containers import PODMAN_COMMAND_TIMEOUT_SECONDS
 from warranted.contexts import Condition
@@ -397,7 +397,16 @@ def test_live_validation_does_not_poll_completed_runtime(tmp_path, monkeypatch):
 @pytest.mark.parametrize("entrypoint", ["probe", "treatment"])
 @pytest.mark.parametrize(
     "failure",
-    ["changed", "timeout", "malformed", "bad-json", "http-error", "oversized"],
+    [
+        "changed",
+        "timeout",
+        "malformed",
+        "bad-json",
+        "http-error",
+        "oversized",
+        "partial-timeout",
+        "short-body",
+    ],
 )
 def test_runtime_failure_is_settled_without_inference(
     tmp_path, monkeypatch, entrypoint, failure
@@ -443,6 +452,12 @@ def test_runtime_failure_is_settled_without_inference(
             metadata["status"] = 503
         elif failure == "oversized":
             metadata["version"] = b"x" * (2 * 1024 * 1024 + 1)
+        elif failure == "partial-timeout":
+            metadata["version"] = b'{"version":'
+            metadata["stall"] = True
+            monkeypatch.setitem(runtime_scope, "METADATA_REQUEST_TIMEOUT_SECONDS", 0.1)
+        elif failure == "short-body":
+            metadata["short"] = True
         else:
 
             def unavailable(*_args):
@@ -794,17 +809,20 @@ def test_changed_shared_helper_blocks_resume_before_dispatch(
         assert ledger.accounting()["tool"].spent == 1
 
 
-@pytest.mark.parametrize("adapter", ["local_model", "chat_completions"])
+@pytest.mark.parametrize("family", ["csv", "migration"])
+@pytest.mark.parametrize("adapter", ["local_model", "chat_completions", "attempts"])
 def test_changed_model_adapter_blocks_resume_before_dispatch(
-    tmp_path, monkeypatch, adapter
+    tmp_path, monkeypatch, family, adapter
 ):
-    demo, root, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    demo, root, bundle = scripted(tmp_path, monkeypatch, family, Condition.A)
     demo["demonstrate"]("start", root, bundle)
     before = (root / "worker-dispatches.jsonl").read_bytes()
     changed = (
         Path(demo["LOCAL"]["__file__"])
         if adapter == "local_model"
-        else Path(demo["chat_completions"].__file__)
+        else Path(
+            attempts.__file__ if adapter == "attempts" else demo[adapter].__file__
+        )
     )
     read_bytes = Path.read_bytes
 
