@@ -139,7 +139,14 @@ def trial_result(ledger: Ledger) -> dict:
             "prompt_tokens": sum(row["prompt_tokens"] for row in token_rows),
             "completion_tokens": sum(row["completion_tokens"] for row in token_rows),
             "total_tokens": sum(row["total_tokens"] for row in token_rows),
-            "complete": len(token_rows) == len(model_attempts),
+            "complete": all(
+                op.completion
+                and (
+                    op.completion.result.usage.get("model") == 0
+                    or "tokens.json" in op.completion.observation.artifacts
+                )
+                for op in model_attempts
+            ),
         }
     stages = {}
     for stage in ("start", "resume"):
@@ -345,9 +352,7 @@ def report(root: Path) -> dict:
                     row.get("token_usage", {}).get("total_tokens", 0) for row in rows
                 ),
                 "complete": all(
-                    row.get("state") == "completed"
-                    and row.get("token_usage", {}).get("complete") is True
-                    for row in rows
+                    row.get("token_usage", {}).get("complete") is True for row in rows
                 ),
             }
             if live_model

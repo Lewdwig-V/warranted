@@ -224,5 +224,8 @@ timeouts, three metadata socket timeouts per turn, and all bounded Podman calls.
 Socket timeouts do not set a total HTTP request deadline. The report sums
 recorded prompt and completion tokens across live-model runs. Fixed scripted
 runs keep token totals unreported.
+Failures before inference contribute known zero tokens. Token totals can be
+complete for an unfinished task when every recorded model operation has known
+token usage.
 One repetition of these two fixtures is development evidence, not a set of
 independent or held-out tasks.

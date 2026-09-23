@@ -100,8 +100,11 @@ def test_plan_preserves_all_slots_and_rejects_replaced_run(tmp_path, monkeypatch
         TRIALS["initialize"](root, bundle)
 
 
+@pytest.mark.parametrize(
+    "local_outcome", [Outcome.FAILED, Outcome.INFRASTRUCTURE_FAILURE]
+)
 def test_live_trial_report_retains_token_totals_and_unknown_model_usage(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, local_outcome
 ):
     _, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
     client = type(
@@ -117,6 +120,41 @@ def test_live_trial_report_retains_token_totals_and_unknown_model_usage(
     root = tmp_path / "live-campaign"
     TRIALS["initialize"](root, bundle, model_client=client)
     first = root / "runs/001-csv-A/ledger"
+    with Ledger.open(first) as ledger:
+        session = ledger.start_session()
+        local = Request(
+            Origin("local-model-failure", "model", client.service_id, "1", {}),
+            ledger.project,
+        )
+        ledger.reserve(session, local, {"model": 1})
+        ledger.begin(session, local)
+        ledger.complete(
+            session,
+            local,
+            Result(
+                local_outcome,
+                1 if local_outcome is Outcome.FAILED else None,
+                {"model": 0},
+                1,
+            ),
+            {"diagnostic": b"no inference dispatched"},
+        )
+    known = TRIALS["report"](root)
+    assert known["trials"][0]["qualified"] is False
+    assert known["trials"][0]["token_usage"] == {
+        "model_attempts": 1,
+        "reported_requests": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "complete": True,
+    }
+    assert known["model_token_usage"] == {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "complete": True,
+    }
     with Ledger.open(first) as ledger:
         session = ledger.start_session()
         request = Request(
@@ -147,7 +185,7 @@ def test_live_trial_report_retains_token_totals_and_unknown_model_usage(
     assert summary["plan"]["scope"] == "development"
     assert summary["plan"]["model"]["name"] == "qwen3.8:27b"
     assert row["token_usage"] == {
-        "model_attempts": 2,
+        "model_attempts": 3,
         "reported_requests": 1,
         "prompt_tokens": 11,
         "completion_tokens": 3,
@@ -161,6 +199,16 @@ def test_live_trial_report_retains_token_totals_and_unknown_model_usage(
         "total_tokens": 14,
         "complete": False,
     }
+    with Ledger.open(first) as ledger:
+        ledger.complete(
+            ledger.start_session(),
+            lost,
+            Result(Outcome.INFRASTRUCTURE_FAILURE, None, {"model": 1}, 1),
+            {"diagnostic": b"inference failed without token counts"},
+        )
+    unmeasured = TRIALS["report"](root)
+    assert unmeasured["trials"][0]["token_usage"]["complete"] is False
+    assert unmeasured["model_token_usage"]["complete"] is False
 
 
 @pytest.mark.parametrize("failure", ["unknown", "unproved"])
