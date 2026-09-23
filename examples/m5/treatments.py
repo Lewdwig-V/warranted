@@ -520,8 +520,9 @@ def prepare(host, family, condition, phase, old, proofs, model_client=None):
         )
     return Episode(
         phase,
-        "Use at most four shell commands. Combine task and input inspection in "
-        "your first command. Create and test result.json, then submit it. The "
+        "Use at most four shell commands. In the first command, inspect task.md, "
+        "context.json, tools.md, repository-files.json if present, and the other "
+        "task inputs together. Create and test result.json, then submit it. The "
         "final command must start with `printf '%s\\n' "
         "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT;` so the marker is the first "
         "stdout line. On continuation, use the restored workspace and current "

@@ -153,6 +153,10 @@ then three commands to produce, test, and submit the result. The final command
 must print the submission marker. Fixed responses still submit in one command.
 All conditions have the same limit.
 
+The prompt names `task.md`, `context.json`, `tools.md`, and
+`repository-files.json` when present so the first command can inspect them
+together. This prompt change needs a fresh run; prior ledgers pin the old source.
+
 ## Run and verify
 
 Prepare rootless Podman and a pinned bundle as in the
@@ -229,3 +233,36 @@ complete for an unfinished task when every recorded model operation has known
 token usage.
 One repetition of these two fixtures is development evidence, not a set of
 independent or held-out tasks.
+
+## First Qwen development attempt
+
+On 2026-09-23, one local `qwen3.8:27b` migration-A run began under a pinned
+development plan at `runs/m5-qwen-dev-20260923`. Ollama 0.34.2 reported
+Q4_K_M model digest `22130167c4c20e20c7b71454612966ca8e8171e9b3cc8ab6ce8aa6cbfec79643`.
+The plan digest is `dc00f8acf4bf10d34be813baf3b5346a40d364080bdfc70227c11645d3d7e40c`;
+its host code came from merge commit `a806b0f`.
+The run used seed 0, a 1,536-token output limit, a 180-second request deadline,
+and the four-command phase limit. The first episode made four successful model
+requests and four successful shell calls. Its generated program passed the
+public example and the model then ran more local checks, but it never submitted
+`result.json`. The host stopped at the phase limit before the revision checkpoint.
+No independent task check ran, so this is an unfinished task, not a task success.
+
+The ledger records 5,214 prompt tokens, 1,349 completion tokens, 6,563 total
+tokens, four spent model units, four spent tool units, and no reservations. The
+sum of recorded model durations is 76.5 seconds and the sum of tool durations
+is 35.1 seconds. These are operation times, not complete wall time or money.
+The other nine prepared slots were not run, so the campaign is incomplete.
+This attempt is development data and cannot become held-out evidence.
+
+The next development check uses a new plan and the clearer first-command
+instruction above. Keep the same model, task, evaluator, seed, request limits,
+four-command limit, host caps, and shell/file capabilities across A–E. Require
+both episodes to submit candidates, the approved revision and forced restart to
+recover, and a repeated resume to add no completed work. Count a missing
+submission as failure even if public examples pass. Report independent task
+checks, proof support, stale reuse, unknown attempts, tokens, spent units, and
+setup costs separately. Start the ten-slot development matrix only after this
+single-run recovery check; its public fixtures remain development data. A later
+comparison needs separate task lineages, untouched final instances, repeated
+runs, a fixed usefulness threshold, and a spending cap for any paid model.
