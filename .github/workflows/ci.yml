@@ -179,7 +179,8 @@ jobs:
           path: |
             runs/podman-storage.tar
             runs/m4-tools/bundle.json
-          key: proof-store-v1-ubuntu-24.04-podman-${{ steps.podman.outputs.version }}-uid-${{ steps.podman.outputs.uid }}-${{ hashFiles('.github/workflows/ci.yml', 'scripts/build_proof_bundle.py', 'src/warranted/containers.py', 'src/warranted/proofs.py', 'src/warranted/proof/**', 'src/warranted/sandbox.py') }}
+          # Bump v1 if the archived storage layout changes.
+          key: proof-store-v1-ubuntu-24.04-podman-${{ steps.podman.outputs.version }}-uid-${{ steps.podman.outputs.uid }}-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/containers.py', 'src/warranted/proofs.py', 'src/warranted/proof/**', 'src/warranted/sandbox.py') }}
       - name: Restore verifier image for cache migration
         id: verifier-cache
         if: steps.podman-cache.outputs.cache-hit != 'true'
@@ -215,7 +216,7 @@ jobs:
           test "$(podman info --format '{{.Store.GraphRoot}}')" = "$GITHUB_WORKSPACE/runs/podman-data/containers/storage"
       - name: Exercise proof verification, isolation, and receipt recovery
         run: |
-          uv run --locked pytest -q -m proof --durations=5 tests/test_proofs_native.py > /tmp/proofs-native.log 2>&1 &
+          uv run --locked pytest -q -n 4 -m proof --durations=5 tests/test_proofs_native.py > /tmp/proofs-native.log 2>&1 &
           native_pid=$!
           uv run --locked pytest -q -m proof --durations=5 tests/test_m4_fixture.py > /tmp/proofs-m4.log 2>&1 &
           m4_pid=$!
