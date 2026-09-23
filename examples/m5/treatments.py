@@ -665,8 +665,8 @@ def demonstrate(
 def run_stage(stage: str, root: Path, bundle: Path, *, crash=False, model_client=None):
     phase = "initial" if stage == "start" else "revised"
     with Ledger.open(root / "ledger") as ledger:
-        family, condition = validate(ledger, bundle, model_client=model_client)
         unresolved(ledger)
+        family, condition = validate(ledger, bundle, model_client=model_client)
         before = len(ledger.operations())
         host = M2["Experiment"](ledger, ledger.start_session(), root)
         revision = checkpoint(host, family)

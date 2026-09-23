@@ -13,7 +13,7 @@ import pytest
 
 from warranted import proofs
 from warranted.contexts import Condition
-from warranted.ledger import Ledger, Outcome, Result
+from warranted.ledger import Ledger, Origin, Outcome, Request, Result
 from warranted.worker import AttemptResult, UnknownOutcome, submitted_files
 
 SCRIPT = Path(__file__).resolve().parents[1] / "examples/m5/treatments.py"
@@ -177,6 +177,42 @@ def test_multistep_episode_reuses_one_sandbox(tmp_path, monkeypatch):
     )
     assert len(instances) == 1
     assert instances[0].calls == 2
+
+
+def test_unknown_live_attempt_blocks_before_runtime_poll(tmp_path, monkeypatch):
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    client = demo["local_client"](
+        "qwen3.8:27b",
+        base_url="http://127.0.0.1:11434/v1",
+        max_tokens=1536,
+        timeout=180,
+    )
+    root = tmp_path / "live-unknown"
+    demo["initialize"](
+        root,
+        "csv",
+        Condition.A,
+        bundle,
+        model_client=client,
+        model_runtime=b"pinned runtime",
+    )
+    with Ledger.open(root / "ledger") as ledger:
+        session = ledger.start_session()
+        request = Request(
+            Origin("episode/initial/model/1", "model", client.service_id, "1", {}),
+            ledger.project,
+        )
+        ledger.reserve(session, request, {"model": 1})
+        ledger.begin(session, request)
+
+    def unexpected_poll(_client):
+        pytest.fail("runtime metadata was polled before unknown work was blocked")
+
+    monkeypatch.setitem(demo, "local_runtime", unexpected_poll)
+    with pytest.raises(UnknownOutcome):
+        demo["demonstrate"]("start", root, bundle, model_client=client)
+    with Ledger.open(root / "ledger") as ledger:
+        assert ledger.accounting()["model"].reserved == 1
 
 
 def assert_recovered(report, family, condition):
