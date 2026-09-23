@@ -62,6 +62,7 @@ class Episode:
     model_service: str | None = None
     files: Mapping[str, Evidence] = field(default_factory=dict)
     workspace: Evidence | None = None
+    container_timeout_seconds: int = 120
 
     def __post_init__(self):
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", self.episode_id):
@@ -85,6 +86,11 @@ class Episode:
             raise ValueError("workspace requires captured evidence")
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("episode step limit must be between 1 and 100")
+        if (
+            type(self.container_timeout_seconds) is not int
+            or not 30 <= self.container_timeout_seconds <= 3600
+        ):
+            raise ValueError("container timeout must be between 30 and 3600 seconds")
         if self.continues is not None and (
             not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", self.continues)
             or self.continues == self.episode_id

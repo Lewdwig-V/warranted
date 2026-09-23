@@ -15,10 +15,11 @@ from uuid import uuid4
 
 os.environ["MSWEA_SILENT_STARTUP"] = "1"
 
-from warranted import contexts, sandbox, worker  # noqa: E402
+from warranted import containers, contexts, sandbox, worker  # noqa: E402
 from warranted import proofs as verifier
 from warranted.acceptance import Evidence, _encode  # noqa: E402
 from warranted.chat_completions import LocalChatCompletions  # noqa: E402
+from warranted.containers import PODMAN_COMMAND_TIMEOUT_SECONDS  # noqa: E402
 from warranted.contexts import Condition, capture_context, capture_history  # noqa: E402
 from warranted.exports import export_evidence  # noqa: E402
 from warranted.ledger import (  # noqa: E402
@@ -113,6 +114,7 @@ def snapshots(
         "m4-host.py": Path(P["M4"]["__file__"]),
         "m5-host.py": Path(M5["__file__"]),
         "contexts.py": Path(contexts.__file__),
+        "containers.py": Path(containers.__file__),
         "worker.py": Path(worker.__file__),
         "sandbox.py": Path(sandbox.__file__),
     }.items():
@@ -493,6 +495,16 @@ def prepare(host, family, condition, phase, old, proofs, model_client=None):
                 "Solution.lean" if name == "uniqueness" else "proof/" + name
             )
     files = capture_context(host.ledger, host.session, phase, layers)
+    max_steps = 4
+    container_timeout = 120
+    if model_client:
+        # Setup, two Podman calls per action, then capture and cleanup.
+        podman_calls = 7 + 2 * max_steps
+        container_timeout = (
+            max_steps * model_client.timeout_seconds
+            + podman_calls * PODMAN_COMMAND_TIMEOUT_SECONDS
+            + 60
+        )
     return Episode(
         phase,
         "Use at most four shell commands. Combine task and input inspection in "
@@ -505,7 +517,8 @@ def prepare(host, family, condition, phase, old, proofs, model_client=None):
         model=model_client.model if model_client else "m5-fixed-two-proposals-v1",
         model_service=model_client.service_id if model_client else None,
         environment=SANDBOX_ID,
-        max_steps=4,
+        max_steps=max_steps,
+        container_timeout_seconds=container_timeout,
         continues="initial" if revised else None,
         files=files,
         workspace=workspace,

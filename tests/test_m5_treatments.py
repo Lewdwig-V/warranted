@@ -12,9 +12,11 @@ from pathlib import Path
 import pytest
 
 from warranted import proofs
+from warranted import sandbox as sandbox_module
+from warranted.containers import PODMAN_COMMAND_TIMEOUT_SECONDS
 from warranted.contexts import Condition
 from warranted.ledger import Ledger, Origin, Outcome, Request, Result
-from warranted.worker import AttemptResult, UnknownOutcome, submitted_files
+from warranted.worker import AttemptResult, Episode, UnknownOutcome, submitted_files
 
 SCRIPT = Path(__file__).resolve().parents[1] / "examples/m5/treatments.py"
 
@@ -179,6 +181,34 @@ def test_multistep_episode_reuses_one_sandbox(tmp_path, monkeypatch):
     assert instances[0].calls == 2
 
 
+def test_sandbox_uses_the_episode_timeout_for_container_and_process(
+    tmp_path, monkeypatch
+):
+    demo, root, _ = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    episode = Episode(
+        "timed",
+        "Submit the fixture.",
+        (),
+        environment=demo["SANDBOX_ID"],
+        container_timeout_seconds=321,
+    )
+    sandbox = demo["Sandbox"](root / "ledger", episode)
+    calls = []
+
+    def run(args, *_args, **_kwargs):
+        calls.append(args)
+        code = 1 if args[:2] == ["container", "exists"] else 0
+        return subprocess.CompletedProcess(args, code, b"", b"")
+
+    monkeypatch.setattr(sandbox_module, "require_runtime", lambda: {})
+    monkeypatch.setattr(sandbox_module, "_run", run)
+    monkeypatch.setattr(sandbox_module, "input_files", lambda *_: {})
+    sandbox._prepare(True)
+    launch = next(args for args in calls if args[0] == "run")
+    assert "--timeout=321" in launch
+    assert launch[-2:] == ["sleep", "351"]
+
+
 def test_unknown_live_attempt_blocks_before_runtime_poll(tmp_path, monkeypatch):
     demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
     client = demo["local_client"](
@@ -197,6 +227,13 @@ def test_unknown_live_attempt_blocks_before_runtime_poll(tmp_path, monkeypatch):
         model_runtime=b"pinned runtime",
     )
     with Ledger.open(root / "ledger") as ledger:
+        host = demo["M2"]["Experiment"](ledger, ledger.start_session(), root)
+        episode = demo["prepare"](host, "csv", Condition.A, "initial", None, {}, client)
+        assert episode.container_timeout_seconds == (
+            4 * client.timeout_seconds
+            + (7 + 2 * 4) * PODMAN_COMMAND_TIMEOUT_SECONDS
+            + 60
+        )
         session = ledger.start_session()
         request = Request(
             Origin("episode/initial/model/1", "model", client.service_id, "1", {}),

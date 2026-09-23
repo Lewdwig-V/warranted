@@ -137,7 +137,10 @@ An empty output, forged receipt, or passing narrow check cannot waive other gate
 
 The containment slice uses local rootless Podman with cgroup v2 and seccomp.
 `Sandbox` pins a Python image by digest and gives each episode an 8 MiB workspace,
-128 MiB memory, one CPU, 32 processes, and a 120-second container lifetime.
+128 MiB memory, one CPU, 32 processes, and a 120-second default container
+lifetime. A live M5 episode pins a longer lifetime from its step limit, model
+timeout, and bounded Podman calls, so its workspace remains available across
+requests.
 Each command has a 20-second deadline and at most 2 MiB of combined output.
 The root filesystem is read-only. No host directory or runtime socket is mounted.
 The host supplies an explicit selection of public input snapshots and captured files.

@@ -217,7 +217,9 @@ uv run --locked python examples/m5/trials.py report runs/m5-qwen-ae
 Repeat the start and resume commands for every path in the plan. The start
 command exits when it kills the host after the approved checkpoint. Local runs
 pin the model and runtime before dispatch. Changed or missing metadata blocks a
-resume before new work. The report sums recorded prompt and completion tokens
-across live-model runs. Fixed scripted runs keep token totals unreported.
+resume before new work. Each live episode pins a container lifetime long enough
+for its four request timeouts and the bounded shell calls. The report sums
+recorded prompt and completion tokens across live-model runs. Fixed scripted
+runs keep token totals unreported.
 One repetition of these two fixtures is development evidence, not a set of
 independent or held-out tasks.
