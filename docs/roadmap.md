@@ -302,7 +302,8 @@ The [scripted trial ledger](m5-migration.md#scripted-trial-accounting) predeclar
 development runs and keeps missing runs and failed attempts in the report.
 It does not establish model quality, held-out results, or full campaign costs.
 The [local model probe](m5-migration.md#local-model-probe) adds an OpenAI-compatible
-attempt adapter with offline tests. Live A–E integration remains planned.
+attempt adapter with offline tests. The opt-in live A–E runner is implemented;
+model-quality trials remain planned.
 
 - [x] Complete the same restart/changed-premise exercise in this second task family.
 - [x] Exercise the pilot's migration regression outside the proved properties,

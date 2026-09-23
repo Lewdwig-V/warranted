@@ -139,6 +139,25 @@ def test_lost_response_keeps_reservation_and_never_retries(tmp_path, drop):
         ) == (0, 1)
 
 
+def test_oversized_prompt_is_known_local_failure(tmp_path):
+    with server(response()) as (url, calls):
+        client = LocalChatCompletions(url, "gemma4:26b")
+        root = tmp_path / "ledger"
+        setup(root, client)
+        for _ in range(2):
+            with Ledger.open(root) as ledger:
+                with pytest.raises(RuntimeError, match="model attempt"):
+                    WorkerModel(Journal(ledger, episode(client)), client).query(
+                        [{"role": "user", "content": "x" * (2 * 1024 * 1024)}]
+                    )
+        assert calls == []
+    with Ledger.open(root) as ledger:
+        operation = ledger.operations()[0]
+        assert operation.completion.result.outcome is Outcome.FAILED
+        assert ledger.accounting()["model"].reserved == 0
+        assert ledger.accounting()["model"].spent == 0
+
+
 @pytest.mark.parametrize(
     "body,status",
     [

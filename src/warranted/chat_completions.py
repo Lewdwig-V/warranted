@@ -138,7 +138,10 @@ class LocalChatCompletions:
             }
         )
         if len(wire) > MAX_BYTES:
-            raise ValueError("model request exceeds byte limit")
+            return AttemptResult(
+                Result(Outcome.FAILED, 1, {"model": 0}, 0),
+                {"diagnostic": b"model request exceeds byte limit"},
+            )
         opener = build_opener(ProxyHandler({}), _NoRedirect())
         started = monotonic_ns()
         query = HTTPRequest(

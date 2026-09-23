@@ -208,7 +208,7 @@ def snapshots(
     if model_client:
         captured["model-api"] = model_client.snapshot
         captured["runtime"] = Snapshot(
-            model_runtime or local_runtime(model_client),
+            model_runtime if model_runtime is not None else local_runtime(model_client),
             "ollama-local",
             "1",
         )
@@ -263,12 +263,17 @@ def validate(
 ) -> tuple[str, Condition]:
     env = ledger.project.manifest.environment
     family, condition = env["family"], Condition(env["condition"])
-    captured = snapshots(family, bundle)
-    if (
-        env != environment(family, condition, model_client)
-        or (captured := snapshots(family, bundle, model_client=model_client)).keys()
-        != ledger.project.snapshots.keys()
-    ):
+    if env != environment(family, condition, model_client):
+        raise ValueError("fixture or environment changed")
+    runtime = (
+        ledger.read_artifact(ledger.project.snapshots["runtime"].artifact)
+        if model_client
+        else None
+    )
+    captured = snapshots(
+        family, bundle, model_client=model_client, model_runtime=runtime
+    )
+    if captured.keys() != ledger.project.snapshots.keys():
         raise ValueError("fixture or environment changed")
     for name, value in captured.items():
         pinned = ledger.project.snapshots[name]
@@ -535,9 +540,16 @@ def prepare(host, family, condition, phase, old, proofs, model_client=None):
 
 def propose(root: Path, episode: Episode, model_client=None):
     def model(request, payload):
-        R["witness"](root, request)
         if model_client:
+            with Ledger.open(root / "ledger") as ledger:
+                expected = ledger.read_artifact(
+                    ledger.project.snapshots["runtime"].artifact
+                )
+            if local_runtime(model_client) != expected:
+                raise ValueError("local model or server changed since initialization")
+            R["witness"](root, request)
             return model_client(request, payload)
+        R["witness"](root, request)
         with Ledger.open(root / "ledger") as ledger:
             data = ledger.read_artifact(
                 ledger.project.snapshots[f"model-{episode.episode_id}.json"].artifact

@@ -275,6 +275,81 @@ def test_unknown_live_attempt_blocks_before_runtime_poll(tmp_path, monkeypatch):
         assert ledger.accounting()["model"].reserved == 1
 
 
+def test_live_validation_does_not_poll_completed_runtime(tmp_path, monkeypatch):
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    client = demo["local_client"](
+        "qwen3.8:27b",
+        base_url="http://127.0.0.1:11434/v1",
+        max_tokens=1536,
+        timeout=180,
+    )
+    root = tmp_path / "live-complete"
+    demo["initialize"](
+        root,
+        "csv",
+        Condition.A,
+        bundle,
+        model_client=client,
+        model_runtime=b"pinned runtime",
+    )
+    monkeypatch.setitem(
+        demo["validate"].__globals__,
+        "local_runtime",
+        lambda _client: pytest.fail("validation polled the live service"),
+    )
+    with Ledger.open(root / "ledger") as ledger:
+        assert demo["validate"](ledger, bundle, model_client=client) == (
+            "csv",
+            Condition.A,
+        )
+
+
+def test_live_runtime_is_checked_before_each_model_dispatch(tmp_path, monkeypatch):
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    client = demo["local_client"](
+        "qwen3.8:27b",
+        base_url="http://127.0.0.1:11434/v1",
+        max_tokens=1536,
+        timeout=180,
+    )
+    root = tmp_path / "live-dispatch"
+    demo["initialize"](
+        root,
+        "csv",
+        Condition.A,
+        bundle,
+        model_client=client,
+        model_runtime=b"pinned runtime",
+    )
+    calls = []
+
+    class Model:
+        def __call__(self, *_):
+            calls.append("inference")
+            return object()
+
+    model = Model()
+    scope = demo["propose"].__globals__
+    polls = iter((b"pinned runtime", b"changed runtime"))
+    monkeypatch.setitem(scope, "local_runtime", lambda _client: next(polls))
+
+    def workflow(*_args, **kwargs):
+        with Ledger.open(root / "ledger") as ledger:
+            request = Request(
+                Origin("episode/initial/model/1", "model", client.service_id, "1", {}),
+                ledger.project,
+            )
+        kwargs["model"](request, b"first")
+        kwargs["model"](request, b"second")
+
+    monkeypatch.setitem(scope, "run_workflow", workflow)
+    model.model = client.model
+    model.service_id = client.service_id
+    with pytest.raises(ValueError, match="local model or server changed"):
+        demo["propose"](root, Episode("initial", "task", ()), model)
+    assert calls == ["inference"]
+
+
 def assert_recovered(report, family, condition):
     assert report["old_candidate"]["old_receipt"] == "stale"
     assert report["old_candidate"]["status"] == "rejected"
