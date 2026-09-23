@@ -163,7 +163,8 @@ jobs:
           enable-cache: true
       - name: Prepare native proof isolation
         run: |
-          sudo apt-get install -y podman zstd
+          command -v podman
+          command -v zstd
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           uv python install
           uv sync --locked
