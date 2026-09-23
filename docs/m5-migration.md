@@ -235,7 +235,7 @@ Missing token counts remain unmeasured and block successful completion.
 Truncated output and reported output above the requested limit cannot produce worker actions.
 Malformed command text remains recorded before the worker rejects it.
 
-A timeout, dropped connection, or oversized response leaves the attempt unknown.
+A timeout, dropped connection, or oversized response after inference dispatch leaves the attempt unknown.
 Its reservation survives restart and blocks another dispatch.
 This API provides no durable lookup by Warranted operation identity.
 The adapter therefore cannot reconcile a lost response.
@@ -258,7 +258,8 @@ It rejects cloud-backed model metadata and does not download models.
 `run` compares that metadata before the single allowed inference request.
 It asks for `{"command":"true"}` and prints the result without executing it.
 Repeated `run` commands reuse the recorded response, even with Ollama stopped.
-A failed preflight leaves the reserved attempt blocked for inspection.
+If metadata changes or its request fails before inference, the host records an infrastructure failure with zero model usage.
+It releases the reservation and reuses that failure on later runs without polling Ollama again.
 Keep failed probe directories when preparing a new probe.
 
 The host trusts the local server and must prevent concurrent model or server changes.

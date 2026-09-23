@@ -6,14 +6,15 @@ import argparse
 import json
 import re
 from pathlib import Path
+from time import monotonic_ns
 from urllib.request import ProxyHandler, Request, build_opener
 
 from warranted import chat_completions
 from warranted.acceptance import _encode
 from warranted.attempts import _NoRedirect
 from warranted.chat_completions import MAX_BYTES, LocalChatCompletions
-from warranted.ledger import Ledger, Manifest, Snapshot, _json_object
-from warranted.worker import Episode, Journal, WorkerModel
+from warranted.ledger import Ledger, Manifest, Outcome, Result, Snapshot, _json_object
+from warranted.worker import AttemptResult, Episode, Journal, WorkerModel
 
 PROMPT = 'Return exactly this JSON object: {"command":"true"}. No other text.'
 
@@ -51,6 +52,28 @@ def runtime(client: LocalChatCompletions) -> bytes:
     ):
         raise ValueError("probe requires installed local model files")
     return _encode({"version": version, "model": model, "show": show})
+
+
+def runtime_failure(
+    client: LocalChatCompletions, expected: bytes
+) -> AttemptResult | None:
+    """Settle metadata errors without treating an unsent inference as unknown."""
+    started = monotonic_ns()
+    try:
+        if runtime(client) != expected:
+            raise ValueError("local model or server changed since initialization")
+    except Exception as error:
+        # This scope only reads metadata. Inference dispatch stays outside it.
+        return AttemptResult(
+            Result(
+                Outcome.INFRASTRUCTURE_FAILURE,
+                None,
+                {"model": 0},
+                monotonic_ns() - started,
+            ),
+            {"diagnostic": f"{type(error).__name__}: {error}".encode()},
+        )
+    return None
 
 
 def initialize(root: Path, client: LocalChatCompletions) -> None:
@@ -122,8 +145,9 @@ def run(root: Path) -> dict:
             expected = ledger.read_artifact(
                 ledger.project.snapshots["runtime"].artifact
             )
-            if runtime(client) != expected:
-                raise ValueError("local model or server changed since initialization")
+            failure = runtime_failure(client, expected)
+            if failure is not None:
+                return failure
             return client(request, payload)
 
         # Completed responses bypass the boundary, including all metadata reads.

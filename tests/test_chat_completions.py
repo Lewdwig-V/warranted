@@ -317,7 +317,7 @@ def test_probe_rejects_cloud_and_changed_model_then_reuses_offline(tmp_path):
         metadata["show"] = {}
         probe["initialize"](tmp_path / "changed", client)
         metadata["model"]["digest"] = "b" * 64
-        with pytest.raises(ValueError, match="changed"):
+        with pytest.raises(RuntimeError, match="model attempt"):
             probe["run"](tmp_path / "changed")
         assert not any(path == "/v1/chat/completions" for path, _ in calls)
         probe["initialize"](tmp_path / "good", client)

@@ -304,6 +304,80 @@ def test_live_validation_does_not_poll_completed_runtime(tmp_path, monkeypatch):
         )
 
 
+@pytest.mark.parametrize("entrypoint", ["probe", "treatment"])
+@pytest.mark.parametrize("failure", ["changed", "timeout", "malformed"])
+def test_runtime_failure_is_settled_without_inference(
+    tmp_path, monkeypatch, entrypoint, failure
+):
+    from test_chat_completions import response, server
+
+    metadata = {
+        "version": {"version": "test"},
+        "model": {"name": "gemma4:26b", "size": 1, "digest": "a" * 64},
+        "show": {},
+    }
+    with server(response(), metadata=metadata) as (url, calls):
+        root = tmp_path / "live"
+        if entrypoint == "treatment":
+            demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+            client = demo["local_client"](
+                "gemma4:26b", base_url=url, max_tokens=64, timeout=10
+            )
+            demo["initialize"](root, "csv", Condition.A, bundle, model_client=client)
+            ledger_root = root / "ledger"
+            runtime_scope = demo["LOCAL"]["runtime"].__globals__
+
+            def invoke():
+                return demo["demonstrate"]("start", root, bundle, model_client=client)
+
+        else:
+            probe = runpy.run_path(str(SCRIPT.with_name("local_model.py")))
+            probe["initialize"](root, probe["LocalChatCompletions"](url, "gemma4:26b"))
+            ledger_root = root
+            runtime_scope = probe["runtime"].__globals__
+
+            def invoke():
+                return probe["run"](root)
+
+        if failure == "changed":
+            metadata["model"]["digest"] = "b" * 64
+        elif failure == "malformed":
+            metadata["show"] = []
+        else:
+
+            def unavailable(*_args):
+                raise TimeoutError("metadata unavailable")
+
+            monkeypatch.setitem(runtime_scope, "build_opener", unavailable)
+
+        with pytest.raises(RuntimeError):
+            invoke()
+        assert not any(path == "/v1/chat/completions" for path, _ in calls)
+        with Ledger.open(ledger_root) as ledger:
+            operation = next(
+                op for op in ledger.operations() if op.request.origin.kind == "model"
+            )
+            completion = operation.completion
+            assert completion is not None
+            assert completion.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
+            assert completion.result.usage == {"model": 0}
+            assert ledger.read_artifact(completion.observation.artifacts["diagnostic"])
+            balance = ledger.accounting()["model"]
+            assert (balance.spent, balance.reserved) == (0, 0)
+
+        monkeypatch.setitem(
+            runtime_scope,
+            "build_opener",
+            lambda *_args: pytest.fail("completed failure polled the service again"),
+        )
+        with pytest.raises(RuntimeError):
+            invoke()
+        with Ledger.open(ledger_root) as ledger:
+            assert ledger.lookup(operation.request).completion == completion
+            balance = ledger.accounting()["model"]
+            assert (balance.spent, balance.reserved) == (0, 0)
+
+
 def test_live_runtime_is_checked_before_each_model_dispatch(tmp_path, monkeypatch):
     demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
     client = demo["local_client"](
@@ -331,7 +405,11 @@ def test_live_runtime_is_checked_before_each_model_dispatch(tmp_path, monkeypatc
     model = Model()
     scope = demo["propose"].__globals__
     polls = iter((b"pinned runtime", b"changed runtime"))
-    monkeypatch.setitem(scope, "local_runtime", lambda _client: next(polls))
+    monkeypatch.setitem(
+        scope["LOCAL"]["runtime_failure"].__globals__,
+        "runtime",
+        lambda _client: next(polls),
+    )
 
     def workflow(*_args, **kwargs):
         with Ledger.open(root / "ledger") as ledger:
@@ -340,13 +418,15 @@ def test_live_runtime_is_checked_before_each_model_dispatch(tmp_path, monkeypatc
                 ledger.project,
             )
         kwargs["model"](request, b"first")
-        kwargs["model"](request, b"second")
+        failed = kwargs["model"](request, b"second")
+        assert failed.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
+        assert failed.result.usage == {"model": 0}
+        return {"exit_status": "Submitted"}
 
     monkeypatch.setitem(scope, "run_workflow", workflow)
     model.model = client.model
     model.service_id = client.service_id
-    with pytest.raises(ValueError, match="local model or server changed"):
-        demo["propose"](root, Episode("initial", "task", ()), model)
+    demo["propose"](root, Episode("initial", "task", ()), model)
     assert calls == ["inference"]
 
 

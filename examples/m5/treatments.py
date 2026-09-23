@@ -545,8 +545,9 @@ def propose(root: Path, episode: Episode, model_client=None):
                 expected = ledger.read_artifact(
                     ledger.project.snapshots["runtime"].artifact
                 )
-            if local_runtime(model_client) != expected:
-                raise ValueError("local model or server changed since initialization")
+            failure = LOCAL["runtime_failure"](model_client, expected)
+            if failure is not None:
+                return failure
             R["witness"](root, request)
             return model_client(request, payload)
         R["witness"](root, request)

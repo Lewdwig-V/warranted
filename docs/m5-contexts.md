@@ -216,8 +216,10 @@ uv run --locked python examples/m5/trials.py report runs/m5-qwen-ae
 
 Repeat the start and resume commands for every path in the plan. The start
 command exits when it kills the host after the approved checkpoint. Local runs
-pin the model and runtime before dispatch. Changed or missing metadata blocks a
-resume before new work. Each live episode pins a container lifetime long enough
+pin the model and runtime before each new inference request. Changed or missing
+metadata records an infrastructure failure with zero model usage and releases
+the reservation. Repeated calls reuse that failure without polling Ollama.
+Each live episode pins a container lifetime long enough
 for its four request timeouts and the bounded shell calls. The report sums
 recorded prompt and completion tokens across live-model runs. Fixed scripted
 runs keep token totals unreported.
