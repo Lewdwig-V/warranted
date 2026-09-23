@@ -255,7 +255,7 @@ is 35.1 seconds. These are operation times, not complete wall time or money.
 The other nine prepared slots were not run, so the campaign is incomplete.
 This attempt is development data and cannot become held-out evidence.
 
-The next development check uses a new plan and the clearer first-command
+The follow-up development check below uses a new plan and the clearer first-command
 instruction above. Keep the same model, task, evaluator, seed, request limits,
 four-command limit, host caps, and shell/file capabilities across A–E. Require
 both episodes to submit candidates, the approved revision and forced restart to
@@ -266,3 +266,38 @@ setup costs separately. Start the ten-slot development matrix only after this
 single-run recovery check; its public fixtures remain development data. A later
 comparison needs separate task lineages, untouched final instances, repeated
 runs, a fixed usefulness threshold, and a spending cap for any paid model.
+
+## Second Qwen development attempt
+
+After PR #28 merged at `f6ab1fc`, a fresh plan at
+`runs/m5-qwen-dev-20260923-next` pinned digest
+`e47d2e0b82631f30ce34805bf0d5f5da2b8621878f40de1667314623dc50e475`.
+One migration-A run used the same local model and limits. The first command
+inspected the named inputs; the second separately opened `tool-targets.json`
+and listed the workspace. The third wrote `migrate.py`; the fourth tested it
+against public examples and negative cases. The worker did not create
+`result.json` or submit. No independent task check or forced restart ran.
+
+The ledger records 6,144 prompt tokens, 1,088 completion tokens, 7,232 total
+tokens, four spent model units, four spent tool units, and no reservations.
+Recorded model operations total 13.9 seconds and tool operations 15.6 seconds;
+these are not complete wall time or monetary cost. The campaign remains
+incomplete. The failed run remains development evidence, not task success.
+
+A further one-run experiment used a new plan at
+`runs/m5-qwen-dev-20260923-inputs`, digest
+`1117756db7b2b1a15352f591f4e521f3570a774935cf7ba440318dd130459114`.
+Its temporary prompt named `tool-targets.json` and the workspace explicitly.
+Qwen still used a second command to inspect empty workspace files. It wrote
+`migrate.py` on command three. Its fourth model response exceeded the 1,536-token
+limit while generating a long test command, so the model attempt failed and no
+fourth shell command ran. The second shell command also exited 1 because the
+inspected files were absent. No submission, task check, or forced restart ran.
+The ledger records 6,358 prompt tokens, 2,174 completion tokens, 8,532 total
+tokens, four spent model units, three spent tool units, and no reservations.
+Recorded model operations total 23.2 seconds and tool operations 11.5 seconds.
+This input-naming prompt did not solve the submission problem and is not retained.
+All three local Qwen attempts remain development failures under the current
+four-command, 1,536-token setup; none tests the revision/restart path.
+Further development trials need a model that submits under a pinned plan before
+the ten-slot matrix can start. A paid provider also needs a spending cap.
