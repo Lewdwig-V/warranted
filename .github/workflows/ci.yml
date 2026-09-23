@@ -167,14 +167,46 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           uv python install
           uv sync --locked
+      - name: Restore the pinned verifier image
+        id: proof-cache
+        uses: actions/cache/restore@55cc8345863c7c4cc66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            runs/m4-tools/bundle.json
+            runs/m4-tools/proof-image.oci
+          key: proof-ubuntu-24.04-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/containers.py', 'src/warranted/proofs.py', 'src/warranted/proof/**') }}
       - name: Build the pinned verifier
+        if: steps.proof-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p runs/m4-tools
-          uv run --locked python scripts/build_proof_bundle.py runs/m4-tools | tee runs/m4-tools/build.log
+          uv run --locked python scripts/build_proof_bundle.py runs/m4-tools --image-archive runs/m4-tools/proof-image.oci | tee runs/m4-tools/build.log
+      - name: Load the cached pinned verifier
+        if: steps.proof-cache.outputs.cache-hit == 'true'
+        run: podman load --input runs/m4-tools/proof-image.oci
       - name: Prepare the pinned migration runtime
         run: podman pull "$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
       - name: Exercise proof verification, isolation, and receipt recovery
-        run: uv run --locked pytest -q -m proof --durations=5 tests/test_proofs_native.py tests/test_m4_fixture.py tests/test_m5_treatments.py
+        run: |
+          uv run --locked pytest -q -m proof --durations=5 tests/test_proofs_native.py > /tmp/proofs-native.log 2>&1 &
+          native_pid=$!
+          uv run --locked pytest -q -m proof --durations=5 tests/test_m4_fixture.py > /tmp/proofs-m4.log 2>&1 &
+          m4_pid=$!
+          uv run --locked pytest -q -m proof --durations=5 tests/test_m5_treatments.py > /tmp/proofs-m5.log 2>&1 &
+          m5_pid=$!
+          failed=0
+          wait "$native_pid" || failed=1
+          wait "$m4_pid" || failed=1
+          wait "$m5_pid" || failed=1
+          cat /tmp/proofs-native.log /tmp/proofs-m4.log /tmp/proofs-m5.log
+          exit "$failed"
+      - name: Save the pinned verifier image
+        if: success() && steps.proof-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7c4cc66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            runs/m4-tools/bundle.json
+            runs/m4-tools/proof-image.oci
+          key: ${{ steps.proof-cache.outputs.cache-primary-key }}
       - name: Retain proof reports and exact bundle identities
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
