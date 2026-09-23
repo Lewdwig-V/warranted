@@ -13,7 +13,7 @@ from time import perf_counter_ns
 from warranted.proofs import RESOURCES, policy_digest
 
 
-def build(root: Path) -> Path:
+def build(root: Path, image_archive: Path | None = None) -> Path:
     started = perf_counter_ns()
     root = root.resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -111,8 +111,23 @@ def build(root: Path) -> Path:
         "image": image,
         "toolchain": pins,
         "manifest": json.loads(manifest),
-        "build_elapsed_ns": perf_counter_ns() - started,
     }
+    if image_archive is not None:
+        image_archive = image_archive.resolve()
+        image_archive.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            [
+                "podman",
+                "save",
+                "--format",
+                "oci-archive",
+                "--output",
+                str(image_archive),
+                image,
+            ],
+            check=True,
+        )
+    bundle["build_elapsed_ns"] = perf_counter_ns() - started
     path = root / "bundle.json"
     path.write_text(json.dumps(bundle, sort_keys=True, indent=2) + "\n")
     print(path, flush=True)
@@ -122,4 +137,6 @@ def build(root: Path) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("destination", type=Path)
-    build(parser.parse_args().destination)
+    parser.add_argument("--image-archive", type=Path)
+    args = parser.parse_args()
+    build(args.destination, args.image_archive)

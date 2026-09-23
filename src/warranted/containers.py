@@ -8,6 +8,7 @@ import subprocess
 from time import monotonic
 
 OUTPUT_LIMIT = 2 * 1024 * 1024
+PODMAN_COMMAND_TIMEOUT_SECONDS = 20
 
 
 class SandboxFailure(RuntimeError):
@@ -20,7 +21,7 @@ def _run(
     args: list[str],
     data: bytes = b"",
     *,
-    seconds: int = 20,
+    seconds: int = PODMAN_COMMAND_TIMEOUT_SECONDS,
     output_limit: int = OUTPUT_LIMIT,
 ) -> subprocess.CompletedProcess:
     """Bound client time and captured bytes without buffering unbounded output."""

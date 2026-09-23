@@ -8,6 +8,7 @@ from dataclasses import replace
 from http.client import RemoteDisconnected
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from time import monotonic
 
 import pytest
 from minisweagent.exceptions import FormatError
@@ -18,20 +19,37 @@ from warranted.worker import Episode, Journal, UnknownOutcome, WorkerModel
 
 
 @contextmanager
-def server(body=None, status=200, drop=False, metadata=None):
+def server(body=None, status=200, drop=False, metadata=None, drip=None):
     calls = []
+    release_metadata = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
+        def write_body(self, wire, slow=False):
+            size = max(1, len(wire) // 10) if slow else len(wire)
+            for offset in range(0, len(wire), size):
+                try:
+                    self.wfile.write(wire[offset : offset + size])
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+                if slow and release_metadata.wait(0.15):
+                    return
+
         def do_GET(self):
             calls.append((self.path, None))
-            self.send_response(200)
-            self.end_headers()
             value = (
                 metadata["version"]
                 if self.path == "/api/version"
                 else {"models": [metadata["model"]]}
             )
-            self.wfile.write(json.dumps(value).encode())
+            wire = value if isinstance(value, bytes) else json.dumps(value).encode()
+            self.send_response(metadata.get("status", 200))
+            if metadata.get("short"):
+                self.send_header("Content-Length", str(len(wire) + 1))
+            self.end_headers()
+            self.write_body(wire, metadata.get("drip", False))
+            if metadata.get("stall"):
+                release_metadata.wait()
 
         def do_POST(self):
             calls.append(
@@ -48,13 +66,19 @@ def server(body=None, status=200, drop=False, metadata=None):
             if drop == "before":
                 self.close_connection = True
                 return
+            if drip == "headers":
+                self.write_body(
+                    b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n", True
+                )
+                self.write_body(body)
+                return
             self.send_response(status)
             if drop == "partial":
                 self.send_header("Content-Length", str(len(body) + 1))
             if status == 307:
                 self.send_header("Location", "/redirected")
             self.end_headers()
-            self.wfile.write(body)
+            self.write_body(body, drip == "body")
 
         def log_message(self, *_):
             pass
@@ -67,6 +91,7 @@ def server(body=None, status=200, drop=False, metadata=None):
         try:
             yield f"http://127.0.0.1:{httpd.server_port}/v1", calls
         finally:
+            release_metadata.set()
             httpd.shutdown()
             thread.join()
 
@@ -137,6 +162,44 @@ def test_lost_response_keeps_reservation_and_never_retries(tmp_path, drop):
             ledger.accounting()["model"].spent,
             ledger.accounting()["model"].reserved,
         ) == (0, 1)
+
+
+@pytest.mark.parametrize("phase", ["headers", "body"])
+def test_drip_response_has_total_deadline_and_stays_unknown(tmp_path, phase):
+    with server(response(), drip=phase) as (url, calls):
+        client = LocalChatCompletions(url, "gemma4:26b", timeout_seconds=1)
+        root = tmp_path / "deadline"
+        setup(root, client)
+        started = monotonic()
+        with pytest.raises(TimeoutError):
+            query(root, client)
+        assert monotonic() - started < 2
+        with pytest.raises(UnknownOutcome):
+            query(root, client)
+        assert len(calls) == 1
+        with Ledger.open(root) as ledger:
+            assert ledger.operations()[0].state == "unknown"
+            balance = ledger.accounting()["model"]
+            assert (balance.spent, balance.reserved) == (0, 1)
+
+
+def test_oversized_prompt_is_known_local_failure(tmp_path):
+    with server(response()) as (url, calls):
+        client = LocalChatCompletions(url, "gemma4:26b")
+        root = tmp_path / "ledger"
+        setup(root, client)
+        for _ in range(2):
+            with Ledger.open(root) as ledger:
+                with pytest.raises(RuntimeError, match="model attempt"):
+                    WorkerModel(Journal(ledger, episode(client)), client).query(
+                        [{"role": "user", "content": "x" * (2 * 1024 * 1024)}]
+                    )
+        assert calls == []
+    with Ledger.open(root) as ledger:
+        operation = ledger.operations()[0]
+        assert operation.completion.result.outcome is Outcome.FAILED
+        assert ledger.accounting()["model"].reserved == 0
+        assert ledger.accounting()["model"].spent == 0
 
 
 @pytest.mark.parametrize(
@@ -298,7 +361,7 @@ def test_probe_rejects_cloud_and_changed_model_then_reuses_offline(tmp_path):
         metadata["show"] = {}
         probe["initialize"](tmp_path / "changed", client)
         metadata["model"]["digest"] = "b" * 64
-        with pytest.raises(ValueError, match="changed"):
+        with pytest.raises(RuntimeError, match="model attempt"):
             probe["run"](tmp_path / "changed")
         assert not any(path == "/v1/chat/completions" for path, _ in calls)
         probe["initialize"](tmp_path / "good", client)
@@ -306,3 +369,32 @@ def test_probe_rejects_cloud_and_changed_model_then_reuses_offline(tmp_path):
         assert sum(path == "/v1/chat/completions" for path, _ in calls) == 1
     # Server is stopped. Reuse must not even query metadata.
     assert probe["run"](tmp_path / "good") == {"command": "true", "executed": False}
+
+
+@pytest.mark.parametrize(
+    "adapter", ["chat_completions", "attempts", "worker", "acceptance", "ledger"]
+)
+def test_probe_rejects_changed_adapter_before_inference(tmp_path, monkeypatch, adapter):
+    probe = runpy.run_path(
+        str(Path(__file__).resolve().parents[1] / "examples/m5/local_model.py")
+    )
+    metadata = {
+        "version": {"version": "test"},
+        "model": {"name": "gemma4:26b", "size": 1, "digest": "a" * 64},
+        "show": {},
+    }
+    with server(response(), metadata=metadata) as (url, calls):
+        client = LocalChatCompletions(url, "gemma4:26b")
+        root = tmp_path / "adapter-changed"
+        probe["initialize"](root, client)
+        changed = Path(probe["chat_completions"].__file__).with_name(adapter + ".py")
+        read_bytes = Path.read_bytes
+
+        def changed_bytes(path):
+            data = read_bytes(path)
+            return data + b"\n# changed model adapter\n" if path == changed else data
+
+        monkeypatch.setattr(Path, "read_bytes", changed_bytes)
+        with pytest.raises(ValueError, match="model adapter changed"):
+            probe["run"](root)
+        assert not any(path == "/v1/chat/completions" for path, _ in calls)

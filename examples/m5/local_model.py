@@ -6,31 +6,46 @@ import argparse
 import json
 import re
 from pathlib import Path
-from urllib.request import ProxyHandler, Request, build_opener
+from time import monotonic_ns
 
+from warranted import chat_completions
 from warranted.acceptance import _encode
-from warranted.attempts import _NoRedirect
-from warranted.chat_completions import MAX_BYTES, LocalChatCompletions
-from warranted.ledger import Ledger, Manifest, Snapshot, _json_object
-from warranted.worker import Episode, Journal, WorkerModel
+from warranted.chat_completions import MAX_BYTES, LocalChatCompletions, http_response
+from warranted.ledger import Ledger, Manifest, Outcome, Result, Snapshot, _json_object
+from warranted.worker import AttemptResult, Episode, Journal, WorkerModel
 
 PROMPT = 'Return exactly this JSON object: {"command":"true"}. No other text.'
+METADATA_REQUEST_TIMEOUT_SECONDS = 10
 
 
-def runtime(client: LocalChatCompletions) -> bytes:
+def runtime(client: LocalChatCompletions, raw: dict[str, bytes] | None = None) -> bytes:
     """Read Ollama metadata only; reject cloud-backed models before inference."""
-    opener = build_opener(ProxyHandler({}), _NoRedirect())
+    if raw is None:
+        raw = {}
 
     def read(path, payload=None):
-        request = Request(
+        with http_response(
             client.base_url.removesuffix("/v1") + path,
-            data=None if payload is None else _encode(payload),
-            headers={"Content-Type": "application/json"},
-        )
-        with opener.open(request, timeout=10) as response:
-            data = response.read(MAX_BYTES + 1)
+            None if payload is None else _encode(payload),
+            METADATA_REQUEST_TIMEOUT_SECONDS,
+        ) as response:
+            raw[f"{path.lstrip('/')}-status.json"] = _encode(response.status)
+            data = bytearray()
+            try:
+                while len(data) <= MAX_BYTES:
+                    chunk = response.read1(min(64 * 1024, MAX_BYTES + 1 - len(data)))
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+            finally:
+                raw[f"{path.lstrip('/')}-response"] = bytes(data)
         if len(data) > MAX_BYTES:
             raise ValueError("model metadata exceeds byte limit")
+        length = response.headers.get("Content-Length")
+        if length is not None and int(length) != len(data):
+            raise ValueError("incomplete model metadata response")
+        if response.status != 200:
+            raise ValueError(f"metadata HTTP status {response.status}")
         return json.loads(data, object_pairs_hook=_json_object)
 
     version = read("/api/version")
@@ -52,6 +67,47 @@ def runtime(client: LocalChatCompletions) -> bytes:
     return _encode({"version": version, "model": model, "show": show})
 
 
+def runtime_failure(
+    client: LocalChatCompletions, expected: bytes
+) -> AttemptResult | None:
+    """Settle metadata errors without treating an unsent inference as unknown."""
+    started = monotonic_ns()
+    raw = {}
+    try:
+        raw["runtime.json"] = runtime(client, raw)
+        if raw["runtime.json"] != expected:
+            raise ValueError("local model or server changed since initialization")
+    except Exception as error:
+        # This scope only reads metadata. Inference dispatch stays outside it.
+        raw["diagnostic"] = f"{type(error).__name__}: {error}".encode()
+        return AttemptResult(
+            Result(
+                Outcome.INFRASTRUCTURE_FAILURE,
+                None,
+                {"model": 0},
+                monotonic_ns() - started,
+            ),
+            raw,
+        )
+    return None
+
+
+def implementation() -> dict[str, Snapshot]:
+    """Pin the complete local package, including added or removed source files."""
+    package = Path(chat_completions.__file__).parent
+    sources = {
+        "local-model.py": Path(__file__),
+        **{
+            "warranted/" + path.relative_to(package).as_posix(): path
+            for path in package.rglob("*.py")
+        },
+    }
+    return {
+        "implementation/" + name: Snapshot(path.read_bytes(), "m5/host/" + name, "1")
+        for name, path in sources.items()
+    }
+
+
 def initialize(root: Path, client: LocalChatCompletions) -> None:
     metadata = runtime(client)
     with Ledger.create(
@@ -68,6 +124,7 @@ def initialize(root: Path, client: LocalChatCompletions) -> None:
             "model-api": client.snapshot,
             "runtime": Snapshot(metadata, client.base_url, "ollama-metadata-v1"),
             "prompt": Snapshot(PROMPT.encode(), "m5-local-model-probe", "1"),
+            **implementation(),
         },
     ):
         pass
@@ -75,6 +132,20 @@ def initialize(root: Path, client: LocalChatCompletions) -> None:
 
 def run(root: Path) -> dict:
     with Ledger.open(root) as ledger:
+        current = implementation()
+        pinned = {
+            name
+            for name in ledger.project.snapshots
+            if name.startswith("implementation/")
+        }
+        if current.keys() != pinned:
+            raise ValueError("model adapter changed since initialization")
+        for name, source in current.items():
+            if (
+                ledger.read_artifact(ledger.project.snapshots[name].artifact)
+                != source.data
+            ):
+                raise ValueError("model adapter changed since initialization")
         config = json.loads(
             ledger.read_artifact(ledger.project.snapshots["model-api"].artifact)
         )
@@ -104,8 +175,9 @@ def run(root: Path) -> dict:
             expected = ledger.read_artifact(
                 ledger.project.snapshots["runtime"].artifact
             )
-            if runtime(client) != expected:
-                raise ValueError("local model or server changed since initialization")
+            failure = runtime_failure(client, expected)
+            if failure is not None:
+                return failure
             return client(request, payload)
 
         # Completed responses bypass the boundary, including all metadata reads.

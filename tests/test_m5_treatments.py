@@ -12,14 +12,24 @@ from pathlib import Path
 import pytest
 
 from warranted import proofs
+from warranted import sandbox as sandbox_module
+from warranted.containers import PODMAN_COMMAND_TIMEOUT_SECONDS
 from warranted.contexts import Condition
-from warranted.ledger import Ledger, Outcome, Result
-from warranted.worker import AttemptResult, UnknownOutcome, submitted_files
+from warranted.ledger import Ledger, Origin, Outcome, Request, Result
+from warranted.worker import AttemptResult, Episode, UnknownOutcome, submitted_files
 
 SCRIPT = Path(__file__).resolve().parents[1] / "examples/m5/treatments.py"
 
 
-def scripted(tmp_path, monkeypatch, family, condition, *, spontaneous=False):
+def scripted(
+    tmp_path,
+    monkeypatch,
+    family,
+    condition,
+    *,
+    spontaneous=False,
+    spontaneous_both=False,
+):
     from test_proof_receipts import boundary
 
     demo = runpy.run_path(str(SCRIPT))
@@ -71,10 +81,25 @@ def scripted(tmp_path, monkeypatch, family, condition, *, spontaneous=False):
                     if spontaneous
                     else b""
                 )
+                proof_sources = (
+                    {
+                        name: ledger.read_artifact(
+                            ledger.project.snapshots[filename].artifact
+                        )
+                        for name, filename in {
+                            "uniqueness": "Solution.lean",
+                            "timestamp": "proof/timestamp",
+                        }.items()
+                    }
+                    if spontaneous_both
+                    else {}
+                )
             workspace = {
                 "notes.md": base64.b64encode(b"ordinary notes").decode(),
                 "repo/main.py": base64.b64encode(b"source retained").decode(),
             }
+            for name, source_data in proof_sources.items():
+                workspace[name + ".lean"] = base64.b64encode(source_data).decode()
             if spontaneous and not revised:
                 workspace["uniqueness.lean"] = base64.b64encode(source).decode()
             return AttemptResult(
@@ -115,6 +140,448 @@ def scripted(tmp_path, monkeypatch, family, condition, *, spontaneous=False):
     monkeypatch.setitem(scope["M5"], "execute", execute)
     monkeypatch.setitem(scope["P"]["M5"], "execute", execute)
     return demo, root, bundle
+
+
+def test_live_worker_client_pins_the_strict_command_schema():
+    demo = runpy.run_path(str(SCRIPT))
+    client = demo["local_client"](
+        "qwen3.8:27b",
+        base_url="http://127.0.0.1:11434/v1",
+        max_tokens=1536,
+        timeout=180,
+    )
+    parameters = client.parameters
+    assert parameters["reasoning_effort"] == "none"
+    assert parameters["temperature"] == 0
+    assert parameters["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "worker_command",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"],
+                "additionalProperties": False,
+            },
+        },
+    }
+    assert json.loads(client.snapshot.data)["parameters"] == parameters
+
+
+def test_multistep_episode_reuses_one_sandbox(tmp_path, monkeypatch):
+    demo = runpy.run_path(str(SCRIPT))
+    instances = []
+
+    class Sandbox:
+        def __init__(self, *_):
+            self.calls = 0
+            instances.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def __call__(self, *_):
+            self.calls += 1
+
+    def workflow(*_, environment, **__):
+        environment(None, b"first command")
+        environment(None, b"second command")
+        return {"exit_status": "Submitted"}
+
+    globals_ = demo["propose"].__globals__
+    monkeypatch.setitem(globals_, "Sandbox", Sandbox)
+    monkeypatch.setitem(globals_, "run_workflow", workflow)
+    monkeypatch.setitem(demo["R"], "witness", lambda *_: None)
+    demo["propose"](
+        tmp_path,
+        type("Episode", (), {"episode_id": "initial"})(),
+    )
+    assert len(instances) == 1
+    assert instances[0].calls == 2
+
+
+def test_sandbox_uses_the_episode_timeout_for_container_and_process(
+    tmp_path, monkeypatch
+):
+    demo, root, _ = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    episode = Episode(
+        "timed",
+        "Submit the fixture.",
+        (),
+        environment=demo["SANDBOX_ID"],
+        container_timeout_seconds=321,
+    )
+    sandbox = demo["Sandbox"](root / "ledger", episode)
+    calls = []
+
+    def run(args, *_args, **_kwargs):
+        calls.append(args)
+        code = 1 if args[:2] == ["container", "exists"] else 0
+        return subprocess.CompletedProcess(args, code, b"", b"")
+
+    monkeypatch.setattr(sandbox_module, "require_runtime", lambda: {})
+    monkeypatch.setattr(sandbox_module, "_run", run)
+    monkeypatch.setattr(sandbox_module, "input_files", lambda *_: {})
+    sandbox._prepare(True)
+    launch = next(args for args in calls if args[0] == "run")
+    assert "--timeout=321" in launch
+    assert launch[-2:] == ["sleep", "351"]
+
+
+@pytest.mark.parametrize("model_timeout", [1, 10, 300])
+def test_live_workspace_survives_four_actions_near_call_timeouts(
+    tmp_path, monkeypatch, model_timeout
+):
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    client = demo["local_client"](
+        "gemma4:26b",
+        base_url="http://127.0.0.1:11434/v1",
+        max_tokens=64,
+        timeout=model_timeout,
+    )
+    root = tmp_path / "live-timeouts"
+    demo["initialize"](
+        root,
+        "csv",
+        Condition.A,
+        bundle,
+        model_client=client,
+        model_runtime=b"pinned runtime",
+    )
+    with Ledger.open(root / "ledger") as ledger:
+        host = demo["M2"]["Experiment"](ledger, ledger.start_session(), root)
+        episode = demo["prepare"](host, "csv", Condition.A, "initial", None, {}, client)
+        project = ledger.project
+
+    elapsed = 0
+    container = {}
+
+    def run(args, _data=b"", **_kwargs):
+        nonlocal elapsed
+        elapsed += PODMAN_COMMAND_TIMEOUT_SECONDS - 1
+        code, output = 0, b""
+        if args[0] == "run":
+            timeout = int(
+                next(
+                    arg.split("=", 1)[1] for arg in args if arg.startswith("--timeout=")
+                )
+            )
+            container["expires"] = elapsed + timeout
+        elif args[:2] == ["container", "exists"]:
+            code = int(not container)
+        elif args[0] == "inspect":
+            output = json.dumps(
+                [
+                    {
+                        "State": {
+                            "Running": elapsed < container["expires"],
+                            "Paused": False,
+                        }
+                    }
+                ]
+            ).encode()
+        elif args[0] == "rm":
+            container.clear()
+        elif args[0] == "exec":
+            if elapsed >= container["expires"]:
+                code = 125
+            elif args[-1] == "/tmp/warranted-host/status":
+                output = b"0"
+            elif args[-1] == sandbox_module._CAPTURE:
+                output = json.dumps(
+                    {
+                        name: base64.b64encode(b"{}").decode()
+                        for name in ("result.json", "workspace.json")
+                    }
+                ).encode()
+            elif args[-2] == sandbox_module._EXECUTE:
+                output = args[-1].encode()
+        return subprocess.CompletedProcess(args, code, output, b"")
+
+    monkeypatch.setattr(sandbox_module, "_run", run)
+    monkeypatch.setattr(sandbox_module, "require_runtime", lambda: run(["info"]))
+    with sandbox_module.Sandbox(root / "ledger", episode) as boundary:
+        for index in range(1, 5):
+            # Three metadata requests and one inference before each shell action.
+            elapsed += 3 * (10 - 1) + client.timeout_seconds - 1
+            request = Request(
+                Origin(
+                    f"episode/{episode.episode_id}/tool/{index}",
+                    "tool",
+                    "test",
+                    "1",
+                    {},
+                ),
+                project,
+            )
+            command = (
+                "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" if index == 4 else "working"
+            )
+            result = boundary(request, json.dumps({"command": command}).encode())
+            assert result.result.outcome is Outcome.SUCCEEDED, result.raw
+        assert "candidate/result.json" in result.raw
+    assert not container
+
+
+def test_unknown_live_attempt_blocks_before_runtime_poll(tmp_path, monkeypatch):
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    client = demo["local_client"](
+        "qwen3.8:27b",
+        base_url="http://127.0.0.1:11434/v1",
+        max_tokens=1536,
+        timeout=180,
+    )
+    root = tmp_path / "live-unknown"
+    demo["initialize"](
+        root,
+        "csv",
+        Condition.A,
+        bundle,
+        model_client=client,
+        model_runtime=b"pinned runtime",
+    )
+    with Ledger.open(root / "ledger") as ledger:
+        host = demo["M2"]["Experiment"](ledger, ledger.start_session(), root)
+        demo["prepare"](host, "csv", Condition.A, "initial", None, {}, client)
+        session = ledger.start_session()
+        request = Request(
+            Origin("episode/initial/model/1", "model", client.service_id, "1", {}),
+            ledger.project,
+        )
+        ledger.reserve(session, request, {"model": 1})
+        ledger.begin(session, request)
+
+    def unexpected_poll(_client):
+        pytest.fail("runtime metadata was polled before unknown work was blocked")
+
+    monkeypatch.setitem(demo, "local_runtime", unexpected_poll)
+    with pytest.raises(UnknownOutcome):
+        demo["demonstrate"]("start", root, bundle, model_client=client)
+    with Ledger.open(root / "ledger") as ledger:
+        assert ledger.accounting()["model"].reserved == 1
+
+
+def test_live_validation_does_not_poll_completed_runtime(tmp_path, monkeypatch):
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    client = demo["local_client"](
+        "qwen3.8:27b",
+        base_url="http://127.0.0.1:11434/v1",
+        max_tokens=1536,
+        timeout=180,
+    )
+    root = tmp_path / "live-complete"
+    demo["initialize"](
+        root,
+        "csv",
+        Condition.A,
+        bundle,
+        model_client=client,
+        model_runtime=b"pinned runtime",
+    )
+    monkeypatch.setitem(
+        demo["validate"].__globals__,
+        "local_runtime",
+        lambda _client: pytest.fail("validation polled the live service"),
+    )
+    with Ledger.open(root / "ledger") as ledger:
+        assert demo["validate"](ledger, bundle, model_client=client) == (
+            "csv",
+            Condition.A,
+        )
+
+
+@pytest.mark.parametrize("entrypoint", ["probe", "treatment"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "changed",
+        "timeout",
+        "malformed",
+        "bad-json",
+        "http-error",
+        "oversized",
+        "partial-timeout",
+        "short-body",
+        "drip",
+    ],
+)
+def test_runtime_failure_is_settled_without_inference(
+    tmp_path, monkeypatch, entrypoint, failure
+):
+    from test_chat_completions import response, server
+
+    metadata = {
+        "version": {"version": "test"},
+        "model": {"name": "gemma4:26b", "size": 1, "digest": "a" * 64},
+        "show": {},
+    }
+    with server(response(), metadata=metadata) as (url, calls):
+        root = tmp_path / "live"
+        if entrypoint == "treatment":
+            demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+            client = demo["local_client"](
+                "gemma4:26b", base_url=url, max_tokens=64, timeout=10
+            )
+            demo["initialize"](root, "csv", Condition.A, bundle, model_client=client)
+            ledger_root = root / "ledger"
+            runtime_scope = demo["LOCAL"]["runtime"].__globals__
+
+            def invoke():
+                return demo["demonstrate"]("start", root, bundle, model_client=client)
+
+        else:
+            probe = runpy.run_path(str(SCRIPT.with_name("local_model.py")))
+            probe["initialize"](root, probe["LocalChatCompletions"](url, "gemma4:26b"))
+            ledger_root = root
+            runtime_scope = probe["runtime"].__globals__
+
+            def invoke():
+                return probe["run"](root)
+
+        if failure == "changed":
+            metadata["model"]["digest"] = "b" * 64
+        elif failure == "malformed":
+            metadata["show"] = []
+        elif failure == "bad-json":
+            metadata["version"] = b'{"version": invalid}'
+        elif failure == "http-error":
+            metadata["version"] = b'{"error":"unavailable"}'
+            metadata["status"] = 503
+        elif failure == "oversized":
+            metadata["version"] = b"x" * (2 * 1024 * 1024 + 1)
+        elif failure == "partial-timeout":
+            metadata["version"] = b'{"version":'
+            metadata["stall"] = True
+            monkeypatch.setitem(runtime_scope, "METADATA_REQUEST_TIMEOUT_SECONDS", 0.1)
+        elif failure == "short-body":
+            metadata["short"] = True
+        elif failure == "drip":
+            metadata["drip"] = True
+            monkeypatch.setitem(runtime_scope, "METADATA_REQUEST_TIMEOUT_SECONDS", 0.2)
+        else:
+
+            def unavailable(*_args):
+                raise TimeoutError("metadata unavailable")
+
+            monkeypatch.setitem(runtime_scope, "http_response", unavailable)
+
+        with pytest.raises(RuntimeError):
+            invoke()
+        assert not any(path == "/v1/chat/completions" for path, _ in calls)
+        with Ledger.open(ledger_root) as ledger:
+            operation = next(
+                op for op in ledger.operations() if op.request.origin.kind == "model"
+            )
+            completion = operation.completion
+            assert completion is not None
+            assert completion.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
+            assert completion.result.usage == {"model": 0}
+            assert ledger.read_artifact(completion.observation.artifacts["diagnostic"])
+            if failure != "timeout":
+                expected_responses = {"version": metadata["version"]}
+                if failure in {"changed", "malformed"}:
+                    expected_responses.update(
+                        tags={"models": [metadata["model"]]}, show=metadata["show"]
+                    )
+                for endpoint, value in expected_responses.items():
+                    observed = ledger.read_artifact(
+                        completion.observation.artifacts[f"api/{endpoint}-response"]
+                    )
+                    wire = (
+                        value
+                        if isinstance(value, bytes)
+                        else json.dumps(value).encode()
+                    )
+                    if failure == "drip":
+                        assert 0 < len(observed) < len(wire)
+                        assert wire.startswith(observed)
+                    else:
+                        assert observed == wire
+                    assert json.loads(
+                        ledger.read_artifact(
+                            completion.observation.artifacts[
+                                f"api/{endpoint}-status.json"
+                            ]
+                        )
+                    ) == metadata.get("status", 200)
+            if failure == "changed":
+                observed = ledger.read_artifact(
+                    completion.observation.artifacts["runtime.json"]
+                )
+                assert json.loads(observed) == metadata
+                assert observed != ledger.read_artifact(
+                    ledger.project.snapshots["runtime"].artifact
+                )
+            balance = ledger.accounting()["model"]
+            assert (balance.spent, balance.reserved) == (0, 0)
+
+        monkeypatch.setitem(
+            runtime_scope,
+            "http_response",
+            lambda *_args: pytest.fail("completed failure polled the service again"),
+        )
+        with pytest.raises(RuntimeError):
+            invoke()
+        with Ledger.open(ledger_root) as ledger:
+            assert ledger.lookup(operation.request).completion == completion
+            balance = ledger.accounting()["model"]
+            assert (balance.spent, balance.reserved) == (0, 0)
+
+
+def test_live_runtime_is_checked_before_each_model_dispatch(tmp_path, monkeypatch):
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    client = demo["local_client"](
+        "qwen3.8:27b",
+        base_url="http://127.0.0.1:11434/v1",
+        max_tokens=1536,
+        timeout=180,
+    )
+    root = tmp_path / "live-dispatch"
+    demo["initialize"](
+        root,
+        "csv",
+        Condition.A,
+        bundle,
+        model_client=client,
+        model_runtime=b"pinned runtime",
+    )
+    calls = []
+
+    class Model:
+        def __call__(self, *_):
+            calls.append("inference")
+            return object()
+
+    model = Model()
+    scope = demo["propose"].__globals__
+    polls = iter((b"pinned runtime", b"changed runtime"))
+    monkeypatch.setitem(
+        scope["LOCAL"]["runtime_failure"].__globals__,
+        "runtime",
+        lambda _client, _raw: next(polls),
+    )
+
+    def workflow(*_args, **kwargs):
+        with Ledger.open(root / "ledger") as ledger:
+            request = Request(
+                Origin("episode/initial/model/1", "model", client.service_id, "1", {}),
+                ledger.project,
+            )
+        kwargs["model"](request, b"first")
+        failed = kwargs["model"](request, b"second")
+        assert failed.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
+        assert failed.result.usage == {"model": 0}
+        return {"exit_status": "Submitted"}
+
+    monkeypatch.setitem(scope, "run_workflow", workflow)
+    model.model = client.model
+    model.service_id = client.service_id
+    demo["propose"](root, Episode("initial", "task", ()), model)
+    assert calls == ["inference"]
 
 
 def assert_recovered(report, family, condition):
@@ -203,6 +670,16 @@ def test_full_recovery_keeps_task_checks_costs_and_visibility(
             assert dependencies["current"]["applicability"] == "current"
             assert dependencies["current"]["validation"] == "unproved"
         episodes = [o for o in ledger.history() if o.origin.kind == "episode"]
+        episode_specs = [
+            json.loads(ledger.read_artifact(event.artifacts["episode.json"]))["episode"]
+            for event in episodes
+        ]
+        assert [episode["max_steps"] for episode in episode_specs] == [4, 4]
+        assert all(
+            "printf '%s\\n' COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT;"
+            in episode["objective"]
+            for episode in episode_specs
+        )
         spec = json.loads(ledger.read_artifact(episodes[1].artifacts["episode.json"]))
         restored = spec["episode"]["workspace"]
         assert restored["name"] in episodes[1].origin.inputs
@@ -265,6 +742,23 @@ def test_baseline_can_request_proof_work_and_receives_its_charged_result(
         assert "proof-work.json" not in context.artifacts
 
 
+def test_e_condition_budget_covers_optional_proofs_in_both_phases(
+    tmp_path, monkeypatch
+):
+    demo, root, bundle = scripted(
+        tmp_path,
+        monkeypatch,
+        "csv",
+        Condition.E,
+        spontaneous_both=True,
+    )
+    started = demo["demonstrate"]("start", root, bundle)
+    assert started["spent"]["proof"] == 4
+    resumed = demo["demonstrate"]("resume", root, bundle)
+    assert resumed["qualified"] is True
+    assert resumed["spent"]["proof"] == 6
+
+
 def test_failed_e_proof_retains_cost_and_cannot_qualify(tmp_path, monkeypatch):
     from test_proof_receipts import boundary
 
@@ -323,6 +817,34 @@ def test_changed_shared_helper_blocks_resume_before_dispatch(
     with Ledger.open(root / "ledger") as ledger:
         assert ledger.accounting()["model"].spent == 1
         assert ledger.accounting()["tool"].spent == 1
+
+
+@pytest.mark.parametrize("family", ["csv", "migration"])
+@pytest.mark.parametrize(
+    "adapter",
+    ["local_model", "chat_completions", "attempts", "worker", "acceptance", "ledger"],
+)
+def test_changed_model_adapter_blocks_resume_before_dispatch(
+    tmp_path, monkeypatch, family, adapter
+):
+    demo, root, bundle = scripted(tmp_path, monkeypatch, family, Condition.A)
+    demo["demonstrate"]("start", root, bundle)
+    before = (root / "worker-dispatches.jsonl").read_bytes()
+    changed = (
+        Path(demo["LOCAL"]["__file__"])
+        if adapter == "local_model"
+        else Path(demo["LOCAL"]["chat_completions"].__file__).with_name(adapter + ".py")
+    )
+    read_bytes = Path.read_bytes
+
+    def changed_bytes(path):
+        data = read_bytes(path)
+        return data + b"\n# changed model adapter\n" if path == changed else data
+
+    monkeypatch.setattr(Path, "read_bytes", changed_bytes)
+    with pytest.raises(ValueError, match="fixture or host changed"):
+        demo["demonstrate"]("resume", root, bundle)
+    assert (root / "worker-dispatches.jsonl").read_bytes() == before
 
 
 @pytest.mark.proof

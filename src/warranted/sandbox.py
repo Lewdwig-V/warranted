@@ -172,6 +172,7 @@ class Sandbox:
 
     def _prepare(self, first: bool) -> None:
         require_runtime()
+        timeout = self.episode.container_timeout_seconds
         exists = _run(["container", "exists", self.name]).returncode
         if exists == 0:
             state = json.loads(self._checked(["inspect", self.name]))[0]["State"]
@@ -210,12 +211,12 @@ class Sandbox:
                 "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777",
                 "--user=0:0",
                 "--workdir=/work",
-                "--timeout=120",
+                f"--timeout={timeout}",
                 "--stop-timeout=0",
                 "--log-driver=none",
                 IMAGE,
                 "sleep",
-                "120",
+                str(timeout + 30),
             ]
         )
         with Ledger.open(self.root) as ledger:

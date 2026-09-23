@@ -1,6 +1,7 @@
-"""Prepare and inspect scripted development trials; never dispatch work."""
+"""Prepare and inspect M5 development trials; never dispatch work."""
 
 import argparse
+import hashlib
 import json
 import runpy
 import sqlite3
@@ -16,16 +17,30 @@ Condition = T["Condition"]
 LINEAGES = {"csv": "m2-controlled-csv-v1", "migration": "m5-controlled-migration-v1"}
 
 
-def initialize(root: Path, bundle: Path, repetitions: int = 1) -> None:
+def initialize(
+    root: Path,
+    bundle: Path,
+    repetitions: int = 1,
+    *,
+    model_client=None,
+) -> None:
     if type(repetitions) is not int or repetitions < 1:
         raise ValueError("repetitions must be a positive integer")
     root.mkdir(parents=True)
     trials = []
+    model_runtime = T["local_runtime"](model_client) if model_client else None
     for repeat in range(1, repetitions + 1):
         for family in LINEAGES:
             for condition in Condition:
                 path = f"runs/{repeat:03d}-{family}-{condition}"
-                T["initialize"](root / path, family, condition, bundle)
+                T["initialize"](
+                    root / path,
+                    family,
+                    condition,
+                    bundle,
+                    model_client=model_client,
+                    model_runtime=model_runtime,
+                )
                 with Ledger.open(root / path / "ledger") as ledger:
                     trials.append(
                         {
@@ -37,33 +52,51 @@ def initialize(root: Path, bundle: Path, repetitions: int = 1) -> None:
                             "manifest": ledger.project.manifest,
                         }
                     )
+    model = (
+        {
+            "provider": "ollama",
+            "name": model_client.model,
+            "service": model_client.service_id,
+            "api_snapshot_digest": hashlib.sha256(
+                model_client.snapshot.data
+            ).hexdigest(),
+            "runtime_digest": hashlib.sha256(model_runtime).hexdigest(),
+        }
+        if model_client
+        else {"provider": "scripted", "name": "m5-fixed-two-proposals-v1"}
+    )
     plan = {
-        "scope": "scripted-development",
+        "scope": "development",
         "split": "development",
         "lineages": LINEAGES,
         "repetitions": repetitions,
         "order": "repeat, family (csv then migration), condition (A through E)",
+        "model": model,
         "trials": trials,
         "proof_bundle_build_elapsed_ns": json.loads(bundle.read_bytes())[
             "build_elapsed_ns"
         ],
     }
+    snapshots = {
+        "plan.json": Snapshot(_encode(plan), "m5/trial-plan", "1"),
+        "trials.py": Snapshot(Path(__file__).read_bytes(), "m5/trial-reporter", "1"),
+    }
+    environment = {"split": "development", "model": model["name"]}
+    if model_client:
+        snapshots["model-api"] = model_client.snapshot
+        snapshots["runtime"] = Snapshot(model_runtime, "ollama-local", "1")
+        environment["model_service"] = model_client.service_id
     with Ledger.create(
         root / "ledger",
         Manifest(
-            "m5-scripted-trials",
+            "m5-development-trials",
             "1",
             str(uuid4()),
             str(uuid4()),
-            {"split": "development", "model": "m5-fixed-two-proposals-v1"},
+            environment,
             {},
         ),
-        {
-            "plan.json": Snapshot(_encode(plan), "m5/trial-plan", "1"),
-            "trials.py": Snapshot(
-                Path(__file__).read_bytes(), "m5/trial-reporter", "1"
-            ),
-        },
+        snapshots,
     ):
         pass
 
@@ -79,6 +112,42 @@ def trial_result(ledger: Ledger) -> dict:
     for event in history:
         for artifact in event.artifacts.values():
             ledger.read_artifact(artifact)
+    model_attempts = [op for op in operations if op.request.origin.kind == "model"]
+    token_rows = []
+    for op in model_attempts:
+        if op.completion and "tokens.json" in op.completion.observation.artifacts:
+            tokens = json.loads(
+                ledger.read_artifact(op.completion.observation.artifacts["tokens.json"])
+            )
+            names = ("prompt_tokens", "completion_tokens", "total_tokens")
+            if (
+                type(tokens) is not dict
+                or any(
+                    type(tokens.get(name)) is not int or tokens[name] < 0
+                    for name in names
+                )
+                or tokens["total_tokens"]
+                != tokens["prompt_tokens"] + tokens["completion_tokens"]
+            ):
+                raise ValueError("invalid recorded model token usage")
+            token_rows.append(tokens)
+    token_usage = None
+    if "model-api" in ledger.project.snapshots:
+        token_usage = {
+            "model_attempts": len(model_attempts),
+            "reported_requests": len(token_rows),
+            "prompt_tokens": sum(row["prompt_tokens"] for row in token_rows),
+            "completion_tokens": sum(row["completion_tokens"] for row in token_rows),
+            "total_tokens": sum(row["total_tokens"] for row in token_rows),
+            "complete": all(
+                op.completion
+                and (
+                    op.completion.result.usage.get("model") == 0
+                    or "tokens.json" in op.completion.observation.artifacts
+                )
+                for op in model_attempts
+            ),
+        }
     stages = {}
     for stage in ("start", "resume"):
         events = [
@@ -154,13 +223,14 @@ def trial_result(ledger: Ledger) -> dict:
             )
             for kind in {op.request.origin.kind for op in operations}
         },
+        "token_usage": token_usage,
     }
 
 
 def report(root: Path) -> dict:
     with Ledger.open(root / "ledger") as ledger:
-        if ledger.project.manifest.fixture_id != "m5-scripted-trials":
-            raise ValueError("not a scripted trial plan")
+        if ledger.project.manifest.fixture_id != "m5-development-trials":
+            raise ValueError("not an M5 development trial plan")
         if (
             ledger.read_artifact(ledger.project.snapshots["trials.py"].artifact)
             != Path(__file__).read_bytes()
@@ -169,6 +239,24 @@ def report(root: Path) -> dict:
         ref = ledger.project.snapshots["plan.json"]
         plan = json.loads(ledger.read_artifact(ref.artifact))
         plan_digest = ref.artifact.digest
+        if plan["model"]["provider"] == "ollama":
+            for name, key in (
+                ("model-api", "api_snapshot_digest"),
+                ("runtime", "runtime_digest"),
+            ):
+                try:
+                    data = ledger.read_artifact(ledger.project.snapshots[name].artifact)
+                except KeyError as error:
+                    raise ValueError("local model metadata is missing") from error
+                if hashlib.sha256(data).hexdigest() != plan["model"][key]:
+                    raise ValueError("local model metadata differs from the plan")
+            env = ledger.project.manifest.environment
+            if (env.get("model"), env.get("model_service")) != (
+                plan["model"]["name"],
+                plan["model"]["service"],
+            ):
+                raise ValueError("model identity differs from the plan")
+    live_model = plan["model"]["provider"] == "ollama"
     rows = []
     for trial in plan["trials"]:
         row = {
@@ -186,6 +274,25 @@ def report(root: Path) -> dict:
                         raise ValueError(
                             "trial project differs from the predeclared plan"
                         )
+                    if live_model and (
+                        ledger.project.manifest.environment.get("model")
+                        != plan["model"]["name"]
+                        or ledger.project.manifest.environment.get("model_service")
+                        != plan["model"]["service"]
+                        or hashlib.sha256(
+                            ledger.read_artifact(
+                                ledger.project.snapshots["model-api"].artifact
+                            )
+                        ).hexdigest()
+                        != plan["model"]["api_snapshot_digest"]
+                        or hashlib.sha256(
+                            ledger.read_artifact(
+                                ledger.project.snapshots["runtime"].artifact
+                            )
+                        ).hexdigest()
+                        != plan["model"]["runtime_digest"]
+                    ):
+                        raise ValueError("trial model differs from the campaign plan")
                     balances = ledger.accounting()
                     row.update(
                         spent={unit: b.spent for unit, b in balances.items()},
@@ -232,6 +339,25 @@ def report(root: Path) -> dict:
             unit: sum(r.get("reserved", {}).get(unit, 0) for r in rows)
             for unit in units
         },
+        "model_token_usage": (
+            {
+                "prompt_tokens": sum(
+                    row.get("token_usage", {}).get("prompt_tokens", 0) for row in rows
+                ),
+                "completion_tokens": sum(
+                    row.get("token_usage", {}).get("completion_tokens", 0)
+                    for row in rows
+                ),
+                "total_tokens": sum(
+                    row.get("token_usage", {}).get("total_tokens", 0) for row in rows
+                ),
+                "complete": all(
+                    row.get("token_usage", {}).get("complete") is True for row in rows
+                ),
+            }
+            if live_model
+            else None
+        ),
         "cost_scope": (
             "Recorded trial units and operation durations only. "
             "Monetary cost, human effort, and development costs are unmeasured."
@@ -246,10 +372,25 @@ def main():
     init.add_argument("root", type=Path)
     init.add_argument("--bundle", type=Path, required=True)
     init.add_argument("--repetitions", type=int, default=1)
+    init.add_argument("--local-model")
+    init.add_argument("--base-url", default="http://127.0.0.1:11434/v1")
+    init.add_argument("--max-tokens", type=int, default=1536)
+    init.add_argument("--timeout", type=int, default=180)
     commands.add_parser("report").add_argument("root", type=Path)
     args = parser.parse_args()
     if args.command == "init":
-        initialize(args.root.resolve(), args.bundle.resolve(), args.repetitions)
+        model_client = T["local_client"](
+            args.local_model,
+            base_url=args.base_url,
+            max_tokens=args.max_tokens,
+            timeout=args.timeout,
+        )
+        initialize(
+            args.root.resolve(),
+            args.bundle.resolve(),
+            args.repetitions,
+            model_client=model_client,
+        )
     print(_encode(report(args.root.resolve())).decode())
 
 

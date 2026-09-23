@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass
+from http.client import HTTPConnection
+from socket import SHUT_RDWR
+from threading import Event, Timer
 from time import monotonic_ns
-from urllib.error import HTTPError
 from urllib.parse import urlsplit
-from urllib.request import ProxyHandler, build_opener
-from urllib.request import Request as HTTPRequest
 
 from warranted.acceptance import _encode
-from warranted.attempts import _NoRedirect
 from warranted.ledger import (
     ArtifactRef,
     Outcome,
@@ -29,6 +29,49 @@ from warranted.ledger import (
 from warranted.worker import AttemptResult
 
 MAX_BYTES = 2 * 1024 * 1024
+
+
+@contextmanager
+def http_response(url: str, data: bytes | None, timeout_seconds: float):
+    """One direct HTTP request with a deadline through headers and body reads."""
+    target = urlsplit(url)
+    connection = HTTPConnection(target.hostname, target.port, timeout=timeout_seconds)
+    started = monotonic_ns()
+    try:
+        # Callers supply only the validated numeric loopback address; no DNS lookup.
+        connection.connect()
+        socket = connection.sock
+        expired = Event()
+
+        def expire():
+            expired.set()
+            try:
+                socket.shutdown(SHUT_RDWR)
+            except OSError:
+                pass  # The peer may already have closed this exact connection.
+
+        remaining = timeout_seconds - (monotonic_ns() - started) / 1e9
+        if remaining <= 0:
+            raise TimeoutError("HTTP request deadline exceeded")
+        timer = Timer(remaining, expire)
+        timer.start()
+        try:
+            # HTTPConnection has no proxy handling, redirects, or automatic retries.
+            connection.request(
+                "GET" if data is None else "POST",
+                target.path,
+                body=data,
+                headers={"Content-Type": "application/json"},
+            )
+            with connection.getresponse() as response:
+                yield response
+        finally:
+            timer.cancel()
+            timer.join()
+            if expired.is_set() or (monotonic_ns() - started) / 1e9 >= timeout_seconds:
+                raise TimeoutError("HTTP request deadline exceeded")
+    finally:
+        connection.close()
 
 
 @dataclass(frozen=True)
@@ -60,7 +103,7 @@ class LocalChatCompletions:
             type(self.timeout_seconds) is not int
             or not 1 <= self.timeout_seconds <= 300
         ):
-            raise ValueError("socket timeout must be between 1 and 300 seconds")
+            raise ValueError("request timeout must be between 1 and 300 seconds")
         if type(self.seed) is not int or not 0 <= self.seed < 2**31:
             raise ValueError("seed must be a nonnegative 32-bit signed integer")
 
@@ -138,20 +181,15 @@ class LocalChatCompletions:
             }
         )
         if len(wire) > MAX_BYTES:
-            raise ValueError("model request exceeds byte limit")
-        opener = build_opener(ProxyHandler({}), _NoRedirect())
+            return AttemptResult(
+                Result(Outcome.FAILED, 1, {"model": 0}, 0),
+                {"diagnostic": b"model request exceeds byte limit"},
+            )
         started = monotonic_ns()
-        query = HTTPRequest(
-            self.base_url + "/chat/completions",
-            data=wire,
-            headers={"Content-Type": "application/json"},
-        )
-        try:
-            response = opener.open(query, timeout=self.timeout_seconds)
-        except HTTPError as error:
-            response = error
         # Transport/read exceptions deliberately leave the journal reservation open.
-        with response:
+        with http_response(
+            self.base_url + "/chat/completions", wire, self.timeout_seconds
+        ) as response:
             body = response.read(MAX_BYTES + 1)
             status = response.status
             length = response.headers.get("Content-Length")

@@ -1,14 +1,17 @@
 # M5 contexts and recovery treatments
 
 M5 slice 4 connects the [A–E policy](pilot.md#knowledge-workflow-conditions) to
-both complete recovery fixtures. `examples/m5/treatments.py` runs a fixed worker,
-checks its first submission, commits the approved revision, and can kill the host.
-A fresh process rejects the stale receipt and old candidate, restores the worker's
-files, and checks a correction. A second resume reuses all completed work.
+both complete recovery fixtures. `examples/m5/treatments.py` runs a fixed worker
+by default. An explicit `--local-model` option uses the existing Ollama adapter.
+Both modes check the first submission, commit the approved revision, and can kill
+the host. A fresh process rejects the stale receipt and old candidate, restores
+the worker's files, and checks a correction. A second resume reuses completed work.
 
-These are development integration runs with fixed model responses. They do not
-measure model quality, learning, or a benefit from any treatment. The existing
-CSV and migration task checkers remain unchanged.
+The fixed mode is an offline integration run. The opt-in local mode records raw
+HTTP requests and responses, token usage, the model configuration, the installed
+model digest, and Ollama metadata. It sends the same worker prompt and commands
+through the existing rootless container and independent task checkers.
+Neither mode alone measures learning or a benefit from any treatment.
 
 ## Shared responsibilities
 
@@ -104,8 +107,9 @@ the original receipt used by the host.
 
 ## Treatment behavior
 
-All conditions use the same fixed responses, two one-step worker episodes, shell
-and file permissions, available proof verifier, and host caps. Current task input,
+All conditions use the same model and request settings, two worker episodes with
+up to four shell actions each, shell and file permissions, available proof verifier, and
+host caps. Current task input,
 revision feedback, and ordinary workspace are available in A. B adds history.
 C adds `model.py` and `regression.py`; their pinned source changes with the approved
 revision. The fixed worker runs the public regression when present. These models
@@ -137,12 +141,17 @@ The migration target is released only after the revision, because it mentions
 current-version inputs. The fixed baseline workers do not request proofs; a
 separate fast test exercises this capability.
 
-Caps per run are 2 model attempts, 2 shell attempts, 4 proof attempts, 24 synthetic
+Caps per run are 8 model attempts, 8 shell attempts, 6 proof attempts, 24 synthetic
 checks, 4 migration batches, and 5 migration task checks. Reports retain each unit
 separately, measured operation time, and the bundle's recorded build time.
 Scripted E spends two proof units for CSV and one for migration. A–D spend none
 unless the worker requests a proof. Units are not money and cannot be summed as
 a monetary cost. Human fixture development and formalization costs are not measured.
+
+The four-command phase limit leaves one command to inspect task inputs together,
+then three commands to produce, test, and submit the result. The final command
+must print the submission marker. Fixed responses still submit in one command.
+All conditions have the same limit.
 
 ## Run and verify
 
@@ -180,3 +189,43 @@ WARRANTED_PROOF_TESTS=1 WARRANTED_PROOF_BUNDLE=runs/m4-tools/bundle.json \
 Reports and exports contain private development references for host inspection.
 They must not become worker input. Frontier/small-model comparisons, held-out
 tasks, threshold selection, and campaign cost reporting remain slice 5.
+
+## Local-model development runs
+
+Initialize a development plan with one local model:
+
+```bash
+uv run --locked python examples/m5/trials.py init runs/m5-qwen-ae \
+  --bundle runs/m4-tools/bundle.json --repetitions 1 \
+  --local-model qwen3.8:27b
+```
+
+The plan pins the model request settings and installed model digest. It prepares
+ten ledgers for the two fixed task families and conditions A through E. It does
+not send model requests. Each run command must use the same model and settings:
+
+```bash
+uv run --locked python examples/m5/treatments.py start \
+  runs/m5-qwen-ae/runs/001-migration-A --family migration --condition A \
+  --bundle runs/m4-tools/bundle.json --local-model qwen3.8:27b --crash
+uv run --locked python examples/m5/treatments.py resume \
+  runs/m5-qwen-ae/runs/001-migration-A --family migration --condition A \
+  --bundle runs/m4-tools/bundle.json --local-model qwen3.8:27b
+uv run --locked python examples/m5/trials.py report runs/m5-qwen-ae
+```
+
+Repeat the start and resume commands for every path in the plan. The start
+command exits when it kills the host after the approved checkpoint. Local runs
+pin the model and runtime before each new inference request. Changed or missing
+metadata records an infrastructure failure with zero model usage and releases
+the reservation. Repeated calls reuse that failure without polling Ollama.
+Each live episode budgets its container lifetime for four inference request
+deadlines, three metadata request deadlines per turn, and all bounded Podman calls.
+The host enforces each deadline across connection, headers, and body reads. The report sums
+recorded prompt and completion tokens across live-model runs. Fixed scripted
+runs keep token totals unreported.
+Failures before inference contribute known zero tokens. Token totals can be
+complete for an unfinished task when every recorded model operation has known
+token usage.
+One repetition of these two fixtures is development evidence, not a set of
+independent or held-out tasks.

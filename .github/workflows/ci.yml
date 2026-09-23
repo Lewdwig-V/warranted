@@ -154,6 +154,7 @@ jobs:
       WARRANTED_PROOF_REPORTS: runs/m4-native
       WARRANTED_M4_REPORTS: runs/m4-demo
       WARRANTED_M5_TREATMENTS: runs/m5-treatments
+      XDG_DATA_HOME: ${{ github.workspace }}/runs/podman-data
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -162,19 +163,85 @@ jobs:
           enable-cache: true
       - name: Prepare native proof isolation
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y podman zstd
+          command -v podman
+          command -v zstd
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           uv python install
           uv sync --locked
+      - name: Identify Podman storage version
+        id: podman
+        run: |
+          echo "version=$(podman --version | awk '{print $3}')" >> "$GITHUB_OUTPUT"
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+      - name: Restore cached Podman storage archive
+        id: podman-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            runs/podman-storage.tar
+            runs/m4-tools/bundle.json
+          # Bump v1 if the archived storage layout changes.
+          key: proof-store-v1-ubuntu-24.04-podman-${{ steps.podman.outputs.version }}-uid-${{ steps.podman.outputs.uid }}-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/containers.py', 'src/warranted/proofs.py', 'src/warranted/proof/**', 'src/warranted/sandbox.py') }}
+      - name: Restore verifier image for cache migration
+        id: verifier-cache
+        if: steps.podman-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            runs/m4-tools/bundle.json
+            runs/m4-tools/proof-image.oci
+          key: proof-ubuntu-24.04-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/containers.py', 'src/warranted/proofs.py', 'src/warranted/proof/**') }}
       - name: Build the pinned verifier
+        if: steps.podman-cache.outputs.cache-hit != 'true' && steps.verifier-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p runs/m4-tools
           uv run --locked python scripts/build_proof_bundle.py runs/m4-tools | tee runs/m4-tools/build.log
+      - name: Load the cached pinned verifier
+        if: steps.podman-cache.outputs.cache-hit != 'true' && steps.verifier-cache.outputs.cache-hit == 'true'
+        run: podman load --input runs/m4-tools/proof-image.oci
+      - name: Unpack cached Podman image storage
+        if: steps.podman-cache.outputs.cache-hit == 'true'
+        run: |
+          mkdir -p runs/podman-data/containers
+          sudo tar --xattrs --xattrs-include='*' --acls --numeric-owner -xf runs/podman-storage.tar -C runs/podman-data/containers
       - name: Prepare the pinned migration runtime
-        run: podman pull "$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
+        run: |
+          runtime_image="$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
+          if podman image exists "$runtime_image"; then
+            :
+          else
+            image_status=$?
+            if [ "$image_status" -ne 1 ]; then exit "$image_status"; fi
+            podman pull "$runtime_image"
+          fi
+          test "$(podman info --format '{{.Store.GraphRoot}}')" = "$GITHUB_WORKSPACE/runs/podman-data/containers/storage"
       - name: Exercise proof verification, isolation, and receipt recovery
-        run: uv run --locked pytest -q -m proof --durations=5 tests/test_proofs_native.py tests/test_m4_fixture.py tests/test_m5_treatments.py
+        run: |
+          uv run --locked pytest -q -n 4 -m proof --durations=5 tests/test_proofs_native.py > /tmp/proofs-native.log 2>&1 &
+          native_pid=$!
+          uv run --locked pytest -q -m proof --durations=5 tests/test_m4_fixture.py > /tmp/proofs-m4.log 2>&1 &
+          m4_pid=$!
+          uv run --locked pytest -q -m proof --durations=5 tests/test_m5_treatments.py > /tmp/proofs-m5.log 2>&1 &
+          m5_pid=$!
+          failed=0
+          wait "$native_pid" || failed=1
+          wait "$m4_pid" || failed=1
+          wait "$m5_pid" || failed=1
+          cat /tmp/proofs-native.log /tmp/proofs-m4.log /tmp/proofs-m5.log
+          exit "$failed"
+      - name: Save native Podman image storage
+        if: success() && steps.podman-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo tar --xattrs --xattrs-include='*' --acls --numeric-owner -cf runs/podman-storage.tar -C runs/podman-data/containers storage
+          sudo chown "$(id -u):$(id -g)" runs/podman-storage.tar
+      - name: Cache native Podman image storage
+        if: success() && steps.podman-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            runs/podman-storage.tar
+            runs/m4-tools/bundle.json
+          key: ${{ steps.podman-cache.outputs.cache-primary-key }}
       - name: Retain proof reports and exact bundle identities
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
