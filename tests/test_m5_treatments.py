@@ -21,7 +21,15 @@ from warranted.worker import AttemptResult, Episode, UnknownOutcome, submitted_f
 SCRIPT = Path(__file__).resolve().parents[1] / "examples/m5/treatments.py"
 
 
-def scripted(tmp_path, monkeypatch, family, condition, *, spontaneous=False):
+def scripted(
+    tmp_path,
+    monkeypatch,
+    family,
+    condition,
+    *,
+    spontaneous=False,
+    spontaneous_both=False,
+):
     from test_proof_receipts import boundary
 
     demo = runpy.run_path(str(SCRIPT))
@@ -73,10 +81,25 @@ def scripted(tmp_path, monkeypatch, family, condition, *, spontaneous=False):
                     if spontaneous
                     else b""
                 )
+                proof_sources = (
+                    {
+                        name: ledger.read_artifact(
+                            ledger.project.snapshots[filename].artifact
+                        )
+                        for name, filename in {
+                            "uniqueness": "Solution.lean",
+                            "timestamp": "proof/timestamp",
+                        }.items()
+                    }
+                    if spontaneous_both
+                    else {}
+                )
             workspace = {
                 "notes.md": base64.b64encode(b"ordinary notes").decode(),
                 "repo/main.py": base64.b64encode(b"source retained").decode(),
             }
+            for name, source_data in proof_sources.items():
+                workspace[name + ".lean"] = base64.b64encode(source_data).decode()
             if spontaneous and not revised:
                 workspace["uniqueness.lean"] = base64.b64encode(source).decode()
             return AttemptResult(
@@ -410,6 +433,23 @@ def test_baseline_can_request_proof_work_and_receives_its_charged_result(
         assert "proof-work.json" not in context.artifacts
 
 
+def test_e_condition_budget_covers_optional_proofs_in_both_phases(
+    tmp_path, monkeypatch
+):
+    demo, root, bundle = scripted(
+        tmp_path,
+        monkeypatch,
+        "csv",
+        Condition.E,
+        spontaneous_both=True,
+    )
+    started = demo["demonstrate"]("start", root, bundle)
+    assert started["spent"]["proof"] == 4
+    resumed = demo["demonstrate"]("resume", root, bundle)
+    assert resumed["qualified"] is True
+    assert resumed["spent"]["proof"] == 6
+
+
 def test_failed_e_proof_retains_cost_and_cannot_qualify(tmp_path, monkeypatch):
     from test_proof_receipts import boundary
 
@@ -468,6 +508,30 @@ def test_changed_shared_helper_blocks_resume_before_dispatch(
     with Ledger.open(root / "ledger") as ledger:
         assert ledger.accounting()["model"].spent == 1
         assert ledger.accounting()["tool"].spent == 1
+
+
+@pytest.mark.parametrize("adapter", ["local_model", "chat_completions"])
+def test_changed_model_adapter_blocks_resume_before_dispatch(
+    tmp_path, monkeypatch, adapter
+):
+    demo, root, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
+    demo["demonstrate"]("start", root, bundle)
+    before = (root / "worker-dispatches.jsonl").read_bytes()
+    changed = (
+        Path(demo["LOCAL"]["__file__"])
+        if adapter == "local_model"
+        else Path(demo["chat_completions"].__file__)
+    )
+    read_bytes = Path.read_bytes
+
+    def changed_bytes(path):
+        data = read_bytes(path)
+        return data + b"\n# changed model adapter\n" if path == changed else data
+
+    monkeypatch.setattr(Path, "read_bytes", changed_bytes)
+    with pytest.raises(ValueError, match="fixture or host changed"):
+        demo["demonstrate"]("resume", root, bundle)
+    assert (root / "worker-dispatches.jsonl").read_bytes() == before
 
 
 @pytest.mark.proof

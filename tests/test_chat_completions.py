@@ -306,3 +306,29 @@ def test_probe_rejects_cloud_and_changed_model_then_reuses_offline(tmp_path):
         assert sum(path == "/v1/chat/completions" for path, _ in calls) == 1
     # Server is stopped. Reuse must not even query metadata.
     assert probe["run"](tmp_path / "good") == {"command": "true", "executed": False}
+
+
+def test_probe_rejects_changed_adapter_before_inference(tmp_path, monkeypatch):
+    probe = runpy.run_path(
+        str(Path(__file__).resolve().parents[1] / "examples/m5/local_model.py")
+    )
+    metadata = {
+        "version": {"version": "test"},
+        "model": {"name": "gemma4:26b", "size": 1, "digest": "a" * 64},
+        "show": {},
+    }
+    with server(response(), metadata=metadata) as (url, calls):
+        client = LocalChatCompletions(url, "gemma4:26b")
+        root = tmp_path / "adapter-changed"
+        probe["initialize"](root, client)
+        changed = Path(probe["chat_completions"].__file__)
+        read_bytes = Path.read_bytes
+
+        def changed_bytes(path):
+            data = read_bytes(path)
+            return data + b"\n# changed model adapter\n" if path == changed else data
+
+        monkeypatch.setattr(Path, "read_bytes", changed_bytes)
+        with pytest.raises(ValueError, match="model adapter changed"):
+            probe["run"](root)
+        assert not any(path == "/v1/chat/completions" for path, _ in calls)

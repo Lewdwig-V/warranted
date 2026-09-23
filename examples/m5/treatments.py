@@ -15,7 +15,13 @@ from uuid import uuid4
 
 os.environ["MSWEA_SILENT_STARTUP"] = "1"
 
-from warranted import containers, contexts, sandbox, worker  # noqa: E402
+from warranted import (  # noqa: E402
+    chat_completions,
+    containers,
+    contexts,
+    sandbox,
+    worker,
+)
 from warranted import proofs as verifier
 from warranted.acceptance import Evidence, _encode  # noqa: E402
 from warranted.chat_completions import LocalChatCompletions  # noqa: E402
@@ -48,7 +54,7 @@ P = runpy.run_path(str(HERE / "proof_cases.py"))
 R = runpy.run_path(str(HERE / "recovery.py"))
 CSV = runpy.run_path(str(HERE.parent / "m3/demo.py"))
 M2, M5 = P["M2"], R["M5"]
-CAPS = {"model": 8, "tool": 8, "proof": 4, "synthetic-work": 24, "batch": 4, "check": 5}
+CAPS = {"model": 8, "tool": 8, "proof": 6, "synthetic-work": 24, "batch": 4, "check": 5}
 
 
 class WorkerChat(LocalChatCompletions):
@@ -109,6 +115,8 @@ def snapshots(
     captured.update((CSV if family == "csv" else R)["snapshots"]())
     for name, path in {
         "treatments.py": Path(__file__),
+        "local_model.py": Path(LOCAL["__file__"]),
+        "chat_completions.py": Path(chat_completions.__file__),
         "recovery.py": Path(R["__file__"]),
         "m2-host.py": Path(M2["__file__"]),
         "m4-host.py": Path(P["M4"]["__file__"]),

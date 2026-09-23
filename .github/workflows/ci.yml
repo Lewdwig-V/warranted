@@ -163,7 +163,6 @@ jobs:
           enable-cache: true
       - name: Prepare native proof isolation
         run: |
-          sudo apt-get update -qq
           sudo apt-get install -y podman zstd
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           uv python install

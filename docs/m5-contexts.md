@@ -141,7 +141,7 @@ The migration target is released only after the revision, because it mentions
 current-version inputs. The fixed baseline workers do not request proofs; a
 separate fast test exercises this capability.
 
-Caps per run are 8 model attempts, 8 shell attempts, 4 proof attempts, 24 synthetic
+Caps per run are 8 model attempts, 8 shell attempts, 6 proof attempts, 24 synthetic
 checks, 4 migration batches, and 5 migration task checks. Reports retain each unit
 separately, measured operation time, and the bundle's recorded build time.
 Scripted E spends two proof units for CSV and one for migration. A–D spend none

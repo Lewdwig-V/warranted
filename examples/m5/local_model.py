@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from urllib.request import ProxyHandler, Request, build_opener
 
+from warranted import chat_completions
 from warranted.acceptance import _encode
 from warranted.attempts import _NoRedirect
 from warranted.chat_completions import MAX_BYTES, LocalChatCompletions
@@ -68,6 +69,14 @@ def initialize(root: Path, client: LocalChatCompletions) -> None:
             "model-api": client.snapshot,
             "runtime": Snapshot(metadata, client.base_url, "ollama-metadata-v1"),
             "prompt": Snapshot(PROMPT.encode(), "m5-local-model-probe", "1"),
+            "chat-completions.py": Snapshot(
+                Path(chat_completions.__file__).read_bytes(),
+                "m5/model-adapter/chat-completions.py",
+                "1",
+            ),
+            "local-model.py": Snapshot(
+                Path(__file__).read_bytes(), "m5/model-adapter/local-model.py", "1"
+            ),
         },
     ):
         pass
@@ -75,6 +84,15 @@ def initialize(root: Path, client: LocalChatCompletions) -> None:
 
 def run(root: Path) -> dict:
     with Ledger.open(root) as ledger:
+        for name, source in (
+            ("chat-completions.py", Path(chat_completions.__file__)),
+            ("local-model.py", Path(__file__)),
+        ):
+            if (
+                ledger.read_artifact(ledger.project.snapshots[name].artifact)
+                != source.read_bytes()
+            ):
+                raise ValueError("model adapter changed since initialization")
         config = json.loads(
             ledger.read_artifact(ledger.project.snapshots["model-api"].artifact)
         )
