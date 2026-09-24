@@ -6,6 +6,7 @@ import json
 import runpy
 import sqlite3
 from collections import Counter
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import uuid4
 
@@ -23,12 +24,13 @@ def initialize(
     repetitions: int = 1,
     *,
     model_client=None,
+    max_steps: int = 4,
 ) -> None:
     if type(repetitions) is not int or repetitions < 1:
         raise ValueError("repetitions must be a positive integer")
     root.mkdir(parents=True)
     trials = []
-    model_runtime = T["local_runtime"](model_client) if model_client else None
+    model_runtime = T["capture_runtime"](model_client) if model_client else None
     for repeat in range(1, repetitions + 1):
         for family in LINEAGES:
             for condition in Condition:
@@ -40,6 +42,7 @@ def initialize(
                     bundle,
                     model_client=model_client,
                     model_runtime=model_runtime,
+                    max_steps=max_steps,
                 )
                 with Ledger.open(root / path / "ledger") as ledger:
                     trials.append(
@@ -54,7 +57,7 @@ def initialize(
                     )
     model = (
         {
-            "provider": "ollama",
+            "provider": model_client.provider,
             "name": model_client.model,
             "service": model_client.service_id,
             "api_snapshot_digest": hashlib.sha256(
@@ -70,6 +73,7 @@ def initialize(
         "split": "development",
         "lineages": LINEAGES,
         "repetitions": repetitions,
+        "max_steps": max_steps,
         "order": "repeat, family (csv then migration), condition (A through E)",
         "model": model,
         "trials": trials,
@@ -84,7 +88,7 @@ def initialize(
     environment = {"split": "development", "model": model["name"]}
     if model_client:
         snapshots["model-api"] = model_client.snapshot
-        snapshots["runtime"] = Snapshot(model_runtime, "ollama-local", "1")
+        snapshots["runtime"] = Snapshot(model_runtime, model_client.provider, "1")
         environment["model_service"] = model_client.service_id
     with Ledger.create(
         root / "ledger",
@@ -148,6 +152,27 @@ def trial_result(ledger: Ledger) -> dict:
                 for op in model_attempts
             ),
         }
+    model_cost = None
+    if ledger.project.manifest.environment.get("model_provider") == "openrouter":
+        total = Decimal(0)
+        complete = True
+        for op in model_attempts:
+            if op.completion is None:
+                complete = False
+                continue
+            artifacts = op.completion.observation.artifacts
+            if "cost.json" not in artifacts:
+                complete &= op.completion.result.usage.get("model") == 0
+                continue
+            value = json.loads(ledger.read_artifact(artifacts["cost.json"]))["usd"]
+            try:
+                amount = Decimal(value) if type(value) is str else Decimal("NaN")
+            except InvalidOperation:
+                raise ValueError("invalid recorded USD cost") from None
+            if not amount.is_finite() or amount < 0:
+                raise ValueError("invalid recorded USD cost")
+            total += amount
+        model_cost = {"reported_total": str(total), "complete": complete}
     stages = {}
     for stage in ("start", "resume"):
         events = [
@@ -224,6 +249,7 @@ def trial_result(ledger: Ledger) -> dict:
             for kind in {op.request.origin.kind for op in operations}
         },
         "token_usage": token_usage,
+        "model_cost_usd": model_cost,
     }
 
 
@@ -239,7 +265,9 @@ def report(root: Path) -> dict:
         ref = ledger.project.snapshots["plan.json"]
         plan = json.loads(ledger.read_artifact(ref.artifact))
         plan_digest = ref.artifact.digest
-        if plan["model"]["provider"] == "ollama":
+        if plan["model"]["provider"] not in {"scripted", "ollama", "openrouter"}:
+            raise ValueError("unknown model provider")
+        if plan["model"]["provider"] != "scripted":
             for name, key in (
                 ("model-api", "api_snapshot_digest"),
                 ("runtime", "runtime_digest"),
@@ -247,16 +275,16 @@ def report(root: Path) -> dict:
                 try:
                     data = ledger.read_artifact(ledger.project.snapshots[name].artifact)
                 except KeyError as error:
-                    raise ValueError("local model metadata is missing") from error
+                    raise ValueError("model metadata is missing") from error
                 if hashlib.sha256(data).hexdigest() != plan["model"][key]:
-                    raise ValueError("local model metadata differs from the plan")
+                    raise ValueError("model metadata differs from the plan")
             env = ledger.project.manifest.environment
             if (env.get("model"), env.get("model_service")) != (
                 plan["model"]["name"],
                 plan["model"]["service"],
             ):
                 raise ValueError("model identity differs from the plan")
-    live_model = plan["model"]["provider"] == "ollama"
+    live_model = plan["model"]["provider"] != "scripted"
     rows = []
     for trial in plan["trials"]:
         row = {
@@ -358,8 +386,33 @@ def report(root: Path) -> dict:
             if live_model
             else None
         ),
+        "model_cost_usd": (
+            {
+                "reported_total": str(
+                    sum(
+                        (
+                            Decimal(
+                                row.get("model_cost_usd", {}).get("reported_total", "0")
+                            )
+                            for row in rows
+                        ),
+                        Decimal(0),
+                    )
+                ),
+                "complete": all(
+                    row.get("model_cost_usd", {}).get("complete") is True
+                    for row in rows
+                ),
+            }
+            if plan["model"]["provider"] == "openrouter"
+            else None
+        ),
         "cost_scope": (
-            "Recorded trial units and operation durations only. "
+            "Provider-reported OpenRouter credits, trial units and durations. "
+            "Unreturned paid responses have unknown cost. Electricity, human effort, "
+            "development and setup costs are excluded."
+            if plan["model"]["provider"] == "openrouter"
+            else "Recorded trial units and operation durations only. "
             "Monetary cost, human effort, and development costs are unmeasured."
         ),
     }
@@ -372,24 +425,17 @@ def main():
     init.add_argument("root", type=Path)
     init.add_argument("--bundle", type=Path, required=True)
     init.add_argument("--repetitions", type=int, default=1)
-    init.add_argument("--local-model")
-    init.add_argument("--base-url", default="http://127.0.0.1:11434/v1")
-    init.add_argument("--max-tokens", type=int, default=1536)
-    init.add_argument("--timeout", type=int, default=180)
+    T["add_model_arguments"](init)
     commands.add_parser("report").add_argument("root", type=Path)
     args = parser.parse_args()
     if args.command == "init":
-        model_client = T["local_client"](
-            args.local_model,
-            base_url=args.base_url,
-            max_tokens=args.max_tokens,
-            timeout=args.timeout,
-        )
+        model_client = T["client_from_arguments"](args)
         initialize(
             args.root.resolve(),
             args.bundle.resolve(),
             args.repetitions,
             model_client=model_client,
+            max_steps=args.max_steps,
         )
     print(_encode(report(args.root.resolve())).decode())
 

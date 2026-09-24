@@ -103,8 +103,9 @@ def test_plan_preserves_all_slots_and_rejects_replaced_run(tmp_path, monkeypatch
 @pytest.mark.parametrize(
     "local_outcome", [Outcome.FAILED, Outcome.INFRASTRUCTURE_FAILURE]
 )
+@pytest.mark.parametrize("provider", ["ollama", "openrouter"])
 def test_live_trial_report_retains_token_totals_and_unknown_model_usage(
-    tmp_path, monkeypatch, local_outcome
+    tmp_path, monkeypatch, local_outcome, provider
 ):
     _, _, bundle = scripted(tmp_path, monkeypatch, "csv", Condition.A)
     client = type(
@@ -112,11 +113,12 @@ def test_live_trial_report_retains_token_totals_and_unknown_model_usage(
         (),
         {
             "model": "qwen3.8:27b",
+            "provider": provider,
             "service_id": "local-chat-completions/test",
             "snapshot": Snapshot(b"pinned API configuration", "test-api", "1"),
         },
     )()
-    monkeypatch.setitem(TRIALS["T"], "local_runtime", lambda _: b"pinned runtime")
+    monkeypatch.setitem(TRIALS["T"], "capture_runtime", lambda _: b"pinned runtime")
     root = tmp_path / "live-campaign"
     TRIALS["initialize"](root, bundle, model_client=client)
     first = root / "runs/001-csv-A/ledger"
@@ -172,6 +174,7 @@ def test_live_trial_report_retains_token_totals_and_unknown_model_usage(
                 "tokens.json": json.dumps(
                     {"prompt_tokens": 11, "completion_tokens": 3, "total_tokens": 14}
                 ).encode(),
+                "cost.json": b'{"usd":"0.0000024"}',
             },
         )
         lost = Request(
@@ -193,6 +196,16 @@ def test_live_trial_report_retains_token_totals_and_unknown_model_usage(
         "complete": False,
     }
     assert row["reserved"]["model"] == 1
+    if provider == "openrouter":
+        assert known["model_cost_usd"] == {"reported_total": "0", "complete": True}
+        assert (
+            row["model_cost_usd"]
+            == summary["model_cost_usd"]
+            == {
+                "reported_total": "0.0000024",
+                "complete": False,
+            }
+        )
     assert summary["model_token_usage"] == {
         "prompt_tokens": 11,
         "completion_tokens": 3,
@@ -209,6 +222,8 @@ def test_live_trial_report_retains_token_totals_and_unknown_model_usage(
     unmeasured = TRIALS["report"](root)
     assert unmeasured["trials"][0]["token_usage"]["complete"] is False
     assert unmeasured["model_token_usage"]["complete"] is False
+    if provider == "openrouter":
+        assert unmeasured["model_cost_usd"]["complete"] is False
 
 
 @pytest.mark.parametrize("failure", ["unknown", "unproved"])

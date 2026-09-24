@@ -15,6 +15,7 @@ from http.client import HTTPConnection
 from socket import SHUT_RDWR
 from threading import Event, Timer
 from time import monotonic_ns
+from typing import ClassVar
 from urllib.parse import urlsplit
 
 from warranted.acceptance import _encode
@@ -76,6 +77,8 @@ def http_response(url: str, data: bytes | None, timeout_seconds: float):
 
 @dataclass(frozen=True)
 class LocalChatCompletions:
+    provider: ClassVar[str] = "ollama"
+    adapter_name: ClassVar[str] = "local-chat-completions"
     base_url: str
     model: str
     max_tokens: int = 256
@@ -95,6 +98,9 @@ class LocalChatCompletions:
             or url.fragment
         ):
             raise ValueError("use http://127.0.0.1:<port>/v1 for the local endpoint")
+        self._validate_parameters()
+
+    def _validate_parameters(self):
         if type(self.model) is not str or not self.model.strip():
             raise ValueError("an explicit installed model is required")
         if type(self.max_tokens) is not int or not 1 <= self.max_tokens <= 8192:
@@ -124,22 +130,33 @@ class LocalChatCompletions:
         return Snapshot(
             _encode(
                 {
-                    "adapter": "local-chat-completions-v1",
+                    "adapter": self.adapter_name + "-v1",
                     "base_url": self.base_url,
                     "timeout_seconds": self.timeout_seconds,
                     "max_bytes": MAX_BYTES,
                     "parameters": self.parameters,
                 }
             ),
-            "warranted-local-chat-completions",
+            "warranted-" + self.adapter_name,
             "1",
         )
 
     @property
     def service_id(self) -> str:
-        return (
-            "local-chat-completions/" + hashlib.sha256(self.snapshot.data).hexdigest()
-        )
+        return self.adapter_name + "/" + hashlib.sha256(self.snapshot.data).hexdigest()
+
+    def _post(self, wire: bytes) -> tuple[int, bytes]:
+        with http_response(
+            self.base_url + "/chat/completions", wire, self.timeout_seconds
+        ) as response:
+            body = response.read(MAX_BYTES + 1)
+            status = response.status
+            length = response.headers.get("Content-Length")
+        if len(body) > MAX_BYTES:
+            raise ValueError("model response exceeds byte limit; outcome unknown")
+        if length is not None and int(length) != len(body):
+            raise ValueError("incomplete model response; outcome unknown")
+        return status, body
 
     def __call__(self, request: Request, payload: bytes) -> AttemptResult:
         pinned = request.context.snapshots.get("model-api")
@@ -187,16 +204,7 @@ class LocalChatCompletions:
             )
         started = monotonic_ns()
         # Transport/read exceptions deliberately leave the journal reservation open.
-        with http_response(
-            self.base_url + "/chat/completions", wire, self.timeout_seconds
-        ) as response:
-            body = response.read(MAX_BYTES + 1)
-            status = response.status
-            length = response.headers.get("Content-Length")
-        if len(body) > MAX_BYTES:
-            raise ValueError("model response exceeds byte limit; outcome unknown")
-        if length is not None and int(length) != len(body):
-            raise ValueError("incomplete model response; outcome unknown")
+        status, body = self._post(wire)
         elapsed = monotonic_ns() - started
         raw = {
             "http-request.json": wire,

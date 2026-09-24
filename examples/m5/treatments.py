@@ -1,4 +1,4 @@
-"""Run fixed or local-model A–E workers across an approved revision."""
+"""Run fixed, local, or OpenRouter A–E workers across an approved revision."""
 
 import argparse
 import base64
@@ -35,6 +35,7 @@ from warranted.ledger import (  # noqa: E402
     Result,
     Snapshot,
 )
+from warranted.openrouter import OpenRouterChatCompletions, command_format  # noqa: E402
 from warranted.proof_receipts import Proofs, proof_status  # noqa: E402
 from warranted.sandbox import SANDBOX_ID, Sandbox, decode_workspace  # noqa: E402
 from warranted.worker import (  # noqa: E402
@@ -61,19 +62,7 @@ class WorkerChat(LocalChatCompletions):
     def parameters(self):
         return {
             **super().parameters,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "worker_command",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "properties": {"command": {"type": "string"}},
-                        "required": ["command"],
-                        "additionalProperties": False,
-                    },
-                },
-            },
+            "response_format": command_format(),
         }
 
 
@@ -81,8 +70,42 @@ def local_client(model: str | None, *, base_url: str, max_tokens: int, timeout: 
     return WorkerChat(base_url, model, max_tokens, timeout) if model else None
 
 
-def local_runtime(client):
+def capture_runtime(client):
+    if isinstance(client, OpenRouterChatCompletions):
+        return client.runtime()
     return LOCAL["runtime"](client)
+
+
+def add_model_arguments(parser):
+    models = parser.add_mutually_exclusive_group()
+    models.add_argument("--local-model")
+    models.add_argument("--openrouter-model")
+    parser.add_argument("--api-key-file", type=Path)
+    parser.add_argument("--base-url", default="http://127.0.0.1:11434/v1")
+    parser.add_argument("--max-tokens", type=int, default=1536)
+    parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument("--max-steps", type=int, default=4)
+
+
+def client_from_arguments(args):
+    if args.openrouter_model:
+        if args.base_url != "http://127.0.0.1:11434/v1":
+            raise ValueError("OpenRouter uses its fixed HTTPS endpoint")
+        return OpenRouterChatCompletions(
+            "https://openrouter.ai/api/v1",
+            args.openrouter_model,
+            args.max_tokens,
+            args.timeout,
+            key_file=args.api_key_file,
+        )
+    if args.api_key_file:
+        raise ValueError("--api-key-file requires --openrouter-model")
+    return local_client(
+        args.local_model,
+        base_url=args.base_url,
+        max_tokens=args.max_tokens,
+        timeout=args.timeout,
+    )
 
 
 def snapshots(
@@ -206,23 +229,29 @@ def snapshots(
     if model_client:
         captured["model-api"] = model_client.snapshot
         captured["runtime"] = Snapshot(
-            model_runtime if model_runtime is not None else local_runtime(model_client),
-            "ollama-local",
+            model_runtime
+            if model_runtime is not None
+            else capture_runtime(model_client),
+            model_client.provider,
             "1",
         )
     return captured
 
 
-def environment(family: str, condition: Condition, model_client=None) -> dict:
+def environment(
+    family: str, condition: Condition, model_client=None, max_steps=4
+) -> dict:
     result = {
         **(CSV if family == "csv" else R)["environment"](),
         "family": family,
         "condition": str(condition),
+        "max_steps": str(max_steps),
         "policy": "m5-live-treatments-v1" if model_client else "m5-fixed-treatments-v1",
         "model": model_client.model if model_client else "m5-fixed-two-proposals-v1",
     }
     if model_client:
         result["model_service"] = model_client.service_id
+        result["model_provider"] = model_client.provider
     return result
 
 
@@ -234,7 +263,10 @@ def initialize(
     *,
     model_client=None,
     model_runtime: bytes | None = None,
+    max_steps: int = 4,
 ) -> None:
+    if type(max_steps) is not int or not 1 <= max_steps <= 100:
+        raise ValueError("max_steps must be between 1 and 100")
     root.mkdir(parents=True)
     with Ledger.create(
         root / "ledger",
@@ -243,8 +275,8 @@ def initialize(
             "1",
             str(uuid4()),
             str(uuid4()),
-            environment(family, condition, model_client),
-            CAPS,
+            environment(family, condition, model_client, max_steps),
+            {**CAPS, "model": 2 * max_steps, "tool": 2 * max_steps},
         ),
         snapshots(
             family,
@@ -261,7 +293,7 @@ def validate(
 ) -> tuple[str, Condition]:
     env = ledger.project.manifest.environment
     family, condition = env["family"], Condition(env["condition"])
-    if env != environment(family, condition, model_client):
+    if env != environment(family, condition, model_client, int(env["max_steps"])):
         raise ValueError("fixture or environment changed")
     runtime = (
         ledger.read_artifact(ledger.project.snapshots["runtime"].artifact)
@@ -506,21 +538,23 @@ def prepare(host, family, condition, phase, old, proofs, model_client=None):
                 "Solution.lean" if name == "uniqueness" else "proof/" + name
             )
     files = capture_context(host.ledger, host.session, phase, layers)
-    max_steps = 4
+    max_steps = int(host.ledger.project.manifest.environment["max_steps"])
     container_timeout = 120
     if model_client:
         # Creation/load, capture, and cleanup, plus five calls per action:
         # info, exists, inspect, exec, and status.
         podman_calls = 7 + 5 * max_steps
         metadata_seconds = 3 * LOCAL["METADATA_REQUEST_TIMEOUT_SECONDS"]
-        container_timeout = (
+        container_timeout = min(
+            3600,
             max_steps * (model_client.timeout_seconds + metadata_seconds)
             + podman_calls * PODMAN_COMMAND_TIMEOUT_SECONDS
-            + 60
+            + 60,
         )
+    count = {4: "four", 12: "twelve"}.get(max_steps, str(max_steps))
     return Episode(
         phase,
-        "Use at most four shell commands. In the first command, inspect task.md, "
+        f"Use at most {count} shell commands. In the first command, inspect task.md, "
         "context.json, tools.md, repository-files.json if present, and the other "
         "task inputs together. Create and test result.json, then submit it. The "
         "final command must start with `printf '%s\\n' "
@@ -546,7 +580,11 @@ def propose(root: Path, episode: Episode, model_client=None):
                 expected = ledger.read_artifact(
                     ledger.project.snapshots["runtime"].artifact
                 )
-            failure = LOCAL["runtime_failure"](model_client, expected)
+            failure = (
+                model_client.runtime_failure(expected)
+                if isinstance(model_client, OpenRouterChatCompletions)
+                else LOCAL["runtime_failure"](model_client, expected)
+            )
             if failure is not None:
                 return failure
             R["witness"](root, request)
@@ -805,7 +843,7 @@ def run_stage(stage: str, root: Path, bundle: Path, *, crash=False, model_client
             "environment": dict(ledger.project.manifest.environment),
             "spent": {key: value.spent for key, value in balances.items()},
             "reserved": {key: value.reserved for key, value in balances.items()},
-            "limits": CAPS,
+            "limits": dict(ledger.project.manifest.allowances),
             "new_operations": len(ledger.operations()) - before,
             "elapsed_ns_by_kind": {
                 kind: sum(
@@ -848,21 +886,13 @@ def main():
         "--condition", type=Condition, choices=list(Condition), required=True
     )
     parser.add_argument("--bundle", type=Path, required=True)
-    parser.add_argument("--local-model")
-    parser.add_argument("--base-url", default="http://127.0.0.1:11434/v1")
-    parser.add_argument("--max-tokens", type=int, default=1536)
-    parser.add_argument("--timeout", type=int, default=180)
+    add_model_arguments(parser)
     parser.add_argument("--crash", action="store_true")
     args = parser.parse_args()
     if args.crash and args.stage != "start":
         parser.error("--crash requires start")
     root, bundle = args.root.resolve(), args.bundle.resolve()
-    model_client = local_client(
-        args.local_model,
-        base_url=args.base_url,
-        max_tokens=args.max_tokens,
-        timeout=args.timeout,
-    )
+    model_client = client_from_arguments(args)
     if args.stage == "start" and not (root / "ledger").exists():
         initialize(
             root,
@@ -870,8 +900,11 @@ def main():
             args.condition,
             bundle,
             model_client=model_client,
+            max_steps=args.max_steps,
         )
     with Ledger.open(root / "ledger") as ledger:
+        if str(args.max_steps) != ledger.project.manifest.environment["max_steps"]:
+            raise ValueError("command limit changed")
         if (args.family, str(args.condition)) != (
             ledger.project.manifest.environment["family"],
             ledger.project.manifest.environment["condition"],
