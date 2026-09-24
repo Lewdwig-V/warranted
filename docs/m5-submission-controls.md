@@ -45,6 +45,7 @@ The original bytes remain captured, and repeated reporting does not repeat the w
 The capture uses the existing file, link, size, and process isolation checks.
 In unfinished mode, an invalid payload records a separate error without discarding a valid workspace.
 An invalid workspace also preserves a safely captured payload.
+If marked submission fails capture, the container remains available until correction or episode cleanup.
 An unknown external outcome remains blocked.
 
 ## Local measurements

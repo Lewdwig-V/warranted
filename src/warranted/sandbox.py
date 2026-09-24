@@ -333,7 +333,7 @@ class Sandbox:
                         raw["candidate/" + name] = base64.b64decode(
                             encoded, validate=True
                         )
-                self.close()
+                    self.close()
         except SandboxFailure as error:
             # Cleanup must succeed before claiming a known stopped attempt.
             self.close()

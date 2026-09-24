@@ -99,6 +99,11 @@ def test_unsubmitted_source_is_captured_and_checked_without_becoming_submission(
                 else ""
             )
             + "PY"
+            + (
+                "\nprintf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'"
+                if fault in {"payload", "workspace"}
+                else ""
+            )
         )
         values["model-initial.json"] = replace(
             values["model-initial.json"], data=json.dumps({"command": command}).encode()
