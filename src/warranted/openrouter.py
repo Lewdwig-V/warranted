@@ -100,6 +100,10 @@ def _usd(value) -> Decimal:
     return amount
 
 
+class _CredentialChanged(ValueError):
+    """The pinned credential is unavailable before inference dispatch."""
+
+
 @dataclass(frozen=True)
 class OpenRouterChatCompletions(LocalChatCompletions):
     provider: ClassVar[str] = "openrouter"
@@ -107,6 +111,7 @@ class OpenRouterChatCompletions(LocalChatCompletions):
     provider_tag: ClassVar[str] = "inference-net/fp4"
     provider_name: ClassVar[str] = "InferenceNet"
     key_file: Path | None = None
+    key_sha256: str | None = None
 
     def __post_init__(self):
         if self.base_url != "https://openrouter.ai/api/v1":
@@ -116,6 +121,11 @@ class OpenRouterChatCompletions(LocalChatCompletions):
             raise ValueError("use an explicit OpenRouter model ID")
         if not isinstance(self.key_file, Path):
             raise ValueError("a host-only API key file is required")
+        if self.key_sha256 is not None and (
+            type(self.key_sha256) is not str
+            or not re.fullmatch(r"[a-f0-9]{64}", self.key_sha256)
+        ):
+            raise ValueError("invalid pinned key digest")
 
     def _key(self) -> str:
         key = self.key_file.read_text().strip()
@@ -140,9 +150,16 @@ class OpenRouterChatCompletions(LocalChatCompletions):
         }
 
     def _post(self, wire):
-        return _request(
-            "/api/v1/chat/completions", wire, self._key(), self.timeout_seconds
-        )
+        try:
+            key = self._key()
+        except (OSError, ValueError):
+            raise _CredentialChanged("OpenRouter key file is unavailable") from None
+        if (
+            self.key_sha256 is not None
+            and hashlib.sha256(key.encode()).hexdigest() != self.key_sha256
+        ):
+            raise _CredentialChanged("OpenRouter key changed after preflight")
+        return _request("/api/v1/chat/completions", wire, key, self.timeout_seconds)
 
     def runtime(self, raw: dict[str, bytes] | None = None) -> bytes:
         key = self._key()
@@ -243,7 +260,18 @@ class OpenRouterChatCompletions(LocalChatCompletions):
         return None
 
     def __call__(self, request, payload):
-        attempt = super().__call__(request, payload)
+        try:
+            attempt = super().__call__(request, payload)
+        except _CredentialChanged as error:
+            return AttemptResult(
+                Result(Outcome.INFRASTRUCTURE_FAILURE, None, {"model": 0}, 0),
+                {
+                    "diagnostic": str(error).encode(),
+                    "cost.json": _encode(
+                        {"usd": "0", "scope": "no inference dispatched"}
+                    ),
+                },
+            )
         if "http-response" not in attempt.raw:
             return attempt
         raw = dict(attempt.raw)

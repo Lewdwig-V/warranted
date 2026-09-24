@@ -8,7 +8,7 @@ import os
 import runpy
 import signal
 from contextlib import ExitStack
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
@@ -580,15 +580,16 @@ def propose(root: Path, episode: Episode, model_client=None):
                 expected = ledger.read_artifact(
                     ledger.project.snapshots["runtime"].artifact
                 )
-            failure = (
-                model_client.runtime_failure(expected)
-                if isinstance(model_client, OpenRouterChatCompletions)
-                else LOCAL["runtime_failure"](model_client, expected)
-            )
+            client = model_client
+            if isinstance(client, OpenRouterChatCompletions):
+                client = replace(client, key_sha256=json.loads(expected)["key_sha256"])
+                failure = client.runtime_failure(expected)
+            else:
+                failure = LOCAL["runtime_failure"](client, expected)
             if failure is not None:
                 return failure
             R["witness"](root, request)
-            return model_client(request, payload)
+            return client(request, payload)
         R["witness"](root, request)
         with Ledger.open(root / "ledger") as ledger:
             data = ledger.read_artifact(

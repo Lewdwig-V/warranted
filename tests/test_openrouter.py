@@ -229,6 +229,33 @@ def test_remote_credentials_cannot_be_sent_to_another_host(remote):
         replace(client, base_url="https://example.invalid/api/v1")
 
 
+def test_key_rotation_after_preflight_cannot_dispatch(tmp_path, remote, monkeypatch):
+    from test_m5_treatments import scripted
+
+    from warranted.contexts import Condition
+
+    client, calls, _, _, _, _ = remote
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "migration", Condition.A)
+    root = tmp_path / "rotated-key"
+    demo["initialize"](root, "migration", Condition.A, bundle, model_client=client)
+    original = OpenRouterChatCompletions.runtime_failure
+
+    def rotate(self, expected):
+        result = original(self, expected)
+        assert result is None
+        self.key_file.write_text("sk-or-v1-" + "b" * 64)
+        return result
+
+    monkeypatch.setattr(OpenRouterChatCompletions, "runtime_failure", rotate)
+    with pytest.raises(RuntimeError):
+        demo["demonstrate"]("start", root, bundle, model_client=client)
+    assert all(not path.endswith("/chat/completions") for path, *_ in calls)
+    with Ledger.open(root / "ledger") as ledger:
+        operation = ledger.operations()[0]
+        assert operation.completion.result.usage == {"model": 0}
+        assert operation.completion.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
+
+
 def test_decimal_cost_rejects_nonfinite_values():
     for value in (True, None, "0.1", Decimal("NaN"), Decimal("Infinity"), -1):
         with pytest.raises(ValueError):
