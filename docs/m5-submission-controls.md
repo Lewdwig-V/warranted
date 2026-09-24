@@ -54,7 +54,9 @@ Both controls use local `qwen3.8:27b`, Ollama 0.34.2, temperature 0, seed 0,
 a 3,072-token output limit, a 180-second request deadline, and at most 12 model turns.
 The model digest is `22130167c4c20e20c7b71454612966ca8e8171e9b3cc8ab6ce8aa6cbfec79643`.
 These match the twelve-turn development attempt's model configuration and budget.
-The implementation commit is `d89b666`.
+The measured source is preserved by the annotated tag
+[`m5-submission-controls-20260924`](https://github.com/Lewdwig-V/warranted/tree/m5-submission-controls-20260924)
+at commit `d89b666`.
 No paid requests ran during these controls.
 
 The submission-only control submitted in one model turn and one shell command.
@@ -138,3 +140,196 @@ Repeated execution reuses recorded work.
 Live controls remain opt-in and never run in CI.
 Offline tests cover source packaging, turn counts after malformed responses, and recorded-call reuse.
 A native container test proves that a passing unfinished program remains unsubmitted.
+
+## Isolating the interface changes
+
+The diagnostic defines six variants of the original task objective.
+It keeps the original task files, model settings, twelve-turn limit, and checker.
+It does not use the rewritten objective from `plain`.
+The table describes the corrected controls now in the runner.
+The twelve-run record below uses the source preserved by the annotated tag
+[`m5-submission-comparison-20260924`](https://github.com/Lewdwig-V/warranted/tree/m5-submission-comparison-20260924)
+at commit `5a771dd`.
+These tags retain the measured commits independently of feature branches and squash merges.
+Those recorded prompts include two additional changes identified during PR review:
+
+- The budget arms also remind the worker to return one command and that format errors consume turns.
+- The helper arms append an override after the original instruction requiring the literal `printf` command.
+
+The budget arms therefore combine a countdown with response-format guidance.
+The helper arms combine helper availability with conflicting final-command wording.
+Their results cannot isolate the effects of countdown visibility or helper availability alone.
+The corrected controls have offline tests but no new live measurements.
+
+| Control | Added instructions | Helper file | Remaining turns |
+| --- | --- | --- | --- |
+| `original` | None | No | No |
+| `original-budget` | None | No | Yes |
+| `schema` | Payload schema, root path, source location | No | No |
+| `schema-budget` | Same schema instructions | No | Yes |
+| `helper` | Same schema instructions plus helper command | Yes | No |
+| `helper-budget` | Same schema and helper instructions | Yes | Yes |
+
+The countdown contains no submission reminder or helper command.
+The schema instructions distinguish Python source from its output configuration.
+The helper instructions replace the manually written final marker command.
+This separates countdown feedback from completion instructions.
+The helper contrast measures its added value once the schema is explicit;
+it does not measure an undocumented helper or every possible interaction.
+
+Before any model calls, the recorded campaign fixes this order for twelve fresh ledgers:
+`original`, `schema`, `helper`, `original-budget`, `schema-budget`, `helper-budget`,
+then the same six in reverse order.
+Each run uses local Qwen with the settings recorded above.
+Both repetitions keep seed zero; they test repeatability, not a distribution of seeds.
+The GPU must be available before starting, unless the user authorizes contention.
+We retain failed attempts and stop on unknown external outcomes or infrastructure failure.
+We do not spend paid API credits or put model inference in CI.
+
+Record submission, initial acceptance, independently checked unfinished artifacts,
+model and tool calls, tokens, parent-process elapsed time, and reservations for every run.
+A contrast must repeat before we use it to choose an interface correction.
+Two repetitions of one development task do not establish general reliability.
+These variants diagnose the original interface; they do not decompose every wording
+change in the earlier `plain` control or complete the revision/recovery experiment.
+
+Use the same commands above with the desired `--control` and a fresh run directory.
+Use the preserved comparison tag to reproduce the recorded protocol.
+The current runner uses the corrected prompts and needs fresh measurements.
+
+## Results of the twelve-run comparison
+
+The twelve runs finished on 2026-09-24 using that tagged comparison source.
+All task, checker, model, and runtime snapshots match across runs.
+The control selection is the only manifest environment difference.
+Its worker-facing prompt changes include the combined interventions described above.
+Both repetitions use seed zero, but their trajectories differ.
+These are observations on one development task, not estimates of general reliability.
+
+The table separates a checker-passing source version, submission of a payload, and one additional diagnostic requirement.
+The host ran all five independent checks after each episode.
+The worker saw its own test output, but never saw those independent verdicts.
+
+| Run | Control | First checker-passing source turn | Submitted payload | Final program rejects boolean version |
+| --- | --- | ---: | --- | --- |
+| 01 | `original` | 3 | Not submitted | No |
+| 02 | `schema` | 3 | Accepted | Yes |
+| 03 | `helper` | 3 | Accepted | No |
+| 04 | `original-budget` | 2 | Accepted | No |
+| 05 | `schema-budget` | None recovered | Not submitted | No |
+| 06 | `helper-budget` | 3 | Accepted | No |
+| 07 | `helper-budget` | 2 | Accepted | No |
+| 08 | `schema-budget` | 5 | Accepted | No |
+| 09 | `original-budget` | 3 | Rejected | No |
+| 10 | `helper` | 3 | Accepted | No |
+| 11 | `schema` | 7 | Accepted | No |
+| 12 | `original` | 3 | Not submitted | Yes |
+
+Run 05 has a coding failure: its program incorrectly requires the optional label.
+It never reaches a recovered checker-passing version.
+Run 08 starts with a failing program, then produces a checker-passing version on turn five.
+Run 11 first reaches that point on turn seven.
+
+Run 09 has a packaging failure. Its first marker attempt finds no payload at the work root.
+Its second attempt submits a status report containing file paths, which the host rejects.
+A separate assessment of source from its captured workspace passes all five original checks.
+This does not change the rejected submission.
+It directly demonstrates why the worker needs the required payload structure.
+
+Runs 01 and 12 make no marker attempt despite retaining checker-passing programs.
+Run 01 stops when its sixth response reaches the output-token limit while generating more tests.
+Run 12 consumes all twelve turns. Its final command runs more tests.
+These are completion failures under the fixed budget, separate from run 05 and run 09.
+
+All seven submissions with explicit schema instructions contain accepted payloads.
+Both original-budget runs reach submission, but only one packages the source correctly.
+The original-instructions runs never submit.
+This supports explicit packaging instructions and further study of stopping behavior.
+The combined prompt changes and two repetitions do not establish which component reliably improves completion.
+
+### Verification quality
+
+The extra diagnostic uses `{"version":true,"host":"h","timeout":5,"label":"kept"}`.
+A paired valid control changes only `version` to integer 1.
+All twelve retained programs accept the valid control. Only runs 02 and 12 reject the boolean version.
+The original contract rejects booleans as integers, but its private cases exercise boolean timeout rather than boolean version.
+The original five-check results remain unchanged.
+
+In the first schema/helper pair, run 02 finds the boolean-version error on turn seven and repairs it on turn eight.
+Run 03 submits five turns earlier, but still accepts that invalid input.
+This speed difference is not an improvement at equivalent quality.
+In the reverse pair, both final programs accept the invalid input.
+Run 12 rejects it but never submits. The speed–quality pattern therefore does not repeat across the pairs.
+
+Packaging reliability, verification coverage, and stopping behavior need separate treatment.
+The direct packaging failure supports documenting the payload contract.
+The boolean witness supports a regression case in a later checker change.
+It does not justify rewarding immediate submission after the first checker pass or selecting a winning prompt.
+The task checker and normal A–E worker instructions are unchanged in this diagnostic slice.
+
+### Work after a checker-passing source version
+
+After the live runs, twenty fresh diagnostic ledgers assess recoverable source versions against the unchanged initial checker.
+Six versions come from complete source printed by a tool. Fourteen are reconstructed from literal quoted heredocs in recorded commands.
+The inspection never executes those shell commands. It executes the recovered Python only through the contained checker.
+These are the earliest recoverable passing versions, not continuous observations of workspace state.
+Run 07 writes and lists its source on turn two, then fails to read a missing `settings.json`.
+That reconstructed source exactly matches its final captured file; the later command failure does not erase the write.
+
+The following counts start after the source-writing action and include the submission action or failed terminal response.
+Input tokens include repeated conversation context.
+These counts measure work, not waste: some extra tests expose real gaps, while other commands repeat unsuccessful inspection.
+
+| Run | Later model calls | Later shell calls | Later input tokens | Later output tokens | Termination |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 01 | 3 | 2 | 9243 | 3812 | output-token limit |
+| 02 | 9 | 9 | 52365 | 3871 | submitted |
+| 03 | 4 | 4 | 16129 | 1470 | submitted |
+| 04 | 7 | 7 | 21684 | 903 | submitted |
+| 05 | — | — | — | — | turn limit |
+| 06 | 3 | 3 | 10873 | 590 | submitted |
+| 07 | 3 | 3 | 8887 | 629 | submitted |
+| 08 | 2 | 2 | 9170 | 195 | submitted |
+| 09 | 8 | 8 | 28527 | 1147 | submitted |
+| 10 | 7 | 7 | 25827 | 1413 | submitted |
+| 11 | 4 | 4 | 21844 | 1458 | submitted |
+| 12 | 9 | 9 | 55471 | 6135 | turn limit |
+
+Run 05 has no finishing-gap measurement because no recovered version passes the checker.
+The source-version analysis and boolean witness were added during the comparison at the user’s request.
+They are exploratory diagnostics. They did not change the predeclared treatments, order, budgets, or original verdicts.
+
+### Cost and retained evidence
+
+| Run | Model / shell calls | Total tokens | Parent execution and assessment (seconds) |
+| --- | ---: | ---: | ---: |
+| 01 | 6 / 5 | 17100 | 73.69 |
+| 02 | 12 / 12 | 60608 | 108.49 |
+| 03 | 7 / 7 | 22283 | 64.21 |
+| 04 | 9 / 9 | 24816 | 65.00 |
+| 05 | 12 / 12 | 37449 | 81.30 |
+| 06 | 6 / 6 | 16440 | 52.46 |
+| 07 | 5 / 5 | 12266 | 44.79 |
+| 08 | 7 / 7 | 21561 | 65.70 |
+| 09 | 11 / 11 | 33829 | 72.16 |
+| 10 | 10 / 10 | 31925 | 75.97 |
+| 11 | 11 / 11 | 41819 | 88.71 |
+| 12 | 12 / 12 | 65657 | 121.62 |
+
+The twelve episodes spend 108 model units, 107 shell units, 12 batch units, 12 checker units, and three capture units.
+They use 353,108 input tokens and 32,645 output tokens, including the truncated response.
+Parent processes measure 6.42 seconds for initialization and 914.10 seconds for execution and assessment in total.
+All reservations settle. No paid requests run. Electricity and human development costs remain unmeasured.
+
+The version inspections add twenty batch units and twenty checker units over 109.85 seconds.
+The final-program diagnostics add thirteen batch units and one checker unit over 60.56 seconds.
+The extra checker unit assesses run 09’s captured source separately.
+These two post-hoc jobs overlap after all live episodes finish; their elapsed times must not be added as wall time.
+
+Local evidence is under `runs/m5-submission-ablation-20260924/`.
+`plan.json`, the runner scripts, and `timing/` preserve the order, source commit, and parent measurements.
+The launcher stops after run 01’s known token-limit failure. `continuation.json` records why execution resumes at run 02 without a retry.
+`summary.json` retains episode results, tokens, commands, and marker-attempt counts.
+`versions/` and `boolean/` contain fresh ledgers with source, original observation references, inspection code, checker inputs, and results.
+`completion-summary.json` records finishing gaps, including run 07’s file-write clarification.
+These ignored local artifacts are not included in Git. The six controls remain opt-in and outside CI.
