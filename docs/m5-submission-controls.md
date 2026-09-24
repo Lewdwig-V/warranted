@@ -138,3 +138,43 @@ Repeated execution reuses recorded work.
 Live controls remain opt-in and never run in CI.
 Offline tests cover source packaging, turn counts after malformed responses, and recorded-call reuse.
 A native container test proves that a passing unfinished program remains unsubmitted.
+
+## Isolating the interface changes
+
+The next diagnostic uses six variants of the original task objective.
+It keeps the original task files, model settings, twelve-turn limit, and checker.
+It does not use the rewritten objective from `plain`.
+
+| Control | Added instructions | Helper file | Remaining turns |
+| --- | --- | --- | --- |
+| `original` | None | No | No |
+| `original-budget` | None | No | Yes |
+| `schema` | Payload schema, root path, source location | No | No |
+| `schema-budget` | Same schema instructions | No | Yes |
+| `helper` | Same schema instructions plus helper command | Yes | No |
+| `helper-budget` | Same schema and helper instructions | Yes | Yes |
+
+The countdown contains no submission reminder or helper command.
+The schema instructions distinguish Python source from its output configuration.
+The helper instructions replace the manually written final marker command.
+This separates countdown feedback from completion instructions.
+The helper contrast measures its added value once the schema is explicit;
+it does not measure an undocumented helper or every possible interaction.
+
+Before any model calls, we fix this order for twelve fresh ledgers:
+`original`, `schema`, `helper`, `original-budget`, `schema-budget`, `helper-budget`,
+then the same six in reverse order.
+Each run uses local Qwen with the settings recorded above.
+Both repetitions keep seed zero; they test repeatability, not a distribution of seeds.
+The GPU must be available before starting, unless the user authorizes contention.
+We retain failed attempts and stop on unknown external outcomes or infrastructure failure.
+We do not spend paid API credits or put model inference in CI.
+
+Record submission, initial acceptance, independently checked unfinished artifacts,
+model and tool calls, tokens, parent-process elapsed time, and reservations for every run.
+A contrast must repeat before we use it to choose an interface correction.
+Two repetitions of one development task do not establish general reliability.
+These variants diagnose the original interface; they do not decompose every wording
+change in the earlier `plain` control or complete the revision/recovery experiment.
+
+Use the same commands above with the desired `--control` and a fresh run directory.

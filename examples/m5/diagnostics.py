@@ -44,9 +44,47 @@ The helper packages your source into /work/result.json and prints the marker.
 It does not run tests or establish acceptance. The host checks the same independent
 requirements after submission. Do not put test output before the submission command.
 """
+ABLATIONS = (
+    "original",
+    "original-budget",
+    "schema",
+    "schema-budget",
+    "helper",
+    "helper-budget",
+)
+CONTROLS = ("submission", "plain", *ABLATIONS)
+SCHEMA = (
+    " The submission payload at /work/result.json must be a JSON object "
+    "mapping the single filename migrate.py to its complete Python source text: "
+    '{"migrate.py": "<complete Python source>"}. '
+    "It is not the configuration produced by that program. "
+    "Keep your source in /work/workspace/migrate.py."
+)
 
 
-class ProgressModel(worker.WorkerModel):
+def ablation(episode, control, helper):
+    if control not in ABLATIONS:
+        raise ValueError("unknown ablation")
+    mode = control.removesuffix("-budget")
+    if mode == "original":
+        return episode
+    episode = replace(episode, objective=episode.objective + SCHEMA)
+    if mode == "helper":
+        episode = replace(
+            episode,
+            objective=episode.objective
+            + " Instead of spelling out the final marker command, run "
+            "python /work/submit.py alone. It packages your source into "
+            "/work/result.json and prints the marker as the first stdout line. "
+            "It does not run tests or establish acceptance.",
+            files={**episode.files, "submit.py": helper},
+        )
+    return episode
+
+
+class CountdownModel(worker.WorkerModel):
+    reminder = ""
+
     def query(self, messages, **kwargs):
         remaining = self.journal.episode.max_steps - self.index
         return super().query(
@@ -57,13 +95,19 @@ class ProgressModel(worker.WorkerModel):
                     "content": (
                         f"Model turns remaining, including this one: {remaining}. "
                         "Each response must contain one shell command. Format errors "
-                        "also consume a turn. To submit your source, run "
-                        "python /work/submit.py as a separate final command."
+                        "also consume a turn." + self.reminder
                     ),
                 }
             ],
             **kwargs,
         )
+
+
+class ProgressModel(CountdownModel):
+    reminder = (
+        " To submit your source, run python /work/submit.py "
+        "as a separate final command."
+    )
 
 
 def snapshots(bundle, client, runtime=None):
@@ -78,7 +122,7 @@ def snapshots(bundle, client, runtime=None):
 
 
 def initialize(root, bundle, control, client, max_steps=12, *, runtime=None):
-    if control not in {"submission", "plain"} or not 1 <= max_steps <= 100:
+    if control not in CONTROLS or not 1 <= max_steps <= 100:
         raise ValueError("unknown control or invalid turn limit")
     root.mkdir(parents=True)
     with Ledger.create(
@@ -191,7 +235,9 @@ def run(root, bundle, client):
         episode = T["prepare"](
             host, "migration", Condition.A, "initial", None, {}, client
         )
-        if control == "submission":
+        if control in ABLATIONS:
+            episode = ablation(episode, control, host.ref("submit.py"))
+        elif control == "submission":
             episode = replace(
                 episode,
                 objective=(
@@ -223,6 +269,11 @@ def run(root, bundle, client):
                     "submit.py": host.ref("submit.py"),
                 },
             )
+    model_class = worker.WorkerModel
+    if control == "plain":
+        model_class = ProgressModel
+    elif control.endswith("-budget"):
+        model_class = CountdownModel
     error = None
     try:
         with (
@@ -230,7 +281,7 @@ def run(root, bundle, client):
             patch.object(
                 worker,
                 "WorkerModel",
-                ProgressModel if control == "plain" else worker.WorkerModel,
+                model_class,
             ),
         ):
             T["propose"](root, episode, client)
@@ -322,7 +373,7 @@ def main():
     parser.add_argument("action", choices=("init", "run"))
     parser.add_argument("root", type=Path)
     parser.add_argument("--bundle", type=Path, required=True)
-    parser.add_argument("--control", choices=("submission", "plain"), required=True)
+    parser.add_argument("--control", choices=CONTROLS, required=True)
     T["add_model_arguments"](parser)
     args = parser.parse_args()
     client = T["client_from_arguments"](args)
