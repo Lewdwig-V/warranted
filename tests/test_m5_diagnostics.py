@@ -61,13 +61,13 @@ def test_remaining_turns_count_format_errors_and_reuse_recorded_calls(tmp_path):
 
 
 @pytest.mark.container
-@pytest.mark.parametrize("binary", [False, True])
+@pytest.mark.parametrize("fault", ["payload", "binary", "workspace"])
 @pytest.mark.skipif(
     os.environ.get("WARRANTED_CONTAINER_TESTS") != "1",
     reason="requires rootless Podman",
 )
 def test_unsubmitted_source_is_captured_and_checked_without_becoming_submission(
-    tmp_path, monkeypatch, binary
+    tmp_path, monkeypatch, fault
 ):
     from test_m5_treatments import scripted
 
@@ -79,14 +79,26 @@ def test_unsubmitted_source_is_captured_and_checked_without_becoming_submission(
         values = original(*args, **kwargs)
         source = (
             b"\xff"
-            if binary
+            if fault == "binary"
             else json.loads(values["candidate-one-way.json"].data)[
                 "migrate.py"
             ].encode()
         )
         command = (
             "python - <<'PY'\nfrom pathlib import Path\n"
-            f"Path('workspace/migrate.py').write_bytes({source!r})\nPY"
+            f"Path('workspace/migrate.py').write_bytes({source!r})\n"
+            + (
+                "Path('result.json').symlink_to('/etc/passwd')\n"
+                if fault == "payload"
+                else ""
+            )
+            + (
+                "__import__('os').symlink('/etc/passwd', b'workspace/link-\\xff')\n"
+                "Path('result.json').write_text('{}')\n"
+                if fault == "workspace"
+                else ""
+            )
+            + "PY"
         )
         values["model-initial.json"] = replace(
             values["model-initial.json"], data=json.dumps({"command": command}).encode()
@@ -99,9 +111,16 @@ def test_unsubmitted_source_is_captured_and_checked_without_becoming_submission(
     result = demo["run"](root, bundle, None)
     assert result["submitted"] is False
     assert result["assessment"] is None
-    assert result["unfinished_assessment"]["source"]["status"] == (
-        "unsupported" if binary else "accepted"
-    )
+    assessments = result["unfinished_assessment"]
+    if fault == "workspace":
+        assert assessments["workspace"]["status"] == "unsupported"
+        assert assessments["payload"]["status"] == "rejected"
+    else:
+        assert assessments["source"]["status"] == (
+            "unsupported" if fault == "binary" else "accepted"
+        )
+        if fault == "payload":
+            assert assessments["payload"]["status"] == "unsupported"
     with Ledger.open(root / "ledger") as ledger:
         with pytest.raises(ValueError):
             submitted_candidate(ledger, "initial")

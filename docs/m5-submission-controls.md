@@ -43,6 +43,8 @@ A passing diagnostic check does not change the episode's submission status.
 Non-UTF-8 source receives an `unsupported` diagnostic result.
 The original bytes remain captured, and repeated reporting does not repeat the worker.
 The capture uses the existing file, link, size, and process isolation checks.
+In unfinished mode, an invalid payload records a separate error without discarding a valid workspace.
+An invalid workspace also preserves a safely captured payload.
 An unknown external outcome remains blocked.
 
 ## Local measurements

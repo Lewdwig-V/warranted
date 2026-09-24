@@ -255,6 +255,15 @@ def run(root, bundle, client):
             ]
             if captures:
                 raw = captures[0].completion.observation
+                for name, part in (("result", "payload"), ("workspace", "workspace")):
+                    channel = f"unfinished/{name}-error.txt"
+                    if channel in raw.artifacts:
+                        unfinished[part] = {
+                            "status": "unsupported",
+                            "reason": ledger.read_artifact(
+                                raw.artifacts[channel]
+                            ).decode(),
+                        }
                 if "unfinished/result.json" in raw.artifacts:
                     unfinished["payload"] = R["assess"](
                         ledger,

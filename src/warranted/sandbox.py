@@ -78,43 +78,56 @@ else:
 directory = os.open('/work', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
 captured = {}
-if sys.argv[1:] != ['unfinished'] or os.path.lexists('/work/result.json'):
-    fd = os.open('result.json', flags, dir_fd=directory)
-    with os.fdopen(fd, 'rb') as file:
-        info = os.fstat(file.fileno())
-        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                or info.st_size > 1048576):
-            raise ValueError('candidate must be a bounded regular file with one link')
-        data = file.read(1048577)
-        if len(data) > 1048576:
-            raise ValueError('candidate exceeds limit')
-    captured['result.json'] = base64.b64encode(data).decode()
-workspace, size = {}, 0
-workspace_dir = os.open('workspace', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                        dir_fd=directory)
-for parent, dirs, files, directory in os.fwalk(
-        '.', dir_fd=workspace_dir, follow_symlinks=False):
-    if len(Path(parent).parts) > 16:
-        raise ValueError('workspace exceeds depth limit')
-    for name in dirs:
-        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
-        if not stat.S_ISDIR(info.st_mode):
-            raise ValueError('workspace contains a directory link')
-    for name in sorted(files):
-        path = str(Path(parent, name))
-        if len(workspace) >= 128 or len(Path(path).parts) > 16:
-            raise ValueError('workspace exceeds file or depth limit')
-        with os.fdopen(os.open(name, flags, dir_fd=directory), 'rb') as file:
+unfinished = sys.argv[1:] == ['unfinished']
+try:
+    if not unfinished or os.path.lexists('/work/result.json'):
+        fd = os.open('result.json', flags, dir_fd=directory)
+        with os.fdopen(fd, 'rb') as file:
             info = os.fstat(file.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-                raise ValueError('workspace requires regular files with one link')
-            data = file.read(1048577 - size)
-        size += len(data)
-        if size > 1048576:
-            raise ValueError('workspace exceeds size limit')
-        workspace[path] = base64.b64encode(data).decode()
-encoded = json.dumps(workspace, sort_keys=True).encode()
-captured['workspace.json'] = base64.b64encode(encoded).decode()
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_size > 1048576):
+                raise ValueError('candidate requires a bounded regular file, one link')
+            data = file.read(1048577)
+            if len(data) > 1048576:
+                raise ValueError('candidate exceeds limit')
+        captured['result.json'] = base64.b64encode(data).decode()
+except (OSError, ValueError) as error:
+    if not unfinished:
+        raise
+    detail = str(error).encode('utf-8', 'backslashreplace')
+    captured['result-error.txt'] = base64.b64encode(detail).decode()
+try:
+    workspace, size = {}, 0
+    workspace_dir = os.open('workspace', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                            dir_fd=directory)
+    for parent, dirs, files, directory in os.fwalk(
+            '.', dir_fd=workspace_dir, follow_symlinks=False):
+        if len(Path(parent).parts) > 16:
+            raise ValueError('workspace exceeds depth limit')
+        for name in dirs:
+            info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode):
+                raise ValueError('workspace contains a directory link')
+        for name in sorted(files):
+            path = str(Path(parent, name))
+            if len(workspace) >= 128 or len(Path(path).parts) > 16:
+                raise ValueError('workspace exceeds file or depth limit')
+            with os.fdopen(os.open(name, flags, dir_fd=directory), 'rb') as file:
+                info = os.fstat(file.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                    raise ValueError('workspace requires regular files with one link')
+                data = file.read(1048577 - size)
+            size += len(data)
+            if size > 1048576:
+                raise ValueError('workspace exceeds size limit')
+            workspace[path] = base64.b64encode(data).decode()
+    encoded = json.dumps(workspace, sort_keys=True).encode()
+    captured['workspace.json'] = base64.b64encode(encoded).decode()
+except (OSError, ValueError) as error:
+    if not unfinished:
+        raise
+    detail = str(error).encode('utf-8', 'backslashreplace')
+    captured['workspace-error.txt'] = base64.b64encode(detail).decode()
 print(json.dumps(captured))
 """
 
