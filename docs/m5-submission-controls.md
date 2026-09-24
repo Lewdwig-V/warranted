@@ -141,9 +141,20 @@ A native container test proves that a passing unfinished program remains unsubmi
 
 ## Isolating the interface changes
 
-The next diagnostic uses six variants of the original task objective.
+The diagnostic defines six variants of the original task objective.
 It keeps the original task files, model settings, twelve-turn limit, and checker.
 It does not use the rewritten objective from `plain`.
+The table describes the corrected controls now in the runner.
+The twelve-run record below uses the earlier implementation at `5a771dd`.
+Those recorded prompts include two additional changes identified during PR review:
+
+- The budget arms also remind the worker to return one command and that format errors consume turns.
+- The helper arms append an override after the original instruction requiring the literal `printf` command.
+
+The budget arms therefore combine a countdown with response-format guidance.
+The helper arms combine helper availability with conflicting final-command wording.
+Their results cannot isolate the effects of countdown visibility or helper availability alone.
+The corrected controls have offline tests but no new live measurements.
 
 | Control | Added instructions | Helper file | Remaining turns |
 | --- | --- | --- | --- |
@@ -161,7 +172,7 @@ This separates countdown feedback from completion instructions.
 The helper contrast measures its added value once the schema is explicit;
 it does not measure an undocumented helper or every possible interaction.
 
-Before any model calls, we fix this order for twelve fresh ledgers:
+Before any model calls, the recorded campaign fixes this order for twelve fresh ledgers:
 `original`, `schema`, `helper`, `original-budget`, `schema-budget`, `helper-budget`,
 then the same six in reverse order.
 Each run uses local Qwen with the settings recorded above.
@@ -178,12 +189,15 @@ These variants diagnose the original interface; they do not decompose every word
 change in the earlier `plain` control or complete the revision/recovery experiment.
 
 Use the same commands above with the desired `--control` and a fresh run directory.
+Use source at `5a771dd` to reproduce the recorded protocol.
+The current runner uses the corrected prompts and needs fresh measurements.
 
 ## Results of the twelve-run comparison
 
 The twelve runs finished on 2026-09-24 using implementation commit `5a771dd`.
 All task, checker, model, and runtime snapshots match across runs.
-The control selection is the only environment difference.
+The control selection is the only manifest environment difference.
+Its worker-facing prompt changes include the combined interventions described above.
 Both repetitions use seed zero, but their trajectories differ.
 These are observations on one development task, not estimates of general reliability.
 
@@ -223,10 +237,10 @@ Run 12 consumes all twelve turns. Its final command runs more tests.
 These are completion failures under the fixed budget, separate from run 05 and run 09.
 
 All seven submissions with explicit schema instructions contain accepted payloads.
-Both countdown-only runs reach submission, but only one packages the source correctly.
+Both original-budget runs reach submission, but only one packages the source correctly.
 The original-instructions runs never submit.
 This supports explicit packaging instructions and further study of stopping behavior.
-Two repetitions do not establish which intervention reliably improves completion.
+The combined prompt changes and two repetitions do not establish which component reliably improves completion.
 
 ### Verification quality
 
@@ -243,7 +257,8 @@ In the reverse pair, both final programs accept the invalid input.
 Run 12 rejects it but never submits. The speed–quality pattern therefore does not repeat across the pairs.
 
 Packaging reliability, verification coverage, and stopping behavior need separate treatment.
-The evidence supports documenting the payload contract and adding a regression case for boolean versions in a later checker change.
+The direct packaging failure supports documenting the payload contract.
+The boolean witness supports a regression case in a later checker change.
 It does not justify rewarding immediate submission after the first checker pass or selecting a winning prompt.
 The task checker and normal A–E worker instructions are unchanged in this diagnostic slice.
 

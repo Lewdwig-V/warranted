@@ -70,13 +70,22 @@ def ablation(episode, control, helper):
         return episode
     episode = replace(episode, objective=episode.objective + SCHEMA)
     if mode == "helper":
+        manual = (
+            "The final command must start with `printf '%s\\n' "
+            "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT;` so the marker is the first "
+            "stdout line."
+        )
+        if episode.objective.count(manual) != 1:
+            raise ValueError("original marker instruction changed")
         episode = replace(
             episode,
-            objective=episode.objective
-            + " Instead of spelling out the final marker command, run "
-            "python /work/submit.py alone. It packages your source into "
-            "/work/result.json and prints the marker as the first stdout line. "
-            "It does not run tests or establish acceptance.",
+            objective=episode.objective.replace(
+                manual,
+                "Run python /work/submit.py alone as the final command. "
+                "It packages your source into /work/result.json and prints the "
+                "marker as the first stdout line. "
+                "It does not run tests or establish acceptance.",
+            ),
             files={**episode.files, "submit.py": helper},
         )
     return episode
@@ -93,9 +102,8 @@ class CountdownModel(worker.WorkerModel):
                 {
                     "role": "user",
                     "content": (
-                        f"Model turns remaining, including this one: {remaining}. "
-                        "Each response must contain one shell command. Format errors "
-                        "also consume a turn." + self.reminder
+                        f"Model turns remaining, including this one: {remaining}."
+                        + self.reminder
                     ),
                 }
             ],
@@ -105,7 +113,8 @@ class CountdownModel(worker.WorkerModel):
 
 class ProgressModel(CountdownModel):
     reminder = (
-        " To submit your source, run python /work/submit.py "
+        " Each response must contain one shell command. Format errors also "
+        "consume a turn. To submit your source, run python /work/submit.py "
         "as a separate final command."
     )
 

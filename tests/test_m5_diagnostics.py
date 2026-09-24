@@ -65,6 +65,10 @@ def test_remaining_turns_count_format_errors_and_reuse_recorded_calls(
         assert ("submit.py" in payload["messages"][-1]["content"]) == (
             model_class == "ProgressModel"
         )
+        if model_class == "CountdownModel":
+            assert payload["messages"][-1]["content"] == (
+                f"Model turns remaining, including this one: {remaining}."
+            )
 
 
 def test_ablation_changes_only_declared_instructions_and_helper(tmp_path):
@@ -74,7 +78,14 @@ def test_ablation_changes_only_declared_instructions_and_helper(tmp_path):
     project(tmp_path)
     with Ledger.open(tmp_path / "ledger") as ledger:
         helper = Evidence("task", ledger.project.snapshots["task"].artifact)
-    episode = Episode("initial", "Original objective.", ("task",), max_steps=12)
+    episode = Episode(
+        "initial",
+        "Original objective. The final command must start with `printf '%s\\n' "
+        "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT;` so the marker is the first "
+        "stdout line. On continuation, use the restored workspace.",
+        ("task",),
+        max_steps=12,
+    )
     for mode in ("original", "schema", "helper"):
         control = demo["ablation"](episode, mode, helper)
         counted = demo["ablation"](episode, mode + "-budget", helper)
@@ -83,7 +94,12 @@ def test_ablation_changes_only_declared_instructions_and_helper(tmp_path):
             replace(control, objective=episode.objective, files=episode.files)
             == episode
         )
-        assert control.objective.startswith(episode.objective)
+        if mode == "helper":
+            assert "must start with `printf" not in control.objective
+            assert "python /work/submit.py" in control.objective
+            assert "On continuation, use the restored workspace." in control.objective
+        else:
+            assert control.objective.startswith(episode.objective)
         assert ("complete Python source" in control.objective) == (mode != "original")
         assert dict(control.files) == (
             {"submit.py": helper} if mode == "helper" else {}
@@ -92,6 +108,10 @@ def test_ablation_changes_only_declared_instructions_and_helper(tmp_path):
             assert control == episode
     with pytest.raises(ValueError, match="unknown ablation"):
         demo["ablation"](episode, "typo-budget", helper)
+    with pytest.raises(ValueError, match="marker instruction changed"):
+        demo["ablation"](
+            replace(episode, objective="Changed protocol."), "helper", helper
+        )
 
 
 def test_ablation_dispatch_keeps_countdown_and_helper_separate(tmp_path, monkeypatch):
@@ -129,10 +149,14 @@ def test_ablation_dispatch_keeps_countdown_and_helper_separate(tmp_path, monkeyp
         counted = control.endswith("-budget")
         assert len(messages) == (2 if counted else 1)
         if counted:
-            assert "including this one: 12." in messages[-1]["content"]
-            assert "submit" not in messages[-1]["content"]
+            assert messages[-1]["content"] == (
+                "Model turns remaining, including this one: 12."
+            )
         assert ("submit.py" in episode.files) == control.startswith("helper")
         assert "submission.md" not in episode.files
+        assert ("must start with `printf" in episode.objective) == (
+            not control.startswith("helper")
+        )
 
 
 @pytest.mark.container
