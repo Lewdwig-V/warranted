@@ -7,12 +7,24 @@ from dataclasses import replace
 from decimal import Decimal
 
 import pytest
-from test_chat_completions import query, setup
+from test_chat_completions import query
 
 from warranted import openrouter
-from warranted.ledger import Ledger, Outcome
+from warranted.ledger import Ledger, Manifest, Outcome, Snapshot
 from warranted.openrouter import OpenRouterChatCompletions
 from warranted.worker import UnknownOutcome
+
+
+def setup(root, client):
+    with Ledger.create(
+        root,
+        Manifest("remote-chat", "1", "run", "world", {}, {"model": 2}),
+        {
+            "model-api": client.snapshot,
+            "runtime": Snapshot(client.runtime(), "openrouter", "1"),
+        },
+    ):
+        pass
 
 
 @pytest.fixture
@@ -21,7 +33,10 @@ def remote(tmp_path, monkeypatch):
     key_file = tmp_path / "key"
     key_file.write_text(secret)
     client = OpenRouterChatCompletions(
-        "https://openrouter.ai/api/v1", "z-ai/glm-5.3-flash", key_file=key_file
+        "https://openrouter.ai/api/v1",
+        "z-ai/glm-5.3-flash",
+        key_file=key_file,
+        ledger_root=tmp_path / "ledger",
     )
     calls = []
     limits = {
@@ -86,12 +101,13 @@ def test_billed_response_is_reused_without_key_or_network(tmp_path, remote):
     client, calls, _, _, _, secret = remote
     root = tmp_path / "ledger"
     setup(root, client)
+    calls.clear()
     assert query(root, client)["extra"]["actions"] == [{"command": "true"}]
     client.key_file.unlink()
     assert query(root, client)["extra"]["actions"] == [{"command": "true"}]
-    assert len(calls) == 1
-    assert calls[0][2] == secret
-    wire = json.loads(calls[0][1])
+    assert len(calls) == 3
+    assert calls[-1][2] == secret
+    wire = json.loads(calls[-1][1])
     assert wire["provider"]["allow_fallbacks"] is False
     assert wire["provider"]["require_parameters"] is True
     assert wire["provider"]["order"] == ["inference-net/fp4"]
@@ -110,14 +126,17 @@ def test_billed_response_is_reused_without_key_or_network(tmp_path, remote):
 def test_lost_paid_response_stays_unknown_without_retry(tmp_path, remote, monkeypatch):
     client, _, _, _, _, _ = remote
     attempts = []
+    root = tmp_path / "ledger"
+    setup(root, client)
+    original = openrouter._request
 
-    def lost(*args):
+    def lost(path, *args):
+        if not path.endswith("/chat/completions"):
+            return original(path, *args)
         attempts.append(args)
         raise TimeoutError("request deadline")
 
     monkeypatch.setattr(openrouter, "_request", lost)
-    root = tmp_path / "ledger"
-    setup(root, client)
     with pytest.raises(TimeoutError):
         query(root, client)
     with pytest.raises(UnknownOutcome):
@@ -126,6 +145,29 @@ def test_lost_paid_response_stays_unknown_without_retry(tmp_path, remote, monkey
     with Ledger.open(root) as ledger:
         assert ledger.operations()[0].state == "unknown"
         assert ledger.accounting()["model"].reserved == 1
+        request = ledger.operations()[0].request
+    with pytest.raises(UnknownOutcome):
+        client(request, b"{}")
+    assert len(attempts) == 1
+
+
+@pytest.mark.parametrize("fault", ["unbound", "unlimited", "exhausted"])
+def test_direct_boundary_cannot_bypass_preflight(tmp_path, remote, fault):
+    client, calls, limits, _, _, _ = remote
+    root = tmp_path / "ledger"
+    setup(root, client)
+    calls.clear()
+    if fault == "unbound":
+        client = replace(client, ledger_root=None)
+    elif fault == "unlimited":
+        limits["limit"] = None
+    else:
+        limits["limit_remaining"] = 0
+    with pytest.raises(RuntimeError, match="model attempt"):
+        query(root, client)
+    assert all(not path.endswith("/chat/completions") for path, *_ in calls)
+    with Ledger.open(root) as ledger:
+        assert ledger.operations()[0].completion.result.usage == {"model": 0}
 
 
 @pytest.mark.parametrize(

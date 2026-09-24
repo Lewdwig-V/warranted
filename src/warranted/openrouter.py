@@ -16,8 +16,8 @@ from typing import ClassVar
 from warranted.acceptance import _encode
 from warranted.chat_completions import MAX_BYTES, LocalChatCompletions
 from warranted.containers import SandboxFailure, _run
-from warranted.ledger import Outcome, Result, _json_object
-from warranted.worker import AttemptResult
+from warranted.ledger import Ledger, Origin, Outcome, Result, _json_object
+from warranted.worker import AttemptResult, UnknownOutcome, record_once
 
 # A child process gives DNS, TLS, headers, and body reads one killable deadline.
 # Credentials travel over stdin, never argv, captured requests, or worker files.
@@ -112,6 +112,7 @@ class OpenRouterChatCompletions(LocalChatCompletions):
     provider_name: ClassVar[str] = "InferenceNet"
     key_file: Path | None = None
     key_sha256: str | None = None
+    ledger_root: Path | None = None
 
     def __post_init__(self):
         if self.base_url != "https://openrouter.ai/api/v1":
@@ -154,10 +155,7 @@ class OpenRouterChatCompletions(LocalChatCompletions):
             key = self._key()
         except (OSError, ValueError):
             raise _CredentialChanged("OpenRouter key file is unavailable") from None
-        if (
-            self.key_sha256 is not None
-            and hashlib.sha256(key.encode()).hexdigest() != self.key_sha256
-        ):
+        if hashlib.sha256(key.encode()).hexdigest() != self.key_sha256:
             raise _CredentialChanged("OpenRouter key changed after preflight")
         return _request("/api/v1/chat/completions", wire, key, self.timeout_seconds)
 
@@ -264,6 +262,55 @@ class OpenRouterChatCompletions(LocalChatCompletions):
         return None
 
     def __call__(self, request, payload):
+        try:
+            if self.ledger_root is None:
+                raise _CredentialChanged("OpenRouter dispatch requires a pinned ledger")
+            with Ledger.open(self.ledger_root) as ledger:
+                operation = ledger.lookup(request)
+                if operation is None or operation.state != "unknown":
+                    raise ValueError("dispatch requires a begun journal operation")
+                identity = request.origin.operation_id + "/preflight"
+                if any(o.origin.operation_id == identity for o in ledger.history()):
+                    raise UnknownOutcome(
+                        "preflight already recorded; do not redispatch"
+                    )
+                expected = ledger.read_artifact(
+                    ledger.project.snapshots["runtime"].artifact
+                )
+                preflight = {}
+                failure = self.runtime_failure(expected, preflight)
+                record_once(
+                    ledger,
+                    ledger.start_session(),
+                    Origin(
+                        identity,
+                        "model-preflight",
+                        self.service_id,
+                        "1",
+                        {
+                            **request.origin.inputs,
+                            "runtime": ledger.project.snapshots["runtime"].artifact,
+                        },
+                    ),
+                    preflight,
+                )
+            if failure is not None:
+                return failure
+            client = replace(self, key_sha256=json.loads(expected)["key_sha256"])
+            attempt = client._inference(request, payload)
+            return AttemptResult(attempt.result, {**preflight, **attempt.raw})
+        except _CredentialChanged as error:
+            return AttemptResult(
+                Result(Outcome.INFRASTRUCTURE_FAILURE, None, {"model": 0}, 0),
+                {
+                    "diagnostic": str(error).encode(),
+                    "cost.json": _encode(
+                        {"usd": "0", "scope": "no inference dispatched"}
+                    ),
+                },
+            )
+
+    def _inference(self, request, payload):
         try:
             attempt = super().__call__(request, payload)
         except _CredentialChanged as error:

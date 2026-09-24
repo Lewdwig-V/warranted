@@ -576,38 +576,19 @@ def prepare(host, family, condition, phase, old, proofs, model_client=None):
 def propose(root: Path, episode: Episode, model_client=None):
     def model(request, payload):
         if model_client:
-            with Ledger.open(root / "ledger") as ledger:
-                expected = ledger.read_artifact(
-                    ledger.project.snapshots["runtime"].artifact
-                )
             client = model_client
-            preflight = {}
             if isinstance(client, OpenRouterChatCompletions):
-                client = replace(client, key_sha256=json.loads(expected)["key_sha256"])
-                failure = client.runtime_failure(expected, preflight)
-                with Ledger.open(root / "ledger") as ledger:
-                    record_once(
-                        ledger,
-                        ledger.start_session(),
-                        Origin(
-                            request.origin.operation_id + "/preflight",
-                            "model-preflight",
-                            client.service_id,
-                            "1",
-                            {
-                                **request.origin.inputs,
-                                "runtime": ledger.project.snapshots["runtime"].artifact,
-                            },
-                        ),
-                        preflight,
-                    )
+                client = replace(client, ledger_root=root / "ledger")
             else:
+                with Ledger.open(root / "ledger") as ledger:
+                    expected = ledger.read_artifact(
+                        ledger.project.snapshots["runtime"].artifact
+                    )
                 failure = LOCAL["runtime_failure"](client, expected)
-            if failure is not None:
-                return failure
+                if failure is not None:
+                    return failure
             R["witness"](root, request)
-            attempt = client(request, payload)
-            return AttemptResult(attempt.result, {**preflight, **attempt.raw})
+            return client(request, payload)
         R["witness"](root, request)
         with Ledger.open(root / "ledger") as ledger:
             data = ledger.read_artifact(
