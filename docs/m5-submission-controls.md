@@ -54,7 +54,9 @@ Both controls use local `qwen3.8:27b`, Ollama 0.34.2, temperature 0, seed 0,
 a 3,072-token output limit, a 180-second request deadline, and at most 12 model turns.
 The model digest is `22130167c4c20e20c7b71454612966ca8e8171e9b3cc8ab6ce8aa6cbfec79643`.
 These match the twelve-turn development attempt's model configuration and budget.
-The implementation commit is `d89b666`.
+The measured source is preserved by the annotated tag
+[`m5-submission-controls-20260924`](https://github.com/Lewdwig-V/warranted/tree/m5-submission-controls-20260924)
+at commit `d89b666`.
 No paid requests ran during these controls.
 
 The submission-only control submitted in one model turn and one shell command.
@@ -145,7 +147,10 @@ The diagnostic defines six variants of the original task objective.
 It keeps the original task files, model settings, twelve-turn limit, and checker.
 It does not use the rewritten objective from `plain`.
 The table describes the corrected controls now in the runner.
-The twelve-run record below uses the earlier implementation at `5a771dd`.
+The twelve-run record below uses the source preserved by the annotated tag
+[`m5-submission-comparison-20260924`](https://github.com/Lewdwig-V/warranted/tree/m5-submission-comparison-20260924)
+at commit `5a771dd`.
+These tags retain the measured commits independently of feature branches and squash merges.
 Those recorded prompts include two additional changes identified during PR review:
 
 - The budget arms also remind the worker to return one command and that format errors consume turns.
@@ -189,12 +194,12 @@ These variants diagnose the original interface; they do not decompose every word
 change in the earlier `plain` control or complete the revision/recovery experiment.
 
 Use the same commands above with the desired `--control` and a fresh run directory.
-Use source at `5a771dd` to reproduce the recorded protocol.
+Use the preserved comparison tag to reproduce the recorded protocol.
 The current runner uses the corrected prompts and needs fresh measurements.
 
 ## Results of the twelve-run comparison
 
-The twelve runs finished on 2026-09-24 using implementation commit `5a771dd`.
+The twelve runs finished on 2026-09-24 using that tagged comparison source.
 All task, checker, model, and runtime snapshots match across runs.
 The control selection is the only manifest environment difference.
 Its worker-facing prompt changes include the combined interventions described above.
