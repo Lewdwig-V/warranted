@@ -339,3 +339,34 @@ units, and no reservations. Recorded model operations total 28.5 seconds and
 tool operations 24.0 seconds; complete wall time and monetary cost are not
 measured. Larger limits removed output truncation in this run but did not
 produce a submission. The temporary limit change was reverted.
+
+## Twelve-command Qwen diagnostic
+
+A fresh migration-A run at `runs/m5-qwen-twelve-20260924` used plan digest
+`5fb083d707416080b697daef2e3fb0e3ace8f83dd1c9b4ddfbce71f78a6c4f0f`.
+The model, seed, task, evaluator, 3,072-token output limit, and 180-second request
+deadline stayed the same as the six-command diagnostic. This run allowed twelve
+commands per episode and twenty-four model and tool units across both episodes.
+The computed container lifetime was capped at the runtime's existing 3,600-second
+maximum. Those limits and the matching instruction below were the only changes
+to `treatments.py` from `f6ab1fc`; its pinned snapshot digest is
+`84eda8b5fcbd6a5532aed5cd089121269460a8b7afe2eb31d83c10367fc6dc78`.
+
+```text
+Use at most twelve shell commands. In the first command, inspect task.md, context.json, tools.md, repository-files.json if present, and the other task inputs together. Create and test result.json, then submit it. The final command must start with `printf '%s\n' COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT;` so the marker is the first stdout line. On continuation, use the restored workspace and current feedback.
+```
+
+Qwen inspected twice, wrote the migration and public example files, then tested
+and inspected their output. Commands 10, 11, and 12 were byte-identical
+`od -c | tail -3` inspections of two migration outputs. It never created
+`result.json` or printed the submission marker. All twelve model responses ended
+normally; none hit the output limit. The final HTTP request still contained the
+original instructions. The second shell command exited 1 while reading absent
+files; the other eleven succeeded. No independent task check or restart ran.
+
+The ledger records 34,428 prompt tokens, 1,946 completion tokens, 36,374 total
+tokens, twelve spent model units, twelve spent tool units, and no reservations.
+Recorded model operations total 42.5 seconds and tool operations 45.7 seconds;
+these exclude complete wall time and monetary cost. The temporary changes were
+reverted. This run shows repeated actions under the larger budget; it does not
+establish that Qwen can never submit with another budget or policy.
