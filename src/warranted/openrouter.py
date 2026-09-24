@@ -144,11 +144,16 @@ class OpenRouterChatCompletions(LocalChatCompletions):
             "/api/v1/chat/completions", wire, self._key(), self.timeout_seconds
         )
 
-    def runtime(self) -> bytes:
+    def runtime(self, raw: dict[str, bytes] | None = None) -> bytes:
         key = self._key()
+        if raw is None:
+            raw = {}
 
         def read(path, credential=None):
             status, body = _request(path, None, credential, 10)
+            name = path.rsplit("/", 1)[-1]
+            raw[f"api/{name}-status.json"] = _encode(status)
+            raw[f"api/{name}-response"] = body
             if status != 200:
                 raise ValueError(f"OpenRouter metadata HTTP status {status}")
             return json.loads(
@@ -220,7 +225,7 @@ class OpenRouterChatCompletions(LocalChatCompletions):
         started = monotonic_ns()
         raw = {}
         try:
-            raw["runtime.json"] = self.runtime()
+            raw["runtime.json"] = self.runtime(raw)
             if raw["runtime.json"] != expected:
                 raise ValueError("OpenRouter key limit or model endpoint changed")
         except Exception as error:

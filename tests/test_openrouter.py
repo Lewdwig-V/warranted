@@ -180,6 +180,49 @@ def test_runtime_ignores_consumed_credit_but_pins_limit(remote):
     assert client.runtime_failure(pinned) is not None
 
 
+@pytest.mark.parametrize("failed_endpoint", ["key", "endpoints"])
+def test_metadata_http_failure_retains_raw_receipt(
+    tmp_path, remote, monkeypatch, failed_endpoint
+):
+    from test_m5_treatments import scripted
+
+    from warranted.contexts import Condition
+
+    client, _, _, _, _, _ = remote
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "migration", Condition.A)
+    root = tmp_path / "metadata-failure"
+    demo["initialize"](root, "migration", Condition.A, bundle, model_client=client)
+    original = openrouter._request
+    body = b'{"error":{"message":"upstream metadata unavailable"}}'
+
+    def request(path, *args):
+        return (
+            (429, body)
+            if path.endswith("/" + failed_endpoint)
+            else original(path, *args)
+        )
+
+    monkeypatch.setattr(openrouter, "_request", request)
+    with pytest.raises(RuntimeError):
+        demo["demonstrate"]("start", root, bundle, model_client=client)
+    with Ledger.open(root / "ledger") as ledger:
+        failure = ledger.operations()[0].completion
+        assert failure.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
+        assert failure.result.usage == {"model": 0}
+        raw = failure.observation.artifacts
+        assert ledger.read_artifact(raw[f"api/{failed_endpoint}-response"]) == body
+        assert (
+            json.loads(ledger.read_artifact(raw[f"api/{failed_endpoint}-status.json"]))
+            == 429
+        )
+    monkeypatch.setattr(
+        openrouter, "_request", lambda *_: pytest.fail("repeated metadata request")
+    )
+    client.key_file.unlink()
+    with pytest.raises(RuntimeError):
+        demo["demonstrate"]("start", root, bundle, model_client=client)
+
+
 def test_remote_credentials_cannot_be_sent_to_another_host(remote):
     client, _, _, _, _, _ = remote
     with pytest.raises(ValueError, match="OpenRouter endpoint"):
