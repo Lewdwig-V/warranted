@@ -266,6 +266,69 @@ def test_successful_preflight_survives_restart(tmp_path, remote, monkeypatch):
     demo["propose"](root, episode, client)
 
 
+def test_preflight_survives_lost_completion_without_retry(
+    tmp_path, remote, monkeypatch
+):
+    from test_m5_treatments import scripted
+
+    from warranted.contexts import Condition
+
+    client, calls, _, _, _, secret = remote
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "migration", Condition.A)
+    root = tmp_path / "lost-completion"
+    demo["initialize"](root, "migration", Condition.A, bundle, model_client=client)
+    original = openrouter._request
+
+    def lose_completion(path, *args):
+        if path.endswith("/chat/completions"):
+            with Ledger.open(root / "ledger") as ledger:
+                preflight = next(
+                    o for o in ledger.history() if o.origin.kind == "model-preflight"
+                )
+                assert (
+                    preflight.origin.operation_id == "episode/initial/model/1/preflight"
+                )
+                raw = {
+                    k: ledger.read_artifact(v) for k, v in preflight.artifacts.items()
+                }
+                assert json.loads(raw["api/key-status.json"]) == 200
+                assert json.loads(raw["api/endpoints-status.json"]) == 200
+                assert "preflight.json" in raw
+                assert secret.encode() not in b"".join(raw.values())
+            raise TimeoutError("lost response")
+        return original(path, *args)
+
+    monkeypatch.setattr(openrouter, "_request", lose_completion)
+    with pytest.raises(TimeoutError):
+        demo["demonstrate"]("start", root, bundle, model_client=client)
+    count = len(calls)
+    with pytest.raises(UnknownOutcome):
+        demo["demonstrate"]("start", root, bundle, model_client=client)
+    assert len(calls) == count
+    with Ledger.open(root / "ledger") as ledger:
+        assert ledger.operations()[0].state == "unknown"
+        assert ledger.accounting()["model"].reserved == 1
+        assert any(o.origin.kind == "model-preflight" for o in ledger.history())
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_preflight_time_is_separate_from_inference(remote, monkeypatch, failed):
+    client, _, limits, _, _, _ = remote
+    expected = client.runtime()
+    if failed:
+        limits["limit_remaining"] = 0
+    clock = iter((100, 145))
+    monkeypatch.setattr(openrouter, "monotonic_ns", lambda: next(clock))
+    raw = {}
+    result = client.runtime_failure(expected, raw)
+    assert json.loads(raw["preflight.json"]) == {"elapsed_ns": 45}
+    if failed:
+        assert result.result.elapsed_ns == 0
+        assert result.result.usage == {"model": 0}
+    else:
+        assert result is None
+
+
 def test_key_rotation_after_preflight_cannot_dispatch(tmp_path, remote, monkeypatch):
     from test_m5_treatments import scripted
 

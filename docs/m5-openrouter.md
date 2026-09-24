@@ -58,7 +58,10 @@ The default remains four. The shell container has a maximum lifetime of one hour
 Acceptance rules, independent checks, and fixture inputs remain the same.
 
 Record elapsed time around the entire init, start, resume, and repeated resume
-processes. Operation durations exclude setup, metadata checks, and other host work.
+processes. Inference durations exclude setup, metadata checks, and other host work.
+Each preflight records its duration separately in `preflight.json`.
+The host saves preflight receipts before dispatch, so a lost inference response
+cannot erase the credit and routing evidence. Unknown inference stays blocked.
 Record the proof bundle build separately if an existing bundle is reused.
 
 ```bash
@@ -94,6 +97,9 @@ from these attempts.
 The metadata failure recorded zero model usage and zero inference cost. The HTTP
 400 and 429 responses omitted token and cost receipts. Their reports retain
 incomplete cost accounting instead of inventing zero charges.
+That older metadata failure counted preflight time as model-operation time.
+Current code records zero inference time for this case and saves preflight time separately.
+The parent-process times in the table include both scopes and remain valid.
 
 InferenceNet returned two billed responses totaling $0.00051356. They reported
 1,684 input tokens and 3,143 completion tokens, or 4,827 total tokens. The first
