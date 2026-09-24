@@ -129,7 +129,7 @@ class OpenRouterChatCompletions(LocalChatCompletions):
         del parameters["reasoning_effort"]
         return {
             **parameters,
-            "reasoning": {"enabled": False},
+            "reasoning": {"enabled": True},
             "response_format": command_format(),
             "provider": {
                 "order": [self.provider_tag],
@@ -263,7 +263,7 @@ class OpenRouterChatCompletions(LocalChatCompletions):
             ):
                 raise ValueError("missing generation ID or unexpected provider")
         except (KeyError, TypeError, ValueError) as error:
-            raw["error"] = str(error).encode()
+            raw["billing-error"] = str(error).encode()
             return AttemptResult(
                 replace(
                     attempt.result,

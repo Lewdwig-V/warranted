@@ -96,6 +96,7 @@ def test_billed_response_is_reused_without_key_or_network(tmp_path, remote):
     assert wire["provider"]["require_parameters"] is True
     assert wire["provider"]["order"] == ["deepinfra/fp4"]
     assert wire["response_format"]["json_schema"]["strict"] is True
+    assert wire["reasoning"]["enabled"] is True
     with Ledger.open(root) as ledger:
         op = ledger.operations()[0]
         raw = {

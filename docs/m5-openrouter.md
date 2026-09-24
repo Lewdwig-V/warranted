@@ -4,6 +4,8 @@ The M5 runner accepts `--openrouter-model z-ai/glm-5.3-flash` with a host-only
 `--api-key-file`. The adapter reuses the local chat request journal and response
 parser. It adds HTTPS, provider selection, native credit limits, and recorded USD
 costs. CI uses fake responses and requires no model credentials.
+GLM requires reasoning on the selected endpoint. Requests enable reasoning and
+keep its tokens inside the same output limit.
 
 Each fresh request checks the key and provider metadata. The key must have
 remaining credit and a positive limit without a reset period. The recorded limit
