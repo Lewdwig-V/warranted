@@ -55,7 +55,7 @@ code = subprocess.run(['/bin/sh', '-c', sys.argv[1]],
 status.write_text(str(128 - code if code < 0 else code))
 """
 _CAPTURE = """
-import base64, json, os, signal, stat, time
+import base64, json, os, signal, stat, sys, time
 from pathlib import Path
 try:
     os.kill(-1, signal.SIGKILL)
@@ -77,15 +77,18 @@ else:
     raise RuntimeError('worker processes did not stop')
 directory = os.open('/work', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
-fd = os.open('result.json', flags, dir_fd=directory)
-with os.fdopen(fd, 'rb') as file:
-    info = os.fstat(file.fileno())
-    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 1048576:
-        raise ValueError('candidate must be a bounded regular file with one link')
-    data = file.read(1048577)
-    if len(data) > 1048576:
-        raise ValueError('candidate exceeds limit')
-captured = {'result.json': base64.b64encode(data).decode()}
+captured = {}
+if sys.argv[1:] != ['unfinished'] or os.path.lexists('/work/result.json'):
+    fd = os.open('result.json', flags, dir_fd=directory)
+    with os.fdopen(fd, 'rb') as file:
+        info = os.fstat(file.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_size > 1048576):
+            raise ValueError('candidate must be a bounded regular file with one link')
+        data = file.read(1048577)
+        if len(data) > 1048576:
+            raise ValueError('candidate exceeds limit')
+    captured['result.json'] = base64.b64encode(data).decode()
 workspace, size = {}, 0
 workspace_dir = os.open('workspace', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
                         dir_fd=directory)
