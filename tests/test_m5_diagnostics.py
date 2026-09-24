@@ -61,12 +61,13 @@ def test_remaining_turns_count_format_errors_and_reuse_recorded_calls(tmp_path):
 
 
 @pytest.mark.container
+@pytest.mark.parametrize("binary", [False, True])
 @pytest.mark.skipif(
     os.environ.get("WARRANTED_CONTAINER_TESTS") != "1",
     reason="requires rootless Podman",
 )
 def test_unsubmitted_source_is_captured_and_checked_without_becoming_submission(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, binary
 ):
     from test_m5_treatments import scripted
 
@@ -76,10 +77,16 @@ def test_unsubmitted_source_is_captured_and_checked_without_becoming_submission(
 
     def snapshots(*args, **kwargs):
         values = original(*args, **kwargs)
-        source = json.loads(values["candidate-one-way.json"].data)["migrate.py"]
+        source = (
+            b"\xff"
+            if binary
+            else json.loads(values["candidate-one-way.json"].data)[
+                "migrate.py"
+            ].encode()
+        )
         command = (
             "python - <<'PY'\nfrom pathlib import Path\n"
-            f"Path('workspace/migrate.py').write_text({source!r})\nPY"
+            f"Path('workspace/migrate.py').write_bytes({source!r})\nPY"
         )
         values["model-initial.json"] = replace(
             values["model-initial.json"], data=json.dumps({"command": command}).encode()
@@ -92,9 +99,12 @@ def test_unsubmitted_source_is_captured_and_checked_without_becoming_submission(
     result = demo["run"](root, bundle, None)
     assert result["submitted"] is False
     assert result["assessment"] is None
-    assert result["unfinished_assessment"]["source"]["status"] == "accepted"
+    assert result["unfinished_assessment"]["source"]["status"] == (
+        "unsupported" if binary else "accepted"
+    )
     with Ledger.open(root / "ledger") as ledger:
         with pytest.raises(ValueError):
             submitted_candidate(ledger, "initial")
     repeated = demo["run"](root, bundle, None)
     assert repeated["spent"] == result["spent"]
+    assert repeated["unfinished_assessment"] == result["unfinished_assessment"]

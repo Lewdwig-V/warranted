@@ -265,7 +265,16 @@ def run(root, bundle, client):
                     files = sandbox.decode_workspace(
                         ledger.read_artifact(raw.artifacts["unfinished/workspace.json"])
                     )
+                    source = None
                     if "migrate.py" in files:
+                        try:
+                            source = base64.b64decode(files["migrate.py"]).decode()
+                        except UnicodeDecodeError:
+                            unfinished["source"] = {
+                                "status": "unsupported",
+                                "reason": "source is not UTF-8",
+                            }
+                    if source is not None:
                         event = record_once(
                             ledger,
                             session,
@@ -280,15 +289,7 @@ def run(root, bundle, client):
                                     ).name: raw.artifacts["unfinished/workspace.json"]
                                 },
                             ),
-                            {
-                                "payload.json": _encode(
-                                    {
-                                        "migrate.py": base64.b64decode(
-                                            files["migrate.py"]
-                                        ).decode()
-                                    }
-                                )
-                            },
+                            {"payload.json": _encode({"migrate.py": source})},
                         )
                         unfinished["source"] = R["assess"](
                             ledger, session, Evidence.captured(event, "payload.json")

@@ -40,6 +40,8 @@ For an unfinished episode, the diagnostic runner stops worker processes and capt
 It records those files as `unfinished/*`, separate from `candidate/*`.
 It can assess an existing payload and separately package retained source for an independent check.
 A passing diagnostic check does not change the episode's submission status.
+Non-UTF-8 source receives an `unsupported` diagnostic result.
+The original bytes remain captured, and repeated reporting does not repeat the worker.
 The capture uses the existing file, link, size, and process isolation checks.
 An unknown external outcome remains blocked.
 
