@@ -13,6 +13,9 @@ and key identity must remain unchanged. OpenRouter enforces its native credit
 limit. Warranted records that limit but does not reserve dollars in its ledger.
 Keys billed through another provider account (BYOK) are unsupported. The native
 limit covers OpenRouter credits, not charges outside OpenRouter.
+The adapter requires a ledger with a pinned runtime and a begun model operation.
+It performs and records preflight inside its dispatch boundary, including direct use.
+An unbound adapter cannot send inference requests.
 
 Requests select only `inference-net/fp4`, disable fallback, and require support for the
 requested parameters. Price ceilings are $0.15 per million input tokens, $0.50 per
