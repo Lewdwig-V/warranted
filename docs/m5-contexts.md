@@ -337,8 +337,10 @@ the other five succeeded. The ledger records 11,512 prompt tokens, 1,292
 completion tokens, 12,804 total tokens, six spent model units, six spent tool
 units, and no reservations. Recorded model operations total 28.5 seconds and
 tool operations 24.0 seconds; complete wall time and monetary cost are not
-measured. Larger limits removed output truncation in this run but did not
-produce a submission. The temporary limit change was reverted.
+measured. No response reached the output-token limit in this run, but the worker
+did not submit. Each response also stayed below the previous 1,536-token cap, so
+this run does not establish that raising that cap prevented truncation. The
+temporary limit change was reverted.
 
 ## Twelve-command Qwen diagnostic
 
