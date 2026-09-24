@@ -581,15 +581,17 @@ def propose(root: Path, episode: Episode, model_client=None):
                     ledger.project.snapshots["runtime"].artifact
                 )
             client = model_client
+            preflight = {}
             if isinstance(client, OpenRouterChatCompletions):
                 client = replace(client, key_sha256=json.loads(expected)["key_sha256"])
-                failure = client.runtime_failure(expected)
+                failure = client.runtime_failure(expected, preflight)
             else:
                 failure = LOCAL["runtime_failure"](client, expected)
             if failure is not None:
                 return failure
             R["witness"](root, request)
-            return client(request, payload)
+            attempt = client(request, payload)
+            return AttemptResult(attempt.result, {**preflight, **attempt.raw})
         R["witness"](root, request)
         with Ledger.open(root / "ledger") as ledger:
             data = ledger.read_artifact(

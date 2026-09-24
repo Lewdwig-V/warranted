@@ -556,7 +556,7 @@ def test_live_runtime_is_checked_before_each_model_dispatch(tmp_path, monkeypatc
     class Model:
         def __call__(self, *_):
             calls.append("inference")
-            return object()
+            return AttemptResult(Result(Outcome.SUCCEEDED, 0, {"model": 1}, 1), {})
 
     model = Model()
     scope = demo["propose"].__globals__

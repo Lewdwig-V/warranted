@@ -229,6 +229,43 @@ def test_remote_credentials_cannot_be_sent_to_another_host(remote):
         replace(client, base_url="https://example.invalid/api/v1")
 
 
+def test_successful_preflight_survives_restart(tmp_path, remote, monkeypatch):
+    from test_m5_treatments import scripted
+
+    from warranted.contexts import Condition
+
+    client, _, limits, _, _, secret = remote
+    demo, _, bundle = scripted(tmp_path, monkeypatch, "migration", Condition.A)
+    root = tmp_path / "successful-preflight"
+    demo["initialize"](root, "migration", Condition.A, bundle, model_client=client)
+    with Ledger.open(root / "ledger") as ledger:
+        host = demo["M2"]["Experiment"](ledger, ledger.start_session(), root)
+        episode = demo["prepare"](
+            host, "migration", Condition.A, "initial", None, {}, client
+        )
+    limits["limit_remaining"] = 0.5
+    demo["propose"](root, episode, client)
+    with Ledger.open(root / "ledger") as ledger:
+        operation = next(
+            o for o in ledger.operations() if o.request.origin.kind == "model"
+        )
+        raw = {
+            name: ledger.read_artifact(ref)
+            for name, ref in operation.completion.observation.artifacts.items()
+        }
+        assert json.loads(raw["api/key-response"])["data"]["limit_remaining"] == 0.5
+        assert json.loads(raw["api/endpoints-response"])["data"]["id"] == client.model
+        assert json.loads(raw["api/key-status.json"]) == 200
+        assert json.loads(raw["api/endpoints-status.json"]) == 200
+        assert "cost.json" in raw and "http-response" in raw
+        assert secret.encode() not in b"".join(raw.values())
+    client.key_file.unlink()
+    monkeypatch.setattr(
+        openrouter, "_request", lambda *_: pytest.fail("network replay")
+    )
+    demo["propose"](root, episode, client)
+
+
 def test_key_rotation_after_preflight_cannot_dispatch(tmp_path, remote, monkeypatch):
     from test_m5_treatments import scripted
 
@@ -240,8 +277,8 @@ def test_key_rotation_after_preflight_cannot_dispatch(tmp_path, remote, monkeypa
     demo["initialize"](root, "migration", Condition.A, bundle, model_client=client)
     original = OpenRouterChatCompletions.runtime_failure
 
-    def rotate(self, expected):
-        result = original(self, expected)
+    def rotate(self, expected, raw=None):
+        result = original(self, expected, raw)
         assert result is None
         self.key_file.write_text("sk-or-v1-" + "b" * 64)
         return result

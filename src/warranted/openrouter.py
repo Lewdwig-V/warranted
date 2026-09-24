@@ -238,9 +238,11 @@ class OpenRouterChatCompletions(LocalChatCompletions):
             }
         )
 
-    def runtime_failure(self, expected: bytes) -> AttemptResult | None:
+    def runtime_failure(
+        self, expected: bytes, raw: dict[str, bytes] | None = None
+    ) -> AttemptResult | None:
         started = monotonic_ns()
-        raw = {}
+        raw = {} if raw is None else raw
         try:
             raw["runtime.json"] = self.runtime(raw)
             if raw["runtime.json"] != expected:
