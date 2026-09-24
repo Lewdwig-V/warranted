@@ -311,3 +311,31 @@ All three local Qwen attempts remain development failures under the current
 four-command, 1,536-token setup; none tests the revision/restart path.
 Further development trials need a model that submits under a pinned plan before
 the ten-slot matrix can start. A paid provider also needs a spending cap.
+
+## Six-command Qwen diagnostic
+
+On 2026-09-24, a single fresh migration-A run used plan digest
+`202248a78aaa7434da532569d426f486ab7c6a5ded9a76c28e5389974471a32c`.
+It kept the same model, seed, task, evaluator, and 180-second request deadline,
+but allowed six commands per episode, twelve model and tool units across both
+episodes, and 3,072 output tokens per model request. The pinned `treatments.py`
+snapshot digest is
+`5dd7b40aff3679e6d7cf008991314c24576c75d8c29325942d4b24a0cebaf6b2`.
+Only the command limit, matching prompt wording, and model/tool caps differed
+from the merged source. The exact episode instruction was:
+
+```text
+Use at most six shell commands. In the first command, inspect task.md, context.json, tools.md, repository-files.json if present, and the other task inputs together. Create and test result.json, then submit it. The final command must start with `printf '%s\n' COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT;` so the marker is the first stdout line. On continuation, use the restored workspace and current feedback.
+```
+
+Qwen used six model and six shell actions. It inspected twice, wrote `migrate.py`,
+ran the public example, ran more local checks, then wrote a sample `result.json`
+inside `workspace/`. It never placed `result.json` at the work root or printed
+the submission marker. The host stopped before the first independent task check
+or forced restart. The second shell command exited 1 while reading absent files;
+the other five succeeded. The ledger records 11,512 prompt tokens, 1,292
+completion tokens, 12,804 total tokens, six spent model units, six spent tool
+units, and no reservations. Recorded model operations total 28.5 seconds and
+tool operations 24.0 seconds; complete wall time and monetary cost are not
+measured. Larger limits removed output truncation in this run but did not
+produce a submission. The temporary limit change was reverted.
