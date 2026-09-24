@@ -585,6 +585,22 @@ def propose(root: Path, episode: Episode, model_client=None):
             if isinstance(client, OpenRouterChatCompletions):
                 client = replace(client, key_sha256=json.loads(expected)["key_sha256"])
                 failure = client.runtime_failure(expected, preflight)
+                with Ledger.open(root / "ledger") as ledger:
+                    record_once(
+                        ledger,
+                        ledger.start_session(),
+                        Origin(
+                            request.origin.operation_id + "/preflight",
+                            "model-preflight",
+                            client.service_id,
+                            "1",
+                            {
+                                **request.origin.inputs,
+                                "runtime": ledger.project.snapshots["runtime"].artifact,
+                            },
+                        ),
+                        preflight,
+                    )
             else:
                 failure = LOCAL["runtime_failure"](client, expected)
             if failure is not None:

@@ -255,10 +255,12 @@ class OpenRouterChatCompletions(LocalChatCompletions):
                     Outcome.INFRASTRUCTURE_FAILURE,
                     None,
                     {"model": 0},
-                    monotonic_ns() - started,
+                    0,
                 ),
                 raw,
             )
+        finally:
+            raw["preflight.json"] = _encode({"elapsed_ns": monotonic_ns() - started})
         return None
 
     def __call__(self, request, payload):
