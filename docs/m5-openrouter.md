@@ -14,7 +14,7 @@ limit. Warranted records that limit but does not reserve dollars in its ledger.
 Keys billed through another provider account (BYOK) are unsupported. The native
 limit covers OpenRouter credits, not charges outside OpenRouter.
 
-Requests select only `deepinfra/fp4`, disable fallback, and require support for the
+Requests select only `inference-net/fp4`, disable fallback, and require support for the
 requested parameters. Price ceilings are $0.15 per million input tokens, $0.50 per
 million output tokens, and no fixed request fee. The runner records the model,
 provider metadata, pricing, request configuration, source files, tokens, and

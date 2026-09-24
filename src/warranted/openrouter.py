@@ -104,8 +104,8 @@ def _usd(value) -> Decimal:
 class OpenRouterChatCompletions(LocalChatCompletions):
     provider: ClassVar[str] = "openrouter"
     adapter_name: ClassVar[str] = "openrouter-chat-completions"
-    provider_tag: ClassVar[str] = "deepinfra/fp4"
-    provider_name: ClassVar[str] = "DeepInfra"
+    provider_tag: ClassVar[str] = "inference-net/fp4"
+    provider_name: ClassVar[str] = "InferenceNet"
     key_file: Path | None = None
 
     def __post_init__(self):

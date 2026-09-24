@@ -32,8 +32,8 @@ def remote(tmp_path, monkeypatch):
     }
     endpoint = {
         "model_id": client.model,
-        "provider_name": "DeepInfra",
-        "tag": "deepinfra/fp4",
+        "provider_name": "InferenceNet",
+        "tag": "inference-net/fp4",
         "quantization": "fp4",
         "context_length": 1048576,
         "max_completion_tokens": 131072,
@@ -52,7 +52,7 @@ def remote(tmp_path, monkeypatch):
     completion = {
         "id": "gen-offline-1",
         "model": client.model,
-        "provider": "DeepInfra",
+        "provider": "InferenceNet",
         "choices": [
             {
                 "message": {"role": "assistant", "content": '{"command":"true"}'},
@@ -94,7 +94,7 @@ def test_billed_response_is_reused_without_key_or_network(tmp_path, remote):
     wire = json.loads(calls[0][1])
     assert wire["provider"]["allow_fallbacks"] is False
     assert wire["provider"]["require_parameters"] is True
-    assert wire["provider"]["order"] == ["deepinfra/fp4"]
+    assert wire["provider"]["order"] == ["inference-net/fp4"]
     assert wire["response_format"]["json_schema"]["strict"] is True
     assert wire["reasoning"]["enabled"] is True
     with Ledger.open(root) as ledger:
