@@ -372,3 +372,19 @@ Recorded model operations total 42.5 seconds and tool operations 45.7 seconds;
 these exclude complete wall time and monetary cost. The temporary changes were
 reverted. This run shows repeated actions under the larger budget; it does not
 establish that Qwen can never submit with another budget or policy.
+
+## Diagnostic cost scope
+
+All five attempts above reused the same proof bundle. Each pinned plan retains
+its original build time of 333,971,258,619 ns (334.0 seconds). That is shared setup
+cost from an earlier build, not new work charged to each attempt. No new proof
+bundle was built for these diagnostics.
+
+Plan initialization, model loading, container and metadata overhead outside
+recorded operations, and total trial elapsed time were not timed separately.
+Human effort, electricity, and total monetary cost were also not measured.
+These missing costs cannot be recovered from the operation-duration sums.
+The runs therefore support observations about submission behavior under the
+stated limits, not rankings of model speed or total cost. A future timing or
+cost comparison must measure setup and the whole trial separately, including
+failed runs, and state how shared setup costs are allocated.
