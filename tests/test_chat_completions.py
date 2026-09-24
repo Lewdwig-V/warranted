@@ -298,6 +298,7 @@ def test_success_reuses_response_and_pins_wire_configuration(tmp_path, monkeypat
     "reason,content,error,outcome",
     [
         ("length", '{"command":"true"}', RuntimeError, Outcome.FAILED),
+        ("length", None, RuntimeError, Outcome.FAILED),
         ("stop", "malformed", FormatError, Outcome.SUCCEEDED),
     ],
 )
@@ -326,7 +327,7 @@ def test_truncated_or_malformed_command_never_reaches_a_tool(
         assert completion.result.usage == {"model": 1}
         assert (
             ledger.read_artifact(completion.observation.artifacts["response"])
-            == content.encode()
+            == (content or "").encode()
         )
 
 

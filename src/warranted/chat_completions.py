@@ -244,6 +244,12 @@ class LocalChatCompletions:
             choice = choices[0]
             message = choice.get("message")
             if (
+                choice.get("finish_reason") == "length"
+                and type(message) is dict
+                and message.get("content") is None
+            ):
+                message = {**message, "content": ""}
+            if (
                 type(message) is not dict
                 or message.get("role") != "assistant"
                 or type(message.get("content")) is not str
