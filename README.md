@@ -85,6 +85,8 @@ A [local chat adapter](docs/m5-migration.md#local-model-probe) now supports the
 OpenAI-compatible endpoint served by Ollama. Offline tests cover failed attempts,
 lost responses, and reuse. An explicit one-request probe records model metadata
 and token counts without executing generated commands.
+An opt-in [OpenRouter diagnostic](docs/m5-openrouter.md) adds a limited host-only
+key, fixed provider routing, billed costs, and configurable command limits.
 
 ## What we are building
 

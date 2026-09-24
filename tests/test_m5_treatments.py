@@ -358,7 +358,9 @@ def test_unknown_live_attempt_blocks_before_runtime_poll(tmp_path, monkeypatch):
     def unexpected_poll(_client):
         pytest.fail("runtime metadata was polled before unknown work was blocked")
 
-    monkeypatch.setitem(demo, "local_runtime", unexpected_poll)
+    monkeypatch.setitem(
+        demo["capture_runtime"].__globals__, "capture_runtime", unexpected_poll
+    )
     with pytest.raises(UnknownOutcome):
         demo["demonstrate"]("start", root, bundle, model_client=client)
     with Ledger.open(root / "ledger") as ledger:
@@ -384,7 +386,7 @@ def test_live_validation_does_not_poll_completed_runtime(tmp_path, monkeypatch):
     )
     monkeypatch.setitem(
         demo["validate"].__globals__,
-        "local_runtime",
+        "capture_runtime",
         lambda _client: pytest.fail("validation polled the live service"),
     )
     with Ledger.open(root / "ledger") as ledger:
@@ -554,7 +556,7 @@ def test_live_runtime_is_checked_before_each_model_dispatch(tmp_path, monkeypatc
     class Model:
         def __call__(self, *_):
             calls.append("inference")
-            return object()
+            return AttemptResult(Result(Outcome.SUCCEEDED, 0, {"model": 1}, 1), {})
 
     model = Model()
     scope = demo["propose"].__globals__

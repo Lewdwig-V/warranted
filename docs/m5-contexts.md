@@ -236,6 +236,9 @@ independent or held-out tasks.
 
 ## First Qwen development attempt
 
+Later [submission controls](m5-submission-controls.md) test whether the interface
+lets Qwen submit completed work. Model comparisons are paused for this diagnostic.
+
 On 2026-09-23, one local `qwen3.8:27b` migration-A run began under a pinned
 development plan at `runs/m5-qwen-dev-20260923`. Ollama 0.34.2 reported
 Q4_K_M model digest `22130167c4c20e20c7b71454612966ca8e8171e9b3cc8ab6ce8aa6cbfec79643`.

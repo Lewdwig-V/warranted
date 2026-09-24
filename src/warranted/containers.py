@@ -23,12 +23,13 @@ def _run(
     *,
     seconds: int = PODMAN_COMMAND_TIMEOUT_SECONDS,
     output_limit: int = OUTPUT_LIMIT,
+    executable: str = "podman",
 ) -> subprocess.CompletedProcess:
     """Bound client time and captured bytes without buffering unbounded output."""
     output = {"stdout": bytearray(), "stderr": bytearray()}
     with (
         subprocess.Popen(
-            ["podman", *args],
+            [executable, *args],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
