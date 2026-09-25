@@ -159,7 +159,8 @@ Those recorded prompts include two additional changes identified during PR revie
 The budget arms therefore combine a countdown with response-format guidance.
 The helper arms combine helper availability with conflicting final-command wording.
 Their results cannot isolate the effects of countdown visibility or helper availability alone.
-The corrected controls have offline tests but no new live measurements.
+The [corrected twelve-run comparison](m5-corrected-submission.md) records fresh live measurements from 2026-09-25.
+It keeps these historical results separate.
 
 | Control | Added instructions | Helper file | Remaining turns |
 | --- | --- | --- | --- |
@@ -195,7 +196,7 @@ change in the earlier `plain` control or complete the revision/recovery experime
 
 Use the same commands above with the desired `--control` and a fresh run directory.
 Use the preserved comparison tag to reproduce the recorded protocol.
-The current runner uses the corrected prompts and needs fresh measurements.
+The [corrected comparison](m5-corrected-submission.md) uses the current prompts and a separate preserved source tag.
 
 ## Results of the twelve-run comparison
 
