@@ -84,6 +84,14 @@ model, and no A–E comparison has been run.
 
 ## Not yet built
 
+The next work is a stable public API and CLI, so that
+[ReSchema](https://github.com/Lewdwig-V/reschema) can use Warranted as its harness
+and keep only its reverse-engineering logic
+([M7 and M8](docs/roadmap.md#m7--stable-harness-api-and-cli)). Until then:
+
+- There is no stable public API; module interfaces may change.
+- There is no domain checker, host-mediated operation, or campaign interface for
+  projects outside this repository.
 - The measured A–E comparison, with frontier and smaller models, separated
   development and held-out tasks, and full cost reporting.
 - Replay of recorded histories and the planned
@@ -92,6 +100,8 @@ model, and no A–E comparison has been run.
   optimisation.
 - Remote owner authentication, external side effects beyond local copies,
   multiple writers, and a user-facing CLI.
+
+The research items above are deferred until ReSchema runs on Warranted.
 
 See the [roadmap](docs/roadmap.md) for status and open decisions, and the
 [design](docs/design.md) for the invariants these components enforce.
