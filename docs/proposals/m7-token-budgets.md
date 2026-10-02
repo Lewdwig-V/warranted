@@ -78,8 +78,10 @@ models:
 - The per-message margin and the verified list are part of the adapter's pinned
   configuration, so changing either changes the request identity.
 - A token-capped run whose adapter's model is not verified is refused at start.
-  Without a cap, an unverified model still settles reported tokens; nothing is
-  enforced, so nothing is claimed.
+  An unverified model reserves and settles only `model`, as today, because the
+  ledger treats any settled unit that was not reserved as a breach. Its reported
+  tokens stay recorded in `tokens.json`; nothing is enforced, so nothing is
+  claimed.
 
 Verification is evidence, not proof. If a verified model later exceeds its bound,
 because a provider changed its template for example, the actual usage is charged in
