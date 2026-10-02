@@ -288,11 +288,13 @@ experiment. Keep both Hindsight and AutoSaddler outside the A–E and scheduling
 This standalone design derives from the
 [merged long-horizon proposal](https://github.com/Lewdwig-V/reschema/blob/42612d1c24f1dd063f8b021e346f3c23c8affbca/docs/proposals/long-horizon-reasoning-harness.md).
 That document is historical context; this repository's design and roadmap govern
-Warranted. No interface or runtime dependency on its originating project is implied.
+Warranted.
 
-The project also grew out of ReSchema's reverse-engineering work and its use of
-validated executable artifacts. Keeping Warranted's core independent preserves
-that history while letting new task families determine its interfaces.
+The project grew out of ReSchema's reverse-engineering work and its use of
+validated executable artifacts. The dependency now runs the other way: ReSchema
+is being rebuilt to use Warranted as its harness (see
+[M7 and M8](roadmap.md#m7--stable-harness-api-and-cli)). Warranted's core stays
+domain-independent; reverse-engineering behavior remains in ReSchema.
 
 | Source | Influence and intended use | Where developed here |
 | --- | --- | --- |
