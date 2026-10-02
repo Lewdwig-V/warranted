@@ -289,8 +289,9 @@ acceptance. Missing or corrupt artifact bytes fail explicitly.
 complete work or settle usage. Host code must use the operation methods around
 execution. This Python API does not isolate a worker or intercept shell commands.
 
-The storage format is now version 2. Version 1 projects fail explicitly on open
-and remain unchanged. Automatic migration is not implemented.
+The storage format is now version 3, which adds per-run
+[scopes](docs/reference/evidence-ledger.md#scopes). Projects in earlier formats
+fail explicitly on open and remain unchanged; there is no migration.
 
 The [evidence ledger reference](docs/reference/evidence-ledger.md) describes the API and tests.
 The tests establish recovery from process termination on a working local

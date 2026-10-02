@@ -15,15 +15,24 @@ import json
 import re
 import tomllib
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from time import perf_counter_ns
+from types import MappingProxyType
 from typing import Any, Protocol
 from uuid import uuid4
 
 from warranted.acceptance import Acceptance, AcceptanceContext, Evidence, Status
-from warranted.ledger import Ledger, Manifest, Origin, Outcome, Request, Result
+from warranted.ledger import (
+    BudgetExceeded,
+    Ledger,
+    Manifest,
+    Origin,
+    Outcome,
+    Request,
+    Result,
+)
 from warranted.sandbox import SANDBOX_ID, Sandbox
 from warranted.worker import (
     Episode,
@@ -125,6 +134,7 @@ class TaskSpec:
     private: Mapping[str, bytes]
     checks: tuple[str, ...]
     submissions: int
+    check_budget: int | None = None
 
     @classmethod
     def load(cls, path: Path) -> TaskSpec:
@@ -134,8 +144,10 @@ class TaskSpec:
         if not data.keys() <= known or not {"id", "objective", "checks"} <= set(data):
             raise ValueError("task needs id, objective, and checks, and nothing else")
         budgets = data.get("budgets", {})
-        if not budgets.keys() <= {"submissions"}:
-            raise ValueError("unknown task budget")
+        if not budgets.keys() <= {"submissions", "checks"}:
+            raise ValueError(
+                "unknown task budget; model and tool budgets belong to runs"
+            )
 
         def files(table: Mapping[str, str]) -> dict[str, bytes]:
             return {
@@ -150,6 +162,7 @@ class TaskSpec:
             files(data.get("private", {})),
             tuple(data["checks"]),
             budgets.get("submissions", 1),
+            budgets.get("checks"),
         )
 
     def __post_init__(self):
@@ -174,6 +187,10 @@ class TaskSpec:
             raise ValueError("task needs distinct, named required checks")
         if type(self.submissions) is not int or self.submissions < 1:
             raise ValueError("submission budget must be a positive integer")
+        if self.check_budget is not None and (
+            type(self.check_budget) is not int or self.check_budget < 0
+        ):
+            raise ValueError("check budget must be a non-negative integer")
 
     def record(self) -> dict[str, bytes]:
         raw = {
@@ -185,6 +202,7 @@ class TaskSpec:
                     "private": sorted(self.private),
                     "checks": list(self.checks),
                     "submissions": self.submissions,
+                    "check_budget": self.check_budget,
                 }
             )
         }
@@ -199,15 +217,31 @@ class RunConfig:
 
     model: str
     max_steps: int = 4
+    budgets: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self):
         if type(self.model) is not str or not self.model.strip():
             raise ValueError("run configuration needs a model identity")
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("max_steps must be an integer from 1 to 100")
+        budgets = dict(self.budgets)
+        if not budgets.keys() <= {"model", "tool"} or any(
+            type(value) is not int or value < 0 for value in budgets.values()
+        ):
+            raise ValueError(
+                "run budgets cover model and tool units only, as non-negative "
+                "integers; check budgets belong to tasks"
+            )
+        object.__setattr__(self, "budgets", MappingProxyType(budgets))
 
     def record(self) -> bytes:
-        return _json({"model": self.model, "max_steps": self.max_steps})
+        return _json(
+            {
+                "model": self.model,
+                "max_steps": self.max_steps,
+                "budgets": dict(self.budgets),
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -232,6 +266,10 @@ class _Run:
     task: TaskSpec
     config: RunConfig
     policy: Evidence
+
+    @property
+    def scope(self) -> str:
+        return f"run/{self.run_id}"
 
     def evidence(self, channel: str) -> Evidence:
         return Evidence.captured(self.spec, channel)
@@ -300,8 +338,13 @@ class Project:
         if unknown:
             raise ValueError(f"task names unknown checks: {sorted(unknown)}")
         run_id = "run-" + uuid4().hex[:12]
+        caps = dict(config.budgets)
+        if task.check_budget is not None:
+            caps["check"] = task.check_budget
         with Ledger.open(self.ledger_root) as ledger:
             session = ledger.start_session()
+            # Caps are recorded before any run record, so a resume cannot change them.
+            ledger.open_scope(session, f"run/{run_id}", caps)
             record_once(
                 ledger,
                 session,
@@ -351,6 +394,7 @@ class Project:
             {name: read[f"private/{name}"] for name in meta["private"]},
             tuple(meta["checks"]),
             meta["submissions"],
+            meta["check_budget"],
         )
         config = RunConfig(**json.loads(read["config.json"]))
         policy = Evidence.captured(found["run-policy"], "policy.json")
@@ -380,6 +424,8 @@ class Project:
                 return RunResult(
                     run_id, RunOutcome.UNKNOWN, tuple(submissions), str(error)
                 )
+            except BudgetExceeded as error:
+                return self._exhausted(run_id, submissions, error)
             except RuntimeError as error:
                 failed = self._failed_attempt(episode.episode_id)
                 if failed is None:
@@ -397,7 +443,10 @@ class Project:
                 return RunResult(
                     run_id, outcome, tuple(submissions), str(result.get("exit_status"))
                 )
-            submission = self._assess(run, index, episode.episode_id)
+            try:
+                submission = self._assess(run, index, episode.episode_id)
+            except BudgetExceeded as error:
+                return self._exhausted(run_id, submissions, error)
             submissions.append(submission)
             outcome = {
                 Status.ACCEPTED: RunOutcome.ACCEPTED,
@@ -408,6 +457,14 @@ class Project:
             if outcome is not None:
                 return RunResult(run_id, outcome, tuple(submissions))
         return RunResult(run_id, RunOutcome.REJECTED, tuple(submissions))
+
+    @staticmethod
+    def _exhausted(run_id, submissions, error) -> RunResult:
+        """A run or project budget ended the run before this step could start."""
+        outcome = RunOutcome.REJECTED if submissions else RunOutcome.INCOMPLETE
+        return RunResult(
+            run_id, outcome, tuple(submissions), f"budget exhausted: {error}"
+        )
 
     def _failed_attempt(self, episode_id: str) -> Outcome | None:
         """The recorded outcome that stopped an episode, if a worker attempt did.
@@ -457,6 +514,7 @@ class Project:
             environment=self.environment_id,
             max_steps=run.config.max_steps,
             continues=self._episode_id(run, index - 1) if index > 1 else None,
+            scope=run.scope,
             files=files,
             workspace=workspace,
         )
@@ -539,7 +597,7 @@ class Project:
     ) -> str:
         target = self._target(ledger, run, index)
         request = self._check_request(ledger, run, index, name, target)
-        operation = ledger.reserve(session, request, {"check": 1})
+        operation = ledger.reserve(session, request, {"check": 1}, run.scope)
         if operation.completion is None:
             if not ledger.begin(session, request):
                 raise UnknownOutcome(f"unknown outcome: {request.origin.operation_id}")
@@ -606,7 +664,9 @@ class Project:
                     },
                 )
 
-            decision = Acceptance(ledger, session, resolve).accept(target, receipts)
+            decision = Acceptance(ledger, session, resolve, run.scope).accept(
+                target, receipts
+            )
             verdicts = {}
             for name in run.task.checks:
                 operation = self._check_operation(ledger, run, index, name)

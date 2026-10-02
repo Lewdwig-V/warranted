@@ -134,6 +134,13 @@ domain project supplies only domain knowledge. Specifically:
   native jobs in pinned images through Warranted's container boundary, mounting
   only per-job scratch. Worker-readable mounts never include oracle or ledger
   state.
+- [x] **Run-scoped budgets and blocking.** Each run has a ledger scope with caps
+  under the project total; unknown operations and breaches block only their own
+  run, enforced in `Ledger.begin` ([design](proposals/m7-run-scopes.md),
+  [reference](reference/evidence-ledger.md#scopes)).
+- [ ] **Token budgets.** Make model tokens a reserved ledger unit so that a run's
+  token budget is enforced like model, tool, and check units. Tokens are recorded
+  but not reserved today; each model adapter's reservation logic must change.
 - [ ] **Submission policy.** Budgets for probes and submissions, and a
   repeated-candidate guard using a domain-supplied normalisation, enforced by
   the host rather than the worker.

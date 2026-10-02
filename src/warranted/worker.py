@@ -23,6 +23,7 @@ from minisweagent.exceptions import FormatError, Submitted
 
 from warranted.acceptance import Evidence, _encode
 from warranted.ledger import (
+    ROOT_SCOPE,
     Completion,
     Ledger,
     Observation,
@@ -31,12 +32,9 @@ from warranted.ledger import (
     Outcome,
     Request,
     Result,
+    UnknownOutcome,
     _json_object,
 )
-
-
-class UnknownOutcome(RuntimeError):
-    """An exact completion is missing. Automatic retry is forbidden."""
 
 
 @dataclass(frozen=True)
@@ -60,6 +58,7 @@ class Episode:
     tool_reservation: int = 1
     continues: str | None = None
     model_service: str | None = None
+    scope: str = ROOT_SCOPE
     files: Mapping[str, Evidence] = field(default_factory=dict)
     workspace: Evidence | None = None
     container_timeout_seconds: int = 120
@@ -138,10 +137,10 @@ def record_once(
     return ledger.record(session, origin, raw)
 
 
-def unresolved(ledger: Ledger) -> None:
-    for op in ledger.operations():
-        if op.state == "unknown":
-            raise UnknownOutcome(f"unknown outcome: {op.request.origin.operation_id}")
+def unresolved(ledger: Ledger, scope: str = ROOT_SCOPE) -> None:
+    """Raise if an unknown operation blocks this scope (its own or the root's)."""
+    for op in ledger.unresolved(scope):
+        raise UnknownOutcome(f"unknown outcome: {op.request.origin.operation_id}")
 
 
 def input_files(ledger: Ledger, episode: Episode) -> dict[str, bytes]:
@@ -282,10 +281,12 @@ class Journal:
             self.ledger.project,
         )
         reservation = getattr(self.episode, kind + "_reservation")
-        op = self.ledger.reserve(self.session, request, {kind: reservation})
+        op = self.ledger.reserve(
+            self.session, request, {kind: reservation}, self.episode.scope
+        )
         if op.completion is not None:
             return op.completion
-        unresolved(self.ledger)
+        unresolved(self.ledger, self.episode.scope)
         if not self.ledger.begin(self.session, request):
             raise UnknownOutcome(f"unknown outcome: {operation_id}")
         # Exceptions leave the dispatch unknown and its reservation intact.
@@ -455,7 +456,7 @@ def run_workflow(
                         ledger.complete(
                             session, operation.request, response.result, response.raw
                         )
-        unresolved(ledger)
+        unresolved(ledger, episode.scope)
         journal = Journal(ledger, episode)
         project_id = ledger.project.project_id
 
@@ -464,7 +465,7 @@ def run_workflow(
             raise UnknownOutcome("checkpoint identity differs from the host")
         # LangGraph can execute nodes on another thread. Never share a connection.
         with Ledger.open(ledger_root) as ledger:
-            unresolved(ledger)
+            unresolved(ledger, episode.scope)
             journal = Journal(ledger, episode)
             if journal.receipt() is None:
                 agent = DefaultAgent(
@@ -518,7 +519,7 @@ def run_workflow(
             durability="sync",
         )
     with Ledger.open(ledger_root) as ledger:
-        unresolved(ledger)
+        unresolved(ledger, episode.scope)
         journal = Journal(ledger, episode)
         receipt = journal.receipt()
         if receipt is None or result["receipt"] != receipt.origin.operation_id:

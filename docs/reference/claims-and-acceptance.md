@@ -87,7 +87,9 @@ stale.
 
 ## Acceptance
 
-The host constructs `Acceptance(ledger, session, resolve)`. The resolver is
+The host constructs `Acceptance(ledger, session, resolve, scope=ROOT_SCOPE)`.
+Decisions and exceptions are recorded in `scope`, normally the run's
+[ledger scope](evidence-ledger.md#scopes). The resolver is
 trusted code that reads current versions when the boundary calls it. It takes the
 candidate `Evidence` and returns an `AcceptanceContext`:
 
@@ -165,8 +167,11 @@ The overall status is the first present of `unsupported`,
 `accepted`. Every requirement's status is retained, so a passing narrow check
 cannot erase a failed gate, and checker failure stays distinct from a false
 property. Invalid policy and damaged artifacts raise before a decision is recorded.
-A recorded budget breach or negative balance raises `BudgetExceeded`, including on
-reuse of an earlier decision.
+A recorded budget breach in the boundary's scope or the root scope, or a negative
+project total, raises `BudgetExceeded`, including on reuse of an earlier decision.
+An unknown operation in the scope or the root scope blocks committing a new
+decision: `accept` raises `UnknownOutcome` and records nothing, not even an
+`unknown` decision, until that operation settles.
 
 ### Persistence and recovery
 

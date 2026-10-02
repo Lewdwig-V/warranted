@@ -360,3 +360,61 @@ def test_failed_model_attempt_ends_the_episode_without_submission(tmp_path):
     result = proj.start(TASK, CONFIG, FailingModel())
     assert result.outcome is RunOutcome.INCOMPLETE
     assert script.calls == 0
+
+
+def test_an_unknown_operation_in_one_run_does_not_block_another(tmp_path):
+    proj, script = project(tmp_path, [RuntimeError("host killed mid-dispatch")])
+    with pytest.raises(RuntimeError, match="host killed"):
+        proj.start(TASK, CONFIG, Model())
+    script.plan = ["correct"]
+    calls = script.calls
+    fresh = proj.start(TASK, CONFIG, Model())
+    assert fresh.outcome is RunOutcome.ACCEPTED
+    assert script.calls == calls + 1
+    first = proj.runs()[0]
+    assert proj.resume(first, Model()).outcome is RunOutcome.UNKNOWN
+
+
+def test_run_scope_caps_combine_task_and_run_budgets(tmp_path):
+    proj, _ = project(tmp_path, ["correct"])
+    task = TaskSpec(
+        TASK.id, TASK.objective, TASK.inputs, TASK.private, TASK.checks, 3, 2
+    )
+    config = RunConfig("scripted-model-v1", 2, {"model": 5, "tool": 4})
+    result = proj.start(task, config, Model())
+    with Ledger.open(proj.ledger_root) as ledger:
+        assert ledger.scopes()[f"run/{result.run_id}"] == {
+            "check": 2,
+            "model": 5,
+            "tool": 4,
+        }
+
+
+def test_run_model_budget_ends_the_run_while_the_project_has_budget(tmp_path):
+    proj, _ = project(tmp_path, [None])
+    config = RunConfig("scripted-model-v1", 2, {"model": 1})
+    result = proj.start(TASK, config, Model())
+    assert result.outcome is RunOutcome.INCOMPLETE
+    assert "budget" in result.detail
+    with Ledger.open(proj.ledger_root) as ledger:
+        assert ledger.accounting()["model"].available > 0
+
+
+def test_task_check_budget_stops_further_assessment(tmp_path):
+    proj, _ = project(tmp_path, ["wrong-offset", "correct"])
+    task = TaskSpec(
+        TASK.id, TASK.objective, TASK.inputs, TASK.private, TASK.checks, 3, 1
+    )
+    result = proj.start(task, CONFIG, Model())
+    assert result.outcome is RunOutcome.REJECTED
+    assert [s.decision for s in result.submissions] == ["rejected"]
+    assert "budget" in result.detail
+
+
+def test_budgets_belong_to_their_owner(tmp_path):
+    with pytest.raises(ValueError, match="model and tool"):
+        RunConfig("m", 2, {"check": 1})
+    task = tmp_path / "task.toml"
+    task.write_text('id = "t"\nobjective = "o"\nchecks = ["c"]\n[budgets]\nmodel = 3\n')
+    with pytest.raises(ValueError, match="task budget"):
+        TaskSpec.load(task)

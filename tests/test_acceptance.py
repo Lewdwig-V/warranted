@@ -16,6 +16,7 @@ from warranted.ledger import (
     Request,
     Result,
     Snapshot,
+    UnknownOutcome,
 )
 
 POLICY = {
@@ -241,9 +242,10 @@ def test_missing_unknown_forged_and_narrow_evidence_cannot_grant_acceptance(tmp_
         )
         ledger.reserve(session, current.checks["validate"], {"work": 1})
         assert ledger.begin(session, current.checks["validate"])
-        assert (
-            host.accept(target, receipts, {"annotation": exception}).status == "unknown"
-        )
+        # An unknown check blocks the protected transition itself; no decision,
+        # not even an "unknown" one, is committed until the check settles.
+        with pytest.raises(UnknownOutcome):
+            host.accept(target, receipts, {"annotation": exception})
         ledger.complete(
             session,
             current.checks["validate"],

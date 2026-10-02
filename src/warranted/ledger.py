@@ -21,7 +21,9 @@ from tempfile import NamedTemporaryFile
 from types import MappingProxyType
 from uuid import uuid4
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
+ROOT_SCOPE = "root"
+_SCOPE_ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,200}")
 
 
 class InvalidProject(ValueError):
@@ -42,6 +44,10 @@ class BudgetExceeded(ValueError):
 
 class OperationConflict(ValueError):
     """An operation ID already names a different request or completion."""
+
+
+class UnknownOutcome(RuntimeError):
+    """An unknown operation blocks dispatch in this scope; no retry is permitted."""
 
 
 def _text(value: str) -> None:
@@ -263,11 +269,13 @@ class Operation:
     dispatch_session_id: str | None
     dispatched_at: str | None
     completion: Completion | None
+    scope: str = ROOT_SCOPE
 
     def __post_init__(self):
         if not isinstance(self.request, Request):
             raise TypeError("expected a Request")
         _text(self.session_id)
+        _text(self.scope)
         _time(self.reserved_at)
         object.__setattr__(self, "reservation", _frozen_map(self.reservation, int))
         if self.dispatch_session_id is None:
@@ -484,8 +492,13 @@ class Ledger:
                     captured_at TEXT NOT NULL, origin TEXT NOT NULL,
                     artifacts TEXT NOT NULL,
                     supersedes INTEGER REFERENCES observations(sequence))""")
+                connection.execute("""CREATE TABLE scopes (
+                    scope_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL REFERENCES sessions(session_id),
+                    created_at TEXT NOT NULL, caps TEXT NOT NULL)""")
                 connection.execute("""CREATE TABLE operations (
                     operation_id TEXT PRIMARY KEY,
+                    scope TEXT NOT NULL,
                     session_id TEXT NOT NULL REFERENCES sessions(session_id),
                     reserved_at TEXT NOT NULL, request TEXT NOT NULL,
                     reservation TEXT NOT NULL,
@@ -540,8 +553,10 @@ class Ledger:
                         "artifacts",
                         "supersedes",
                     },
+                    "scopes": {"scope_id", "session_id", "created_at", "caps"},
                     "operations": {
                         "operation_id",
+                        "scope",
                         "session_id",
                         "reserved_at",
                         "request",
@@ -707,6 +722,7 @@ class Ledger:
                 sequence,
                 result,
                 breaches,
+                scope,
             ) = row
             request = _load(request, _request)
             reservation = _load(reservation, lambda data: _frozen_map(data, int))
@@ -717,6 +733,8 @@ class Ledger:
                 raise ValueError("operation identity differs from its project or key")
             if not reservation.keys() <= self.project.manifest.allowances.keys():
                 raise ValueError("reservation has unknown units")
+            if scope != ROOT_SCOPE and scope not in self._scopes():
+                raise ValueError("operation names an unrecorded scope")
             completion = None
             if sequence is not None:
                 observation = self._connection.execute(
@@ -746,6 +764,7 @@ class Ledger:
                 dispatch_session,
                 dispatched_at,
                 completion,
+                scope,
             )
         except UnsupportedVersion:
             raise
@@ -756,7 +775,7 @@ class Ledger:
         rows = self._connection.execute(
             "SELECT operation_id, session_id, reserved_at, request, reservation, "
             "dispatch_session_id, dispatched_at, observation_sequence, "
-            "result, breaches "
+            "result, breaches, scope "
             "FROM operations ORDER BY rowid"
         ).fetchall()
         return tuple(self._operation(row) for row in rows)
@@ -774,7 +793,7 @@ class Ledger:
         row = self._connection.execute(
             "SELECT operation_id, session_id, reserved_at, request, reservation, "
             "dispatch_session_id, dispatched_at, observation_sequence, "
-            "result, breaches "
+            "result, breaches, scope "
             "FROM operations WHERE operation_id = ?",
             (request.origin.operation_id,),
         ).fetchone()
@@ -794,8 +813,73 @@ class Ledger:
         with self._connection:
             return self._lookup(request)
 
-    def _accounting(self, operations: tuple[Operation, ...]) -> Mapping[str, Balance]:
-        spent = dict.fromkeys(self.project.manifest.allowances, 0)
+    def _scopes(self) -> dict[str, Mapping[str, int]]:
+        rows = self._connection.execute(
+            "SELECT scope_id, caps FROM scopes ORDER BY rowid"
+        ).fetchall()
+        try:
+            scopes = {}
+            for scope_id, caps in rows:
+                caps = _load(caps, lambda data: _frozen_map(data, int))
+                if not caps.keys() <= self.project.manifest.allowances.keys():
+                    raise ValueError("scope caps name unknown units")
+                scopes[scope_id] = caps
+            return scopes
+        except UnsupportedVersion:
+            raise
+        except (TypeError, ValueError) as error:
+            raise InvalidProject("invalid stored scope") from error
+
+    def scopes(self) -> dict[str, dict[str, int]]:
+        """Recorded scopes and their caps. The root scope is implicit."""
+        with self._connection:
+            return {name: dict(caps) for name, caps in self._scopes().items()}
+
+    def open_scope(
+        self, session_id: str, scope_id: str, caps: Mapping[str, int]
+    ) -> None:
+        """Record a scope once. Repeating it with different caps is a conflict."""
+        caps = _frozen_map(caps, int)
+        if (
+            type(scope_id) is not str
+            or not _SCOPE_ID.fullmatch(scope_id)
+            or scope_id == ROOT_SCOPE
+        ):
+            raise ValueError("invalid or reserved scope ID")
+        for amount in caps.values():
+            _integer(amount)
+        if not caps.keys() <= self.project.manifest.allowances.keys():
+            raise ValueError("scope caps name unknown units")
+        with self._connection:
+            self._check_session(session_id)
+            existing = self._scopes().get(scope_id)
+            if existing is not None:
+                if existing != caps:
+                    raise OperationConflict("scope already has different caps")
+                return
+            self._connection.execute(
+                "INSERT INTO scopes VALUES (?, ?, ?, ?)",
+                (scope_id, session_id, _now(), _dump(caps)),
+            )
+
+    @staticmethod
+    def _in(operation: Operation, scope: str) -> bool:
+        """Whether an operation's state constrains work in `scope`."""
+        return operation.scope in (scope, ROOT_SCOPE)
+
+    def _accounting(
+        self, operations: tuple[Operation, ...], scope: str | None = None
+    ) -> Mapping[str, Balance]:
+        allowances = self.project.manifest.allowances
+        if scope is None:
+            limits = dict(allowances)
+        else:
+            caps = {} if scope == ROOT_SCOPE else self._scopes().get(scope)
+            if caps is None:
+                raise ValueError(f"unknown scope: {scope}")
+            limits = {unit: caps.get(unit, allowances[unit]) for unit in allowances}
+            operations = tuple(op for op in operations if op.scope == scope)
+        spent = dict.fromkeys(allowances, 0)
         reserved = dict(spent)
         # ponytail: derive totals from receipts; add an index if history grows costly.
         for operation in operations:
@@ -807,58 +891,96 @@ class Ledger:
                     spent[unit] = spent.get(unit, 0) + amount
         return MappingProxyType(
             {
-                unit: Balance(
-                    self.project.manifest.allowances.get(unit, 0),
-                    amount,
-                    reserved.get(unit, 0),
-                )
+                unit: Balance(limits.get(unit, 0), amount, reserved.get(unit, 0))
                 for unit, amount in spent.items()
             }
         )
 
-    def accounting(self) -> Mapping[str, Balance]:
-        with self._connection:
-            return self._accounting(self._operations())
+    def accounting(self, scope: str | None = None) -> Mapping[str, Balance]:
+        """Project totals, or one scope's balance against its caps.
 
-    def _check_budget(self, operations: tuple[Operation, ...]) -> None:
+        A scope's limit for a unit is its cap, or the project allowance when the
+        scope does not cap that unit. The project total is always binding too.
+        """
+        with self._connection:
+            return self._accounting(self._operations(), scope)
+
+    def _check_budget(self, operations: tuple[Operation, ...], scope: str) -> None:
         if any(
-            op.completion is not None and op.completion.breaches for op in operations
+            op.completion is not None and op.completion.breaches and self._in(op, scope)
+            for op in operations
         ):
             raise BudgetExceeded("recorded usage breach blocks further dispatch")
         if any(item.available < 0 for item in self._accounting(operations).values()):
             raise BudgetExceeded("project allowance exceeded")
 
+    def check_budget(self, scope: str = ROOT_SCOPE) -> None:
+        """Raise if a breach in this scope or the root, or the project total, blocks."""
+        with self._connection:
+            self._check_scope(scope)
+            self._check_budget(self._operations(), scope)
+
+    def unresolved(self, scope: str = ROOT_SCOPE) -> tuple[Operation, ...]:
+        """Unknown operations that block dispatch in this scope: its own and root's."""
+        with self._connection:
+            self._check_scope(scope)
+            return tuple(
+                op
+                for op in self._operations()
+                if op.state == "unknown" and self._in(op, scope)
+            )
+
+    def _check_scope(self, scope: str) -> None:
+        if type(scope) is not str or (
+            scope != ROOT_SCOPE and scope not in self._scopes()
+        ):
+            raise ValueError(f"unknown scope: {scope}")
+
     def reserve(
-        self, session_id: str, request: Request, reservation: Mapping[str, int]
+        self,
+        session_id: str,
+        request: Request,
+        reservation: Mapping[str, int],
+        scope: str = ROOT_SCOPE,
     ) -> Operation:
         """Reserve once. Repeated requests return existing state without dispatch."""
         reservation = _frozen_map(reservation, int)
         with self._connection:
             self._check_session(session_id)
+            self._check_scope(scope)
             existing = self._lookup(request)
             if existing is not None:
-                if existing.reservation != reservation:
-                    raise OperationConflict("operation has a different reservation")
+                if existing.reservation != reservation or existing.scope != scope:
+                    raise OperationConflict(
+                        "operation has a different reservation or scope"
+                    )
                 return existing
             if not reservation.keys() <= self.project.manifest.allowances.keys():
                 raise ValueError("reservation has unknown units")
             operations = self._operations()
-            self._check_budget(operations)
-            balances = self._accounting(operations)
+            self._check_budget(operations, scope)
+            project = self._accounting(operations)
             if any(
-                amount > balances[unit].available
-                for unit, amount in reservation.items()
+                amount > project[unit].available for unit, amount in reservation.items()
             ):
-                raise BudgetExceeded("reservation exceeds remaining allowance")
+                raise BudgetExceeded("reservation exceeds remaining project allowance")
+            if scope != ROOT_SCOPE:
+                capped = self._accounting(operations, scope)
+                if any(
+                    amount > capped[unit].available
+                    for unit, amount in reservation.items()
+                ):
+                    raise BudgetExceeded("reservation exceeds remaining scope cap")
             operation = Operation(
-                request, session_id, _now(), reservation, None, None, None
+                request, session_id, _now(), reservation, None, None, None, scope
             )
             self._connection.execute(
                 "INSERT INTO operations "
-                "(operation_id, session_id, reserved_at, request, reservation) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "(operation_id, scope, session_id, reserved_at, request, reservation) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     request.origin.operation_id,
+                    scope,
                     session_id,
                     operation.reserved_at,
                     _dump(request),
@@ -876,7 +998,14 @@ class Ledger:
                 raise ValueError("operation has no reservation")
             if operation.state != "pending":
                 return False
-            self._check_budget(self._operations())
+            operations = self._operations()
+            for other in operations:
+                if other.state == "unknown" and self._in(other, operation.scope):
+                    raise UnknownOutcome(
+                        f"unknown outcome blocks scope {operation.scope}: "
+                        f"{other.request.origin.operation_id}"
+                    )
+            self._check_budget(operations, operation.scope)
             self._connection.execute(
                 "UPDATE operations SET dispatch_session_id = ?, dispatched_at = ? "
                 "WHERE operation_id = ?",
