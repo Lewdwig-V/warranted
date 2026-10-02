@@ -50,7 +50,7 @@ existing fixtures and ReSchema can be written against one public API.
 | Project | One ledger directory and its single writer. A campaign uses one project. |
 | Domain | Trusted Python supplied by the consumer: worker image, workspace preparation, checkers, and candidate normalisation. |
 | Task | A TOML file: objective, pinned inputs, checkers, memory scope, and task-level budgets. |
-| Run configuration | Model, provider, token and step limits, credentials file, and worker image digest. |
+| Run configuration | Model, provider, token and step limits, and credentials file. |
 | Run | One attempt at a task under one run configuration. Resumable. |
 | Episode | One worker session in one container, ending at a submission or a limit. |
 | Submission | The candidate files, optional notes, and nominated cases captured at the end of an episode. |
@@ -86,8 +86,12 @@ provider = "ollama"
 max_steps = 12
 max_tokens = 3072
 timeout_seconds = 180
-worker_image = "sha256:…"
 ```
+
+The worker image belongs to the domain alone, not to the run configuration. The
+host records the image digest the domain declares with each run, so a run's
+record always names the environment it executed in, and a changed image blocks
+resume like any other changed domain input.
 
 A campaign file lists tasks, run configurations, and repetitions, and pins them
 all before the first run, as the existing trial plans do.
@@ -193,8 +197,14 @@ A run ends with one outcome:
 | `unsupported` | A required check cannot assess this task | 4 |
 | `infrastructure_failure` | The host could not run a required step | 5 |
 
-`project.run(...)` after a crash resumes the same run. Completed episodes, jobs,
-and checks are reused; unknown operations stay blocked and are reported.
+Every run has an explicit identifier. `project.start(task, config)` creates a new
+run with a fresh ID and records the task, configuration, and domain identity
+against it; `project.resume(run_id)` continues that run. Starting the same task
+and configuration twice creates two independent runs, so repetitions never
+merge, and failed attempts keep their own accounting. `resume` refuses a run
+whose recorded task, configuration, or domain no longer matches. After a crash,
+completed episodes, jobs, and checks are reused; unknown operations stay blocked
+and are reported.
 
 ## Budgets and the duplicate guard
 
@@ -204,6 +214,29 @@ instruction. The duplicate guard normalises each candidate with the domain's
 `normalize` and refuses a submission whose fingerprint repeats too often, using
 configurable thresholds for exact repeats and small edits (ReSchema's current
 values are 3 and 4). A refused submission still counts against the budget.
+
+## Contract revisions
+
+Both fixtures depend on owner-approved contract revisions, and M7 requires them to
+run through the public API with their current guarantees. Revisions are therefore
+part of the task layer.
+
+- A task's contract is its required checks plus the interpretation documents
+  listed in the task file. Each version of the contract has its own identity.
+- A revision is a TOML file naming the owner, the reason, the affected checks or
+  documents, and the new versions. It is recorded only through
+  `project.revise(...)` or `warranted revise`, both host operations. Nothing the
+  worker writes can create or select a revision.
+- Acceptance always uses the task's current contract. A verdict produced under an
+  earlier revision becomes stale for the affected checks and is re-run; it is
+  never rewritten, so an old rejection stays on record.
+- To reproduce the fixtures, a task can schedule a pinned revision at a run
+  checkpoint, such as after the first submission. The host applies it at that
+  point, and a restart before or after the checkpoint resumes on the same
+  contract version.
+
+Owner identity is attribution from trusted local files, as it is today; remote
+owner authentication remains out of scope.
 
 ## Memory
 
@@ -223,14 +256,18 @@ canonicaliser-version check becomes an ordinary dependency.
 ```
 warranted init DIR --domain MODULE:OBJECT
 warranted import DIR FILE...                  # pin domain-built artifacts
-warranted run DIR TASK.toml --config RUN.toml # resumes if the run exists
+warranted run DIR TASK.toml --config RUN.toml # always a new run; prints its ID
+warranted resume DIR RUN
+warranted revise DIR TASK REVISION.toml       # record an owner-approved revision
 warranted status DIR [RUN] [--json]
 warranted export DIR RUN DEST
 warranted campaign run DIR CAMPAIGN.toml
 warranted campaign report DIR CAMPAIGN [--json]
 ```
 
-All commands use the public API. `--json` output is versioned with it.
+All commands use the public API. `--json` output is versioned with it. A
+campaign assigns each planned run its ID when the plan is pinned, so a resumed
+campaign continues exactly the runs it planned.
 
 ## How existing code maps
 
@@ -250,8 +287,6 @@ All commands use the public API. `--json` output is versioned with it.
 - Host-mediated operations, pending their own design.
 - Parallel runs and multiple writers.
 - An MCP interface to Warranted.
-- Contract revisions inside the task layer. Fixtures that need them keep using
-  `warranted.host` until a consumer needs a task-level form.
 
 ## Open questions
 
@@ -265,3 +300,5 @@ All commands use the public API. `--json` output is versioned with it.
 4. Should verdict feedback have a size limit enforced by the host?
 5. Which `warranted.host` names do the fixtures still need once they move onto the
    task layer? That list decides what the host kit has to keep exposing.
+6. Is a scheduled revision checkpoint expressive enough for future consumers, or
+   should a revision also be applicable to a run that is already in progress?
