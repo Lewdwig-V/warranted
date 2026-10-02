@@ -359,4 +359,4 @@ Evidence on the open questions:
 5. Which `warranted.host` names do the fixtures still need once they move onto the
    task layer? That list decides what the host kit has to keep exposing.
 6. How are budgets and unknown-operation blocking scoped to a run within a
-   shared project?
+   shared project? See the [run scopes design note](m7-run-scopes.md).
