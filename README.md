@@ -5,7 +5,8 @@
 Warranted is a neurosymbolic harness for agents doing long, interdependent work.
 A language-model worker explores freely in a contained shell. The host keeps an
 authoritative evidence ledger, tracks what each conclusion depends on, and
-accepts work only when independent deterministic checks and Lean proofs say so.
+accepts work only when the independent checks its contract requires pass:
+deterministic checkers, plus Lean proofs where the contract asks for them.
 The working principle is: **make the world legible, give the model room to
 explore, and be precise about what counts as established knowledge.**
 
