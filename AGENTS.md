@@ -20,8 +20,9 @@ project, is its first external consumer and will depend on Warranted's public
 API; Warranted never depends on ReSchema. Derive interfaces from the CSV and
 migration fixtures and ReSchema's needs together. Do not put another project's
 tool names, validator rules, state formats, budgets, or acceptance semantics into
-the core; domain behavior enters through the checker, operation, and job
-interfaces.
+the core; domain behavior enters through the checker, job, and worker-image
+interfaces. Host-mediated operations need a reviewed design before any
+implementation.
 
 ## Development commands
 

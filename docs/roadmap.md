@@ -114,11 +114,22 @@ domain project supplies only domain knowledge. Specifically:
   in a contained job and returns a typed verdict plus worker-visible feedback.
   The host keeps private inputs and seeds out of the worker, records them as
   evidence, and issues the receipt. Fresh per-submission inputs, such as
-  ReSchema's hidden cases, are drawn and recorded by the host.
-- [ ] **Host-mediated operations.** A worker in the container can request
-  domain operations, such as ReSchema's `experiment` probe, through a file and
-  command convention. Each request is reserved, executed outside the worker,
-  charged, and returned as evidence. No network or socket reaches the host.
+  ReSchema's hidden cases, are drawn and recorded by the host. A submission may
+  nominate cases; the checker recomputes their ground truth itself, so anything
+  the worker recorded stays a hint, never evidence.
+- [ ] **Domain worker images.** A domain project supplies a pinned worker image
+  with its own tools, such as an emulator and the target binary, so the worker
+  can investigate with ordinary shell commands. The image adds tools inside the
+  container; it does not widen what the container can reach.
+- [ ] **Host-mediated operations: design, then implement.** Some operations
+  belong on the host: results that should be authoritative, reusable evidence;
+  anything needing credentials, network, paid APIs, or private data; and any
+  external side effect. Write and review a design before implementing it. The
+  design must cover how a worker requests an operation without network or a
+  socket to the host, operation identity and deduplication, reservation before
+  execution, unknown outcomes after a host death with no blind retry, what the
+  worker sees back, and negative cases for forged requests and budget bypass.
+  M8 does not wait for this item.
 - [ ] **Domain execution jobs.** Domain code can run compile, emulation, or
   native jobs in pinned images through Warranted's container boundary, mounting
   only per-job scratch. Worker-readable mounts never include oracle or ledger
@@ -139,13 +150,15 @@ domain project supplies only domain knowledge. Specifically:
 
 **Completion evidence:** both existing fixtures run through the public API and
 CLI with their current guarantees and tests intact. A minimal reverse-engineering
-style fixture exercises checker private inputs, host-mediated probes, the
-repeated-candidate guard, and scoped memory across restart, with negative cases
-for leaked private inputs, forged verdicts, and bypassed budgets.
+style fixture exercises checker private inputs, worker-nominated cases, a domain
+worker image, the repeated-candidate guard, and scoped memory across restart,
+with negative cases for leaked private inputs, forged verdicts, and bypassed
+budgets. Host-mediated operations are complete when their reviewed design is
+implemented with its negative cases.
 
 **Constraint:** the core contains no reverse-engineering concepts. Traces,
 canonicalisation, emulation, and fuzzing stay in ReSchema behind the checker,
-operation, and job interfaces.
+job, and worker-image interfaces.
 
 ## M8 — ReSchema rebuilt on Warranted
 
@@ -164,8 +177,11 @@ and task presentation.
   boundary in place of ReSchema's own Podman driver.
 - [ ] Replace the family deduction cache with Warranted scoped claims.
 - [ ] Replace the five MCP tools and the external agent runner with Warranted's
-  shell-and-files worker: task files in the workspace, an experiment command,
-  and the submission convention.
+  shell-and-files worker: task files in the workspace, an `experiment` command
+  inside a ReSchema worker image, and the submission convention. Probes are then
+  charged as shell commands rather than counted separately.
+- [ ] Once host-mediated operations exist, move `experiment` onto them to make
+  probe results authoritative evidence and restore per-probe accounting.
 - [ ] Port ReSchema's live-agent campaigns to Warranted campaigns.
 
 **Completion evidence:** ReSchema's existing gate regression tests pass against
@@ -245,10 +261,12 @@ Dream-RSI comparisons. See the [design](design.md#jev-system-1-classification-an
 
 ## Open decisions
 
-For M7: the public module layout and naming; the file and command convention for
-host-mediated operations; how checker verdicts expose worker-visible feedback
+For M7: the public module layout and naming; the host-mediated operation design,
+including its request convention; how checker verdicts expose worker-visible feedback
 without revealing private inputs; and the campaign file format. For M8: whether
-ReSchema's efficiency metric becomes a Warranted report or stays domain code.
+ReSchema's efficiency metric becomes a Warranted report or stays domain code,
+given that probes are charged as shell commands until host-mediated operations
+exist.
 
 Before measured M5 trials: choose provider/model versions and a total spending
 cap; pin equal capabilities, scheduling, per-attempt limits, and task-success
