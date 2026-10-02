@@ -259,10 +259,11 @@ The original five-check results remain unchanged.
 In the first schema/helper pair, run 02 finds the boolean-version error on turn seven and repairs it on turn eight.
 Run 03 submits five turns earlier, but still accepts that invalid input.
 This speed difference is not an improvement at equivalent quality.
-In the reverse pair, both final programs accept the invalid input.
-Run 12 rejects it but never submits. The speed–quality pattern therefore does not repeat across the pairs.
+The speed–quality difference does not repeat in the reverse pair.
+Both the schema-only and helper programs, runs 11 and 10, accept the boolean version.
+The second original-instructions run, run 12, rejects it but still never submits.
 
-Packaging reliability, verification coverage, and stopping behavior need separate treatment.
+These results support treating packaging, verification coverage, and stopping behavior as separate design concerns.
 The direct packaging failure supports documenting the payload contract.
 The boolean witness supports a regression case in a later checker change.
 It does not justify rewarding immediate submission after the first checker pass or selecting a winning prompt.
