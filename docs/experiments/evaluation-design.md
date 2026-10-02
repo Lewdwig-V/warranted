@@ -193,9 +193,9 @@ its directory for diagnosis and prepare a new plan.
 
 `uv run --locked pytest -q tests/test_m5_trials.py` covers deleted reports and
 repeated resume, replaced runs, live token and cost totals with unknown model
-usage, and unfinished or later-unknown attempts. It needs no containers or
-credentials, but plan initialization records `podman --version`, so a `podman`
-binary must be on `PATH`.
+usage, and unfinished or later-unknown attempts. It needs no containers,
+credentials, or Podman binary: the tests pin the runtime version that a real
+`trials.py init` reads from `podman --version`.
 
 ## Measurement and decision criteria
 
