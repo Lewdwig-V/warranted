@@ -193,6 +193,25 @@ It uses the same process-stop and file checks and records the bytes as
 submission status. See
 [submission controls](../experiments/2026-09-24-submission-controls.md).
 
+## Checker jobs
+
+`warranted.jobs.PodmanJobs().run(image, argv, files, stdin=b"", timeout_seconds=10)`
+runs one program for a checker in a fresh container and returns a `JobResult`
+(`returncode`, `stdout`, `stderr`, `timed_out`, `truncated`). The prototype task
+layer exposes it to checkers as `CheckContext.run_job`.
+
+- The image must be pinned by `sha256` digest. File names must be safe basenames;
+  argv must be a nonempty list of strings; the timeout is 1 to 300 seconds.
+- The container has no network, no host mounts, a read-only root, a private 8 MiB
+  `/work` holding only the given files, and runs as UID 1000 with no capabilities,
+  `no-new-privileges`, and the same process, memory, and CPU limits as the worker
+  sandbox. Output is capped at 256 KiB per stream.
+- A host-side runtime error raises `SandboxFailure`; a program that fails, times
+  out, or overruns its output is a normal result.
+- The job's program runs as the same user as the in-container runner, so it can
+  shape its own result record. Treat job output as that program's claim about
+  itself, never as host evidence about anything else.
+
 ## Native tests
 
 ```bash

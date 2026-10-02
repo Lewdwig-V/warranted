@@ -131,7 +131,6 @@ class Checker(Protocol):
 
 class CheckContext:
     candidate: Files  # captured bytes, not worker paths
-    nominated_cases: Sequence[bytes]  # hints; the checker recomputes truth
     inputs: Files  # the task's pinned inputs
     private: Files  # host-only data, never mounted for the worker
 
@@ -351,13 +350,52 @@ Evidence on the open questions:
   `Sandbox`, `SANDBOX_ID`, `Episode`, `UnknownOutcome`, `record_once`,
   `run_workflow`, and `submitted_files`, and no private helpers.
 
+### Slice 2: a ReSchema-style task with hidden cases
+
+`examples/m7/mystery/` asks the worker to model a small black-box program. The
+worker submits `result.json` with a model and up to 16 nominated cases. The
+checker draws hidden cases from a host-recorded seed and private configuration,
+then runs the original and the model in two contained jobs (`warranted.jobs`).
+Feedback shows the first divergence on a nominated case but only counts for hidden
+cases. `tests/test_experimental_mystery.py` runs it with a local stand-in job
+runner; `tests/test_jobs.py` checks the Podman runner natively in CI.
+
+What worked:
+
+- `CheckContext.draw_seed` and `run_job` keep seeds and job records as host-only
+  channels of the check operation. Resume reuses the check without new jobs or
+  seeds, and each new run draws fresh hidden cases.
+- A memorising model passes its nominated cases and fails hidden ones, and the
+  worker's feedback never contains a hidden input or the seed.
+- A looping model is rejected with feedback; a job-runner failure is an
+  infrastructure failure. Malformed submissions are rejected before any job.
+- The `[private]` task section was enough for the checker's hidden-case
+  configuration.
+
+What changed or did not fit:
+
+- **Nominated cases need no generic field.** The domain reads them from its own
+  submission payload, so `CheckContext.nominated_cases` is unnecessary.
+- **Jobs cannot be separate ledger operations.** A check is an in-flight
+  operation while its jobs run, and `begin` refuses dispatch in a scope with an
+  in-flight unknown operation. Jobs are therefore recorded inside their check
+  (`jobs.json`, with digests of files, input, and output) and are not charged as a
+  separate unit. Charging or recovering jobs individually would need parent and
+  child operations.
+- **A job's program can shape its own result record.** It runs as the same user as
+  the in-container runner. That is acceptable because it can only misreport its
+  own behaviour, which it controls anyway; job output is never host evidence about
+  anything else.
+- The worker convention is unchanged: cases travel inside `result.json`, not a
+  separate `cases.json`.
+
 ## Open questions
 
 1. Does a follow-on episode receive the earlier conversation, or only the restored
    workspace and feedback? The current worker links episodes but starts each one
    from its inputs.
-2. How are a task's private inputs supplied: a private section of the task file,
-   or artifacts imported with a host-only flag?
+2. Provisionally answered by slices 1 and 2: a `[private]` section of the task
+   file. Revisit if private data must be large or shared between tasks.
 3. How is the domain's code identified for pinning? Slice 1 showed a digest of
    the domain's own source file misses code it imports.
 4. Should verdict feedback have a size limit enforced by the host?
@@ -365,3 +403,5 @@ Evidence on the open questions:
    task layer? That list decides what the host kit has to keep exposing.
 6. Answered: budgets and blocking are scoped to a run by ledger scopes. See the
    [run scopes design note](m7-run-scopes.md).
+7. Should checker jobs become child operations with their own charges and
+   recovery, or stay evidence inside their check?

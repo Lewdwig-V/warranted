@@ -13,6 +13,7 @@ import hashlib
 import inspect
 import json
 import re
+import secrets
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from warranted.acceptance import Acceptance, AcceptanceContext, Evidence, Status
+from warranted.jobs import JobResult, JobRunner, PodmanJobs, validate_job
 from warranted.ledger import (
     ROOT_SCOPE,
     BudgetExceeded,
@@ -86,11 +88,56 @@ class Verdict:
         _json(self.feedback), _json(self.host_only)  # must be JSON-serialisable
 
 
-@dataclass(frozen=True)
 class CheckContext:
-    candidate: Mapping[str, bytes]
-    inputs: Mapping[str, bytes]
-    private: Mapping[str, bytes]
+    """What a checker may read and do. Seeds and jobs are kept as host-only evidence.
+
+    `candidate`, `inputs`, and `private` are exact bytes. `draw_seed` returns fresh
+    entropy and records it; `run_job` runs untrusted code in a contained job and
+    records the job and its result. Both records stay out of worker feedback.
+    """
+
+    def __init__(self, candidate, inputs, private, jobs: JobRunner | None = None):
+        self.candidate: Mapping[str, bytes] = MappingProxyType(dict(candidate))
+        self.inputs: Mapping[str, bytes] = MappingProxyType(dict(inputs))
+        self.private: Mapping[str, bytes] = MappingProxyType(dict(private))
+        self._jobs = jobs
+        self.seeds: list[int] = []
+        self.job_log: list[dict] = []
+
+    def draw_seed(self) -> int:
+        seed = secrets.randbits(64)
+        self.seeds.append(seed)
+        return seed
+
+    def run_job(
+        self,
+        image: str,
+        argv,
+        files: Mapping[str, bytes],
+        *,
+        stdin: bytes = b"",
+        timeout_seconds: int = 10,
+    ) -> JobResult:
+        if self._jobs is None:
+            raise RuntimeError("this project has no job runner")
+        validate_job(image, argv, files, timeout_seconds)
+        result = self._jobs.run(
+            image, argv, files, stdin=stdin, timeout_seconds=timeout_seconds
+        )
+        self.job_log.append(
+            {
+                "image": image,
+                "argv": list(argv),
+                "files": {n: _digest(d) for n, d in sorted(files.items())},
+                "stdin": _digest(stdin),
+                "returncode": result.returncode,
+                "timed_out": result.timed_out,
+                "truncated": result.truncated,
+                "stdout": _digest(result.stdout),
+                "stderr": _digest(result.stderr),
+            }
+        )
+        return result
 
 
 class Checker(Protocol):
@@ -299,9 +346,11 @@ class Project:
         *,
         environment: Callable = Sandbox,
         environment_id: str = SANDBOX_ID,
+        jobs: JobRunner | None = None,
     ):
         self.root, self.domain = Path(root), domain
         self.environment, self.environment_id = environment, environment_id
+        self.jobs = jobs if jobs is not None else PodmanJobs()
         if set(domain.checkers) and not all(
             _NAME.fullmatch(name) for name in domain.checkers
         ):
@@ -626,8 +675,9 @@ class Project:
             files = submitted_files(ledger, self._episode_id(run, index))
             context = CheckContext(
                 {n: ledger.read_artifact(ref.artifact) for n, ref in files.items()},
-                dict(run.task.inputs),
-                dict(run.task.private),
+                run.task.inputs,
+                run.task.private,
+                self.jobs,
             )
             started = perf_counter_ns()
             try:
@@ -658,6 +708,8 @@ class Project:
                         {"status": verdict.status, "feedback": verdict.feedback}
                     ),
                     "host-only.json": _json(verdict.host_only),
+                    "seeds.json": _json(context.seeds),
+                    "jobs.json": _json(context.job_log),
                 },
             )
         return request.origin.operation_id
