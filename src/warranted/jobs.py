@@ -55,6 +55,9 @@ class JobResult:
 
 
 class JobRunner(Protocol):
+    # Bound into the project identity; change it when containment changes.
+    identity: str
+
     def run(
         self,
         image: str,
@@ -84,6 +87,8 @@ def validate_job(
 
 class PodmanJobs:
     """Run each job in a fresh rootless container; host errors raise SandboxFailure."""
+
+    identity = "podman-jobs-v1"
 
     def __init__(self):
         self._checked = False

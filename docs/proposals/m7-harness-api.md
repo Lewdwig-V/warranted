@@ -379,13 +379,16 @@ What changed or did not fit:
 - **Jobs cannot be separate ledger operations.** A check is an in-flight
   operation while its jobs run, and `begin` refuses dispatch in a scope with an
   in-flight unknown operation. Jobs are therefore recorded inside their check
-  (`jobs.json`, with digests of files, input, and output) and are not charged as a
-  separate unit. Charging or recovering jobs individually would need parent and
+  (`jobs.json`, with digests of files and input, plus each job's output stored as
+  its own raw channel) and are not charged as a separate unit. Charging or recovering jobs individually would need parent and
   child operations.
 - **A job's program can shape its own result record.** It runs as the same user as
   the in-container runner. That is acceptable because it can only misreport its
   own behaviour, which it controls anyway; job output is never host evidence about
   anything else.
+- **The job runner is part of the project identity.** A checker's verdict depends
+  on how its jobs were contained, so a project refuses to reopen with a runner
+  whose `identity` differs.
 - The worker convention is unchanged: cases travel inside `result.json`, not a
   separate `cases.json`.
 

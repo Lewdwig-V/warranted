@@ -1,5 +1,6 @@
 """Second prototype slice: private inputs, recorded seeds, jobs, nominated cases."""
 
+import base64
 import importlib.util
 import json
 import subprocess
@@ -48,6 +49,8 @@ def lookup(table):
 
 class LocalJobs:
     """Test-only runner: same interface as PodmanJobs, without containment."""
+
+    identity = "local-test-jobs"
 
     def __init__(self, fail=False):
         self.calls, self.fail = 0, fail
@@ -140,6 +143,7 @@ def check_records(proj, run_id):
             {
                 name: json.loads(ledger.read_artifact(ref))
                 for name, ref in op.completion.observation.artifacts.items()
+                if name.endswith(".json")
             }
             for op in ledger.operations()
             if op.request.origin.operation_id.startswith(f"run/{run_id}/")
@@ -156,6 +160,49 @@ def test_a_faithful_model_is_accepted_with_seed_and_jobs_recorded(tmp_path):
     assert len(record["seeds.json"]) == 1
     assert len(record["jobs.json"]) == jobs.calls == 2
     assert len(record["host-only.json"]["hidden_cases"]) == 8
+
+
+def test_job_output_is_kept_as_raw_evidence(tmp_path):
+    proj, _, _ = project(tmp_path, [{"model": ORIGINAL, "cases": ["hello"]}])
+    result = proj.start(TASK, CONFIG, Model())
+    with Ledger.open(proj.ledger_root) as ledger:
+        [op] = [
+            op
+            for op in ledger.operations()
+            if op.request.origin.operation_id.startswith(f"run/{result.run_id}/")
+            and op.request.origin.kind == "check"
+        ]
+        artifacts = op.completion.observation.artifacts
+        log = json.loads(ledger.read_artifact(artifacts["jobs.json"]))
+        for job in log:
+            for channel in ("stdout", "stderr"):
+                ref = artifacts[job[channel]["channel"]]
+                assert ref.digest == job[channel]["digest"]
+        model_rows = json.loads(
+            ledger.read_artifact(artifacts[log[1]["stdout"]["channel"]])
+        )
+    assert model_rows[0] == [0, base64.b64encode(b"hE2lO").decode()]
+
+
+def test_reopening_with_a_different_job_runner_is_refused(tmp_path):
+    proj, _, _ = project(tmp_path, [{"model": ORIGINAL, "cases": []}])
+
+    class Other(LocalJobs):
+        identity = "weaker-jobs"
+
+    with pytest.raises(ValueError, match="differs"):
+        Project(
+            proj.root, MYSTERY.MysteryDomain(), environment_id=ENVIRONMENT, jobs=Other()
+        )
+
+
+def test_a_job_runner_without_an_identity_is_refused(tmp_path):
+    class Anonymous(LocalJobs):
+        identity = None
+
+    with pytest.raises(ValueError, match="identity"):
+        project(tmp_path, [], jobs=Anonymous())
+    assert not (tmp_path / "project").exists()
 
 
 def test_memorising_nominated_cases_fails_hidden_cases_without_revealing_them(

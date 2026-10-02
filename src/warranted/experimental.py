@@ -103,6 +103,7 @@ class CheckContext:
         self._jobs = jobs
         self.seeds: list[int] = []
         self.job_log: list[dict] = []
+        self.job_output: dict[str, bytes] = {}
 
     def draw_seed(self) -> int:
         seed = secrets.randbits(64)
@@ -124,6 +125,9 @@ class CheckContext:
         result = self._jobs.run(
             image, argv, files, stdin=stdin, timeout_seconds=timeout_seconds
         )
+        prefix = f"jobs/{len(self.job_log) + 1}"
+        self.job_output[f"{prefix}/stdout"] = result.stdout
+        self.job_output[f"{prefix}/stderr"] = result.stderr
         self.job_log.append(
             {
                 "image": image,
@@ -133,8 +137,14 @@ class CheckContext:
                 "returncode": result.returncode,
                 "timed_out": result.timed_out,
                 "truncated": result.truncated,
-                "stdout": _digest(result.stdout),
-                "stderr": _digest(result.stderr),
+                "stdout": {
+                    "channel": f"{prefix}/stdout",
+                    "digest": _digest(result.stdout),
+                },
+                "stderr": {
+                    "channel": f"{prefix}/stderr",
+                    "digest": _digest(result.stderr),
+                },
             }
         )
         return result
@@ -183,6 +193,17 @@ def domain_identity(domain: Domain) -> dict[str, str]:
         identity[f"checker/{name}"] = checker.version
         identity[f"checker/{name}/isolated"] = str(_isolated(checker)).lower()
     return identity
+
+
+def _project_identity(domain: Domain, environment_id: str, jobs) -> dict[str, str]:
+    """A project binds its domain, worker environment, and checker job runner."""
+    runner = getattr(jobs, "identity", None)
+    if type(runner) is not str or not runner:
+        raise ValueError("job runner needs a stable identity string")
+    return domain_identity(domain) | {
+        "worker_environment": environment_id,
+        "job_runner": runner,
+    }
 
 
 @dataclass(frozen=True)
@@ -364,9 +385,7 @@ class Project:
         return self.root / "ledger"
 
     def _identity(self) -> dict[str, str]:
-        return domain_identity(self.domain) | {
-            "worker_environment": self.environment_id
-        }
+        return _project_identity(self.domain, self.environment_id, self.jobs)
 
     @classmethod
     def create(
@@ -377,9 +396,12 @@ class Project:
         **options,
     ) -> Project:
         root = Path(root)
+        identity = _project_identity(
+            domain,
+            options.get("environment_id", SANDBOX_ID),
+            options.get("jobs") or PodmanJobs(),
+        )
         root.mkdir(parents=True)
-        environment_id = options.get("environment_id", SANDBOX_ID)
-        identity = domain_identity(domain) | {"worker_environment": environment_id}
         with Ledger.create(
             root / "ledger",
             Manifest(
@@ -710,7 +732,8 @@ class Project:
                     "host-only.json": _json(verdict.host_only),
                     "seeds.json": _json(context.seeds),
                     "jobs.json": _json(context.job_log),
-                },
+                }
+                | context.job_output,
             )
         return request.origin.operation_id
 

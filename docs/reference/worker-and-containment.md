@@ -208,6 +208,12 @@ layer exposes it to checkers as `CheckContext.run_job`.
   sandbox. Output is capped at 256 KiB per stream.
 - A host-side runtime error raises `SandboxFailure`; a program that fails, times
   out, or overruns its output is a normal result.
+- Each runner has an `identity` string (`podman-jobs-v1`). The prototype task
+  layer binds it into the project identity, so reopening a project with another
+  runner is refused. Change the string whenever containment changes.
+- In the prototype task layer, each job's capped `stdout` and `stderr` are stored
+  as raw check evidence (`jobs/<n>/stdout`, `jobs/<n>/stderr`); `jobs.json`
+  records the image, argv, input digests, exit status, and those channels.
 - The job's program runs as the same user as the in-container runner, so it can
   shape its own result record. Treat job output as that program's claim about
   itself, never as host evidence about anything else.
