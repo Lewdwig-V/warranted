@@ -230,10 +230,17 @@ part of the task layer.
 - Acceptance always uses the task's current contract. A verdict produced under an
   earlier revision becomes stale for the affected checks and is re-run; it is
   never rewritten, so an old rejection stays on record.
-- To reproduce the fixtures, a task can schedule a pinned revision at a run
-  checkpoint, such as after the first submission. The host applies it at that
-  point, and a restart before or after the checkpoint resumes on the same
-  contract version.
+- A task can schedule a pinned revision at a run checkpoint, such as after the
+  first submission, as both fixtures do. The host applies it at that point, and a
+  restart before or after the checkpoint resumes on the same contract version.
+- An unscheduled revision applies to the task, not to runs already in progress.
+  Resuming such a run is refused because its contract no longer matches, as with
+  a changed domain or worker image. A new run uses the revised contract; the old
+  run keeps its record and costs.
+
+Every run is therefore bound to one contract version or to one planned sequence
+of versions. Revising a run in flight would add a new boundary for little gain,
+since runs are resumable and a new run is cheap to start.
 
 Owner identity is attribution from trusted local files, as it is today; remote
 owner authentication remains out of scope.
@@ -300,5 +307,3 @@ campaign continues exactly the runs it planned.
 4. Should verdict feedback have a size limit enforced by the host?
 5. Which `warranted.host` names do the fixtures still need once they move onto the
    task layer? That list decides what the host kit has to keep exposing.
-6. Is a scheduled revision checkpoint expressive enough for future consumers, or
-   should a revision also be applicable to a run that is already in progress?
