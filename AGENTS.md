@@ -15,10 +15,14 @@ runs them: what they do, how to call them, what they guarantee, and their limits
 Record measured runs as dated files under `docs/experiments/` and leave their
 findings unchanged afterwards. Keep plans in the roadmap, not in reference docs.
 
-Warranted is independent of any existing domain harness. Start with controlled
-data transformations and repository migrations. Derive adapter boundaries from
-working examples; do not import another project's tool names, validator rules,
-state store, budgets, or acceptance semantics into the core.
+Warranted is a domain-independent harness. ReSchema, a reverse-engineering
+project, is its first external consumer and will depend on Warranted's public
+API; Warranted never depends on ReSchema. Derive interfaces from the CSV and
+migration fixtures and ReSchema's needs together. Do not put another project's
+tool names, validator rules, state formats, budgets, or acceptance semantics into
+the core; domain behavior enters through the checker, job, and worker-image
+interfaces. Host-mediated operations need a reviewed design before any
+implementation.
 
 ## Development commands
 
