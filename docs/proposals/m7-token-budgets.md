@@ -24,7 +24,9 @@ early ones. Token totals appear only in experiment reports, after the fact.
    total stays binding, with the same rules as other units: caps are ceilings,
    reservations precede dispatch, nothing is released early.
 2. The reservation for a call is known before dispatch and is an upper bound on
-   what the call can be charged, so an honest provider cannot breach it.
+   what the call can be charged. Where the bound rests on a model's tokenizer and
+   chat template rather than on the request itself, it is accepted only for
+   models where it has been verified, and only with a margin.
 3. If usage is unmeasured or exceeds the bound, the call is charged conservatively
    and further work in its scope is blocked by the existing breach rule. It never
    silently counts as zero.
@@ -52,7 +54,7 @@ reserved; it stays recorded in `cost.json` and unenforced.
 | Unit | Reserved | Why it bounds the charge |
 | --- | --- | --- |
 | `completion_tokens` | The request's `max_tokens` | The adapter already sends it, and already treats more reported completion tokens as an infrastructure failure. Reasoning tokens count against the same limit on OpenRouter. |
-| `prompt_tokens` | The byte length of the exact wire request body | Byte-level BPE and byte-fallback tokenizers emit at least one byte of text per ordinary token, so the text costs at most its UTF-8 length. The JSON keys, quotes, and request parameters around each message are longer than the few special tokens a chat template adds. |
+| `prompt_tokens` | The byte length of the exact wire request body, plus a fixed per-message margin, for verified models only | Byte-level BPE and byte-fallback tokenizers emit at least one byte of text per ordinary token, so the text costs at most its UTF-8 length. The JSON keys and quotes around each message, plus the margin, cover the special tokens a chat template adds. |
 
 The prompt bound is pessimistic: English text averages about four bytes per token,
 so the reservation is roughly four times the eventual charge. Because the whole
@@ -61,24 +63,54 @@ remaining cap cannot cover the **next** call's bound, losing at most about one
 call's worth of over-estimate. For a run whose prompts grow to 20,000 tokens under
 a 1,000,000-token cap, that is under 10% of the budget.
 
-The bound is a property of supported tokenizers, not a guarantee from the
-provider. A provider that adds hidden prompt text, or a tokenizer that emits
-tokens without bytes, can exceed it. That case is safe: the actual usage is
-charged in full, recorded as a breach, and blocks the scope (requirement 3). An
-adapter can later supply a tighter bound, such as an exact count from the model's
-own tokenizer, through the same interface.
+The prompt bound is a property of the served model's tokenizer and chat template,
+not a guarantee from the request. A tokenizer that emits tokens without bytes, a
+template with long fixed preambles, or a provider that adds hidden prompt text can
+exceed it, and then an honest call overshoots a cap before the breach can block
+later calls. Adapters therefore do not reserve prompt tokens for arbitrary
+models:
+
+- Each adapter keeps a list of **verified models**, pinned by the adapter's model
+  identifier (the local model digest, or the OpenRouter model and provider). A
+  model is added only after a recorded measurement, kept under
+  `docs/experiments/`, shows its reported prompt tokens below the bound across
+  recorded requests, including short prompts where template tokens dominate.
+- The per-message margin and the verified list are part of the adapter's pinned
+  configuration, so changing either changes the request identity.
+- A token-capped run whose adapter's model is not verified is refused at start.
+  Without a cap, an unverified model still settles reported tokens; nothing is
+  enforced, so nothing is claimed.
+
+Verification is evidence, not proof. If a verified model later exceeds its bound,
+because a provider changed its template for example, the actual usage is charged in
+full, recorded as a breach, and blocks the scope (requirement 3). The overshoot is
+then at most one call, and it is recorded rather than hidden. An adapter can later
+supply a tighter or provable bound, such as an exact count from the model's own
+tokenizer, through the same interface.
 
 ### Adapters compute the reservation
 
 Today `Journal.call` reserves a fixed `{kind: episode.model_reservation}`. Instead,
-a model service may provide `reservation(payload) -> Mapping[str, int]`, and the
-journal reserves what it returns for that request:
+a model service may provide two things:
+
+- `reserved_units`, the units it bounds for its configured model, for example
+  `{"model", "prompt_tokens", "completion_tokens"}`. A verified adapter declares
+  both token units; an unverified one declares only `model`.
+- `reservation(payload) -> Mapping[str, int]`, the reservation for one request.
+
+The journal reserves what `reservation` returns, after two checks. It refuses the
+call, before reserving anything, if the returned units differ from
+`reserved_units`. It also refuses if a unit capped in the episode's scope is
+missing. A service cannot enforce a cap by declaring the method and then omitting
+the unit.
 
 - `LocalChatCompletions` and `OpenRouterChatCompletions` build the wire body they
   would send, deterministically from the messages and their pinned parameters,
-  and return `{"model": 1, "prompt_tokens": len(wire), "completion_tokens":
-  max_tokens}`. A body over the 2 MiB limit is never sent, so it reserves
-  `{"model": 1}` and zero tokens, then settles as today.
+  and, for a verified model, return `{"model": 1, "prompt_tokens": len(wire) +
+  margin × messages, "completion_tokens": max_tokens}`. For an unverified model
+  they return `{"model": 1}` and settle no token units. A body over the 2 MiB
+  limit is never sent, so it reserves `{"model": 1}` and zero tokens, then
+  settles as today.
 - A service without the method keeps the fixed `{"model": model_reservation}`.
   Scripted and fake services in tests fall in this group.
 - Because the reservation is a function of the request, a resumed episode
@@ -108,8 +140,9 @@ accounting reads the settled usage.
 - Project allowances gain both units. A project whose allowance for a unit is zero
   cannot reserve that unit, so a project that uses a token-reserving adapter must
   set token allowances. M5 example runners gain token allowance options.
-- Starting a run with a token cap is refused unless its model service provides
-  `reservation`. The check happens at `Project.start`, before any operation.
+- Starting a run is refused unless the model service's `reserved_units` include
+  every token unit the run caps. The check happens at `Project.start`, before any
+  operation; the journal repeats it on every call.
 - A run that cannot reserve its next call ends as `budget_exhausted`, as for other
   units.
 
@@ -132,14 +165,17 @@ there is no migration.
 - A response with missing or inconsistent usage is charged the full reservation,
   never zero.
 - A failure before inference settles zero tokens.
-- A run with a token cap and a model service without `reservation` is refused at
-  start.
+- A run with a token cap is refused at start when the model service does not
+  declare that unit in `reserved_units`. That covers a service without
+  `reservation` and an adapter whose model is not verified.
+- A service whose `reservation` omits a capped unit, or returns units other than
+  those it declared, is refused by the journal before anything is reserved.
 - A task or run file that sets a token unit in the wrong owner's table is
   rejected, as for other units.
 
-The byte bound itself should be measured against recorded live runs before the
-implementation claims it: for each recorded `http-request.json` and
-`tokens.json`, the request length must exceed the reported prompt tokens.
+Each verified model needs its own measurement before it is added. For each
+recorded `http-request.json` and `tokens.json`, the bound must exceed the reported
+prompt tokens. Include requests with a single short message.
 
 ## Alternatives considered
 
@@ -159,4 +195,7 @@ implementation claims it: for each recorded `http-request.json` and
 
 - Two units; byte-length prompt bound; `max_tokens` completion bound; missing
   usage charged at the bound. Accepted 2026-10-02.
+- Review added the verified-model list and per-message margin, so a cap never
+  rests on an unmeasured tokenizer, and the `reserved_units` declaration, so a
+  service cannot leave a capped unit unreserved.
 - USD budgets are out of scope until a provider offers a reservable cost bound.
