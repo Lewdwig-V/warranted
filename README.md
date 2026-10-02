@@ -2,136 +2,119 @@
 
 **Durable, checkable knowledge for long-horizon agent work.**
 
-An agent should be able to preserve what it has learned, explain what supports
-it, and revisit the right conclusions when the facts change. Warranted explores
-that idea through executable artifacts, an evidence ledger, explicit
-dependencies, and independently checked acceptance conditions.
+Warranted is a research prototype. It asks whether an agent finishes
+interdependent work more reliably when the host preserves raw evidence, records
+what each conclusion depends on, and checks acceptance independently of the
+worker. The working principle is: **make the world legible, give the model room
+to explore, and be precise about what counts as established knowledge.**
 
-The design principle is simple: **make the world legible, give the model room to
-explore, and be precise about what counts as established knowledge.**
+The repository contains a Python library, two controlled task fixtures, and
+scripts that exercise them. There is no end-user command line yet; the
+`warranted` command prints help and its version only.
 
-## Status
+## What exists
 
-The local ledger stores immutable observations, raw artifact bytes, operation
-requests, and resource usage. Its Python API recovers these records after process
-interruption. It uses SQLite and files with one trusted writer.
+Everything below runs locally with one trusted host process writing the ledger.
+Scope limits are stated in each linked document.
 
-Reservations survive restart. Repeated requests reuse completed results without
-another charge, and uncertain executions remain blocked. A trusted host boundary
-checks gates and scoped rule exceptions before recording candidate acceptance.
-Replay remains planned. M1 is complete for
-a local filesystem with one trusted writer. A scripted CSV walkthrough demonstrates restart, result
-reuse, accounting, and selected evidence exports. The M2 fixture adds three
-scripted experiments for selective rebuilding, changed definitions, and independent
-acceptance obligations. Claims retain their assumptions and checker references.
-Current support reports propagate staleness through declared dependencies.
-The fixture checks contract revisions against pinned local owner approvals.
-M2 is complete within this trusted local scope.
+| Component | What it does | Module | Details |
+| --- | --- | --- | --- |
+| Evidence ledger | Immutable observations, SHA-256 artifact files, operation receipts, reservations, and usage in SQLite; survives process termination | `ledger.py` | [Persistence](docs/m1-persistence.md) |
+| Exports | Explicitly selected, non-authoritative copies for inspection | `exports.py` | [Persistence](docs/m1-persistence.md#permitted-exports) |
+| Claims and support | Assertions with assumption versions, historical checks, and conservative staleness through declared dependencies | `claims.py` | [Claims](docs/m2-claims.md) |
+| Acceptance boundary | Gates checked against exact current versions; scoped rule exceptions; owner-approved contract revisions | `acceptance.py` | [Acceptance](docs/m2-acceptance.md) |
+| Worker integration | mini-swe-agent 2.4.6 inside a serial LangGraph 1.2.11 lifecycle with its SQLite checkpointer | `worker.py` | [Worker adoption](docs/m3-adoption.md) |
+| Containment | One rootless Podman container per episode, with no host mounts or network; candidate capture after worker processes stop | `sandbox.py`, `containers.py` | [Containment](docs/m3-adoption.md#containment-and-acceptance) |
+| External attempts | Single-attempt adapters for a loopback fake service, a local OpenAI-compatible server (Ollama), and OpenRouter; lost responses stay blocked | `attempts.py`, `chat_completions.py`, `openrouter.py` | [Local model probe](docs/m5-migration.md#local-model-probe), [OpenRouter](docs/m5-openrouter.md) |
+| Lean verification | Pinned Lean, Comparator, and Landrun check an exact target and axiom policy; durable proof receipts | `proofs.py`, `proof_receipts.py`, `proof/` | [Verification](docs/m4-verification.md) |
+| A–E contexts | Host-selected worker context for the five knowledge-workflow conditions | `contexts.py` | [Contexts](docs/m5-contexts.md) |
 
-M3 now integrates mini-swe-agent 2.4.6 and LangGraph 1.2.11 with the SQLite
-checkpointer 3.1.1. Scripted boundary tests exercise real framework recovery,
-completed-result reuse, and unknown-outcome blocking. This integration executes
-no live model requests. A rootless Podman adapter now contains generated shell
-commands and captures a bounded candidate after stopping worker processes.
-Its native tests run in a separate CI job. The main CLI still provides help and
-version information only. The [M3 adoption plan](docs/m3-adoption.md) describes
-the four implementation PRs and their evidence requirements.
+The fixtures live under [`examples/`](examples): a CSV transformation with a
+revised timestamp interpretation (M1–M4) and a configuration-file repository
+migration with an approved requirement change (M5).
 
-A local fake HTTP service now tests lost model responses. Exact operation
-receipts can settle known usage after restart. Missing receipts and unknown
-usage remain blocked. Malformed responses and known failures retain their costs.
-The adapter performs one request per attempt and disables redirects and retries.
+## What has been demonstrated
 
-The [M3 demonstration](docs/m3-adoption.md#changed-premise-demonstration) runs the
-offset-revision task across a forced restart. It rejects stale checks, preserves
-the old candidate's failures, and independently accepts the corrected candidate.
-The fake model supplies a fixed program. This establishes local integration
-behavior, not model quality or a live provider integration.
-M3 is complete for this local scripted-model fixture.
+All demonstrations use fixed or scripted model responses unless stated otherwise.
+They establish integration and recovery behavior on these fixtures, not model
+quality or general task performance.
 
-M4 adds a [bounded Lean verification boundary](docs/m4-verification.md).
-It uses pinned Comparator and Landrun tools to compare the exact uniqueness target,
-enforce the axiom policy, and replay the proof in Lean's kernel.
-Durable proof receipts bind exact inputs and retain verification costs.
-Claims preserve distinct proof outcomes, completed checks survive restart without
-another execution, and unknown attempts keep their reservations.
-The [M4 fixture demonstration](docs/m4-fixture.md) applies the same theorem to
-the correct, dropped-row, and empty candidates. All three preserve uniqueness;
-only the correct candidate passes the unchanged task gates. A separate duplicate-ID
-revision blocks application without invalidating the theorem. Native tests cover
-a forced restart and repeated reuse. M4 is complete for this local fixed-proposal
-fixture; model proof search and broader comparisons remain planned.
+- **Restart and accounting.** A scripted CSV run recovers after process
+  termination without repeating completed work or double-charging usage, and
+  operations with unknown outcomes keep their reservations
+  ([M1 walkthrough](#run-the-m1-walkthrough)).
+- **Changed premises and independent obligations.** Revised inputs and
+  definitions block stale reuse and rebuild only affected work; narrow checks
+  cannot override a failed behavioral obligation
+  ([M2 experiments](#run-the-m2-fixture-experiments)).
+- **Contained worker across a host kill.** A scripted model completes the
+  changed-premise CSV task in a rootless container across a forced restart, with
+  unchanged independent gates ([M3 demonstration](docs/m3-adoption.md#changed-premise-demonstration)).
+- **Proof support without proof overreach.** One Lean uniqueness theorem applies
+  to correct, record-dropping, and empty candidates; only the correct one passes
+  the task gates ([M4 fixture](docs/m4-fixture.md)). Migration and timestamp proof
+  cases repeat this pattern ([M5 proofs](docs/m5-proofs.md)).
+- **Second task family.** A fixed worker delivers the approved migration
+  revision across a host kill and a repeated resume ([M5 fixture](docs/m5-fixture.md)).
+  Scripted tests run all ten family × condition combinations; native tests take
+  condition E on both families through a kill and two fresh resumes
+  ([contexts](docs/m5-contexts.md#run-and-verify)).
 
-The [M5 plan](docs/m5-migration.md) defines a repository migration with a preserved
-legacy consumer, an approved requirement for safe repetition, and five implementation slices.
-The [first fixture slice](docs/m5-fixture.md) checks three fixed migration programs
-under both contracts in isolated containers. It retains independent failures and
-reuses completed executions and decisions. These are synthetic fixture formats,
-not compatibility commitments for Warranted.
-The [worker demonstration](docs/m5-fixture.md#worker-and-restart) now delivers the approved
-revision across a forced host kill. It rejects stale evidence, accepts a correction,
-and resumes again without repeating work. The model responses are fixed.
-The [supported proof cases](docs/m5-proofs.md) add migration and timestamp targets
-alongside M4 uniqueness. All three retain successful controls and candidates whose
-supported narrow proofs leave independent task failures intact across restart.
-The [A–E treatment runner](docs/m5-contexts.md) now connects both fixtures to the
-shared context boundary. It preserves workspace files and notes, updates models
-and dependency reports, and charges E for real proof work across restart.
-Credential-free tests cover all five conditions.
-[Scripted trial accounting](docs/m5-migration.md#scripted-trial-accounting) now
-pins a development trial list and reports committed results, failures, missing
-runs, and recorded usage. Measured model comparisons remain planned.
-A [local chat adapter](docs/m5-migration.md#local-model-probe) now supports the
-OpenAI-compatible endpoint served by Ollama. Offline tests cover failed attempts,
-lost responses, and reuse. An explicit one-request probe records model metadata
-and token counts without executing generated commands.
-An opt-in [OpenRouter diagnostic](docs/m5-openrouter.md) adds a limited host-only
-key, fixed provider routing, billed costs, and configurable command limits.
+## What live-model runs have shown
 
-## What we are building
+Live inference is opt-in, local or capped, and outside CI. All runs so far are
+development diagnostics on the migration task under condition A.
 
-Warranted is a proposed build system for knowledge. Observations, assumptions,
-programs, proofs, and decisions retain their versions and dependencies. A change
-can then identify which conclusions need another check.
+- Early local Qwen runs and five OpenRouter GLM attempts never submitted a
+  candidate. The GLM attempts ended in configuration, provider, or token-limit
+  failures before useful task work
+  ([contexts](docs/m5-contexts.md#local-model-development-runs),
+  [OpenRouter](docs/m5-openrouter.md#diagnostic-attempts-on-september-24-2026)).
+- The submission instructions omitted the required payload structure. With
+  explicit packaging instructions, a separate submission helper, or both, most
+  Qwen runs submitted accepted payloads. Across both twelve-run comparisons, only
+  one of fifteen accepted submissions also rejected a boolean `version`, a case
+  the private checks omit
+  ([submission controls](docs/m5-submission-controls.md),
+  [corrected controls](docs/m5-corrected-submission.md)).
 
-- **Queryable evidence.** Start with SQLite and ordinary artifact files. Preserve
-  raw observations and their provenance; make permitted state easy to inspect.
-- **Supported applications.** A valid theorem and justified use of that theorem
-  are separate things. Its premises may stop describing the current world.
-- **Rules and gates.** A rule permits a recorded exception. A gate requires
-  independently checked evidence at its protected transition and has no waiver.
-- **Simple worker interfaces.** Prefer shell execution and files. The host owns
-  bookkeeping and acceptance; the model chooses how to investigate.
-- **Measured search improvement.** Establish a fixed-policy baseline, then test
-  an adaptation of [Dream-RSI](https://arxiv.org/html/2609.14858v1) to improve
-  scheduling through replay, with the model and acceptance contract held fixed.
+No run has yet completed the approved revision and restart sequence with a live
+model, and no A–E comparison has been run.
 
-The initial task families are controlled data transformations and repository
-migrations. Their purpose is to exercise changed assumptions, restarts, and
-interdependent work. No existing domain harness or tool protocol defines the
-core interfaces.
+## Not yet built
+
+- The measured A–E comparison, with frontier and smaller models, separated
+  development and held-out tasks, and full cost reporting.
+- Replay of recorded histories and the planned
+  [Dream-RSI](https://arxiv.org/html/2609.14858v1) scheduling experiment.
+- An optional Jev classifier/judge, Hindsight retrieval, and AutoSaddler harness
+  optimisation.
+- Remote owner authentication, external side effects beyond local copies,
+  multiple writers, and a user-facing CLI.
+
+See the [roadmap](docs/roadmap.md) for status and open decisions, and the
+[design](docs/design.md) for the invariants these components enforce.
 
 ## Inspirations and foundations
 
-Warranted builds on other people's research and engineering. We want those
-influences to be visible alongside the design choices they inform:
+Warranted builds on other people's research and engineering:
 
-- **Dream-RSI** supplies the method behind the planned search-improvement pilot.
-  The [design](docs/design.md#dream-rsi-exploration-and-replay) explains its
-  contribution and Warranted's adaptation.
 - **[Schema](https://schema-harness.github.io/) and
   [PRO-LONG](https://arxiv.org/html/2607.20064v2)** motivate executable world models
-  and complete, programmatically accessible histories, respectively.
+  and complete, programmatically accessible histories, respectively. They inform
+  conditions B and C; Warranted does not replicate either system.
 - **[Vercel's tool-reduction case study](https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools)
-  and [mini-swe-agent](https://mini-swe-agent.com/latest/)** inform the preference
-  for a small worker interface and legible files.
-- **[LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) and
-  [Lean](https://lean-lang.org/doc/reference/latest/)** are the intended foundations
-  for durable workflow execution and formal proof checking.
+  and [mini-swe-agent](https://mini-swe-agent.com/latest/)** inform the small,
+  shell-and-files worker interface. mini-swe-agent is the integrated worker loop.
+- **[LangGraph](https://docs.langchain.com/oss/python/langgraph/overview)** runs the
+  worker lifecycle and checkpoints; the ledger remains authoritative.
+- **[Lean](https://lean-lang.org/doc/reference/latest/)**, with the pinned
+  Comparator and Landrun tools, checks the formal proof cases.
+- **[Dream-RSI](https://arxiv.org/html/2609.14858v1)** supplies the method for the
+  planned, not yet started, scheduling experiment.
 
-Our experiment brings these ideas together around evidence, changing assumptions,
-and independently checked acceptance. The [design's sources and provenance](docs/design.md#sources-and-provenance)
-also explain the project's origins and later candidates, Hindsight and AutoSaddler.
+The [design's sources and provenance](docs/design.md#sources-and-provenance) also
+explain the project's origins and later candidates, Hindsight and AutoSaddler.
 
 ## Get started
 
@@ -141,12 +124,10 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
 git clone https://github.com/Lewdwig-V/warranted.git
 cd warranted
 uv sync --locked
-uv run --locked warranted --help
-uv run --locked warranted --version
+uv run --locked pytest -q tests
 ```
 
-The development interpreter is Python 3.12; the package requires Python 3.12 or
-newer. uv manages the project environment and dependencies through
+The package requires Python 3.12 or newer. uv manages the environment through
 `pyproject.toml` and the committed `uv.lock`.
 
 ## Development
@@ -158,10 +139,12 @@ uv run --locked ruff format --check .
 uv build --no-sources
 ```
 
-Use `uv add` for new dependencies and commit the resulting lockfile. The focused
-tests cover conflicting requests, duplicate charges, damaged artifacts, budget
-breaches, and forced process termination. CI runs these tests on pull requests,
-alongside lint, formatting, entry points, and installation of the built wheel.
+The default test run needs no model credentials, network services, or containers.
+Tests marked `container` need rootless Podman and the pinned local image; tests
+marked `proof` also need the pinned Lean verifier bundle. CI runs the default
+suite, both native groups in separate jobs, the M1 and M2 scripts across two
+processes, and installation of the built wheel. Use `uv add` for new dependencies
+and commit the resulting lockfile.
 
 ## Run the M1 walkthrough
 
@@ -305,22 +288,11 @@ Keep the authoritative project outside any untrusted worker's writable workspace
 | Path | Purpose |
 | --- | --- |
 | [AGENTS.md](AGENTS.md) | Guidance for coding agents and contributors |
-| [docs/design.md](docs/design.md) | Standalone design, invariants, and provisional component choices |
-| [docs/roadmap.md](docs/roadmap.md) | Ordered milestones, completion criteria, and decision points |
-| [docs/pilot.md](docs/pilot.md) | Domain-independent task fixtures and experimental comparisons |
-| [src/warranted](src/warranted) | Evidence ledger and help/version CLI |
-| [tests/test_ledger.py](tests/test_ledger.py) | Evidence, operation recovery, and accounting cases |
-| [src/warranted/exports.py](src/warranted/exports.py) | Explicit selection and independent file copies |
-| [src/warranted/acceptance.py](src/warranted/acceptance.py) | Current-context acceptance and scoped rule exceptions |
-| [docs/m2-acceptance.md](docs/m2-acceptance.md) | Host boundary, receipt protocol, recovery, and limits |
-| [examples/m1](examples/m1) | Fixed CSV fixture and restart walkthrough |
-| [examples/m2](examples/m2) | Three fixed experiments for revisions and independent obligations |
-| [tests/test_exports.py](tests/test_exports.py) | Export disclosure and publication boundaries |
-| [tests/test_walkthrough.py](tests/test_walkthrough.py) | Success, failure, changed input, and interrupted CSV execution |
-| [tests/test_m2_fixture.py](tests/test_m2_fixture.py) | Selective work, changed definitions, independent failures, and restart |
-| [tests/test_acceptance.py](tests/test_acceptance.py) | Gate bypass attempts, rule exceptions, and acceptance recovery |
-| [.github/workflows/ci.yml](.github/workflows/ci.yml) | Persistence tests and package checks |
-
-M2 is complete in its trusted local scope. M3 adds worker containment,
-external-attempt reconciliation, and a changed-premise demonstration.
-See [M3 in the roadmap](docs/roadmap.md#m3--bounded-worker-and-execution-recovery).
+| [docs/design.md](docs/design.md) | Invariants, boundaries, and the reasoning behind them |
+| [docs/roadmap.md](docs/roadmap.md) | Milestone status, remaining work, and open decisions |
+| [docs/pilot.md](docs/pilot.md) | Task fixtures, expected results, and the A–E comparison design |
+| [src/warranted](src/warranted) | Library modules listed under [What exists](#what-exists) |
+| [examples](examples) | M1–M5 fixtures, demonstration scripts, and diagnostic runners |
+| [tests](tests) | Fast tests plus `container` and `proof` native groups |
+| [scripts](scripts) | Builder for the pinned Lean verifier bundle |
+| [.github/workflows/ci.yml](.github/workflows/ci.yml) | Fast, containment, and proof CI jobs |
