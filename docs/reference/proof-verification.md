@@ -64,7 +64,7 @@ targets keep independent task checks for exactly those gaps.
 | Target | Used by |
 | --- | --- |
 | `uniqueness` | [CSV transformation, M4 uniqueness application](../fixtures/csv-transformation.md#m4-uniqueness-application) |
-| `timestamp`, `migration` (and `uniqueness` again) | [Configuration migration proof cases](../fixtures/config-migration.md) |
+| `timestamp`, `migration` (and `uniqueness` again) | [Configuration migration proof cases](../fixtures/config-migration.md#proof-cases) |
 
 ## Tools, trust, and attribution
 

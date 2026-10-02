@@ -470,13 +470,13 @@ fixture, host, environment, or bundle fails before cached reuse.
 ## Specification failures exercised
 
 This fixture supplies two of the
-[specification and behavioral failure cases](../experiments/evaluation-design.md),
+[specification and behavioral failure cases](../experiments/evaluation-design.md#specification-and-behavioral-failures),
 each with a valid narrow check or proof and an independent failing obligation:
 
 - **Mistranslated requirement:** the wrong-offset candidates meet a timestamp
   interpretation but fail references derived from the contract (M2 matrix and the
   M3 old candidate). A fixed timestamp proof version of this case is in the
-  [configuration migration fixture's proof cases](config-migration.md).
+  [configuration migration fixture's proof cases](config-migration.md#proof-cases).
 - **Incomplete formal target:** the dropped-row and empty candidates satisfy
   identifier uniqueness, proved in Lean in the M4 application, while
   record preservation rejects them.
