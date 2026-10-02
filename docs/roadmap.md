@@ -1,10 +1,9 @@
 # Roadmap
 
-Updated 2026-10-02. Milestones are ordered, not dated. M0–M4 are complete within
-the scopes stated below. The current priority is turning Warranted into a usable
-harness with ReSchema as its first consumer: a stable API and CLI (M7), then
-ReSchema rebuilt on top of them (M8). M5's remaining comparison, M6, and M3a are
-deferred until M8 lands.
+Updated 2026-10-02. Milestones are ordered experiments, not delivery dates.
+M0–M4 are complete within the scopes stated below. M5 has its fixtures,
+treatments, and live-model adapters, but no measured comparison. M6 and the
+optional M3a have not started.
 
 | Milestone | Result | Status |
 | --- | --- | --- |
@@ -13,11 +12,9 @@ deferred until M8 lands.
 | M2 | Changed-premise recovery with explicit gates | Complete: trusted local fixture |
 | M3 | Bounded worker and trustworthy operation recovery | Complete: scripted model |
 | M4 | Independently checked Lean obligations | Complete: fixed proof proposals |
-| M5 | Second task family and A–E knowledge-workflow comparison | Fixtures complete; comparison deferred |
-| M7 | Stable harness API and CLI | Next |
-| M8 | ReSchema rebuilt on Warranted | Planned, after M7 |
-| M6 | Dream-RSI replay-based scheduling | Deferred |
-| M3a | Optional Jev classifier and judge | Deferred |
+| M5 | Second task family and A–E knowledge-workflow comparison | In progress: no comparison yet |
+| M6 | Dream-RSI replay-based scheduling | Not started |
+| M3a | Optional Jev classifier and judge | Not started |
 
 "Complete" means the milestone's completion evidence was demonstrated in tests
 and CI on its fixture. It does not extend to live models, untrusted hosts, or
@@ -94,90 +91,6 @@ or checker executions ([verification](reference/proof-verification.md), [fixture
 **Limits:** proofs are fixed proposals. Model proof search and a cost comparison
 against executable checks have not been run.
 
-## M7 — Stable harness API and CLI
-
-**Goal:** a public, versioned Python API and a `warranted` CLI that a domain
-project can build on without importing internal modules. ReSchema is the driving
-consumer; the CSV and migration fixtures must move onto the same API, so every
-interface has three users before it is called stable.
-
-Warranted will own the neurosymbolic machinery ReSchema currently implements
-itself: task state, the ledger and accounting, gate enforcement and private
-checker data, contained execution, and verified versus unverified memory. The
-domain project supplies only domain knowledge. Specifically:
-
-- [ ] **Public API.** One documented import surface for projects, task
-  definitions, runs, status, claims, and exports, with typed results that keep
-  rejected, unproved, unsupported, unknown, and infrastructure failure distinct.
-  Everything else becomes private.
-- [ ] **Checker interface.** A domain checker assesses captured candidate bytes
-  in a contained job and returns a typed verdict plus worker-visible feedback.
-  The host keeps private inputs and seeds out of the worker, records them as
-  evidence, and issues the receipt. Fresh per-submission inputs, such as
-  ReSchema's hidden cases, are drawn and recorded by the host.
-- [ ] **Host-mediated operations.** A worker in the container can request
-  domain operations, such as ReSchema's `experiment` probe, through a file and
-  command convention. Each request is reserved, executed outside the worker,
-  charged, and returned as evidence. No network or socket reaches the host.
-- [ ] **Domain execution jobs.** Domain code can run compile, emulation, or
-  native jobs in pinned images through Warranted's container boundary, mounting
-  only per-job scratch. Worker-readable mounts never include oracle or ledger
-  state.
-- [ ] **Submission policy.** Budgets for probes and submissions, and a
-  repeated-candidate guard using a domain-supplied normalisation, enforced by
-  the host rather than the worker.
-- [ ] **Scoped memory.** Claims scoped to a family of related tasks, with
-  receipt-backed facts kept separate from worker notes. A note is promoted only
-  when its own submission is accepted. Selected facts reach later tasks as
-  context files.
-- [ ] **CLI.** Commands to initialise a project, run and resume a task, report
-  status and accounting, export evidence, and run a pinned campaign of tasks. The
-  CLI uses only the public API.
-- [ ] **Release discipline.** Tagged releases with a changelog, semantic
-  versioning, and a deprecation policy for the public API; reference docs
-  generated from or tested against it.
-
-**Completion evidence:** both existing fixtures run through the public API and
-CLI with their current guarantees and tests intact. A minimal reverse-engineering
-style fixture exercises checker private inputs, host-mediated probes, the
-repeated-candidate guard, and scoped memory across restart, with negative cases
-for leaked private inputs, forged verdicts, and bypassed budgets.
-
-**Constraint:** the core contains no reverse-engineering concepts. Traces,
-canonicalisation, emulation, and fuzzing stay in ReSchema behind the checker,
-operation, and job interfaces.
-
-## M8 — ReSchema rebuilt on Warranted
-
-**Goal:** ReSchema depends on a pinned Warranted release and keeps only the
-reverse-engineering task: corpus generation, ground-truth recording,
-canonicalisation, the replay and differential-fuzz checkers, disassembly facts,
-and task presentation.
-
-- [ ] ReSchema pins a tagged Warranted release as a uv git dependency; publish to
-  PyPI once the API reaches 1.0.
-- [ ] Replace ReSchema's task ledger, counters, audit seeds, and journal with the
-  Warranted ledger and accounting.
-- [ ] Re-express the program and function gates as Warranted checkers, with hidden
-  inputs and fuzz seeds held as private checker data.
-- [ ] Run compile, emulation, and native jobs through Warranted's container
-  boundary in place of ReSchema's own Podman driver.
-- [ ] Replace the family deduction cache with Warranted scoped claims.
-- [ ] Replace the five MCP tools and the external agent runner with Warranted's
-  shell-and-files worker: task files in the workspace, an experiment command,
-  and the submission convention.
-- [ ] Port ReSchema's live-agent campaigns to Warranted campaigns.
-
-**Completion evidence:** ReSchema's existing gate regression tests pass against
-the Warranted-backed implementation, with the same accept and reject decisions on
-recorded cases. Its isolation regressions, including the scratch-mount and
-host-write cases, still hold. A live-agent campaign completes through the CLI with
-full accounting.
-
-**Decision:** any capability ReSchema needs that only makes sense for reverse
-engineering stays in ReSchema. If M8 shows an M7 interface does not fit, revise
-the interface before 1.0 rather than adding a ReSchema-specific path.
-
 ## M5 — Generality and the knowledge experiment
 
 **Delivered:**
@@ -204,7 +117,7 @@ payloads, but accepted programs still missed an unchecked boolean case
 [corrected controls](experiments/2026-09-25-corrected-submission-controls.md)). No live run has reached the
 revision and restart stage.
 
-**Remaining (deferred until M8):**
+**Remaining:**
 
 - [ ] Give the normal A–E runner the explicit submission contract, then show a
   live model completing the revision and restart sequence.
@@ -222,7 +135,7 @@ cost.
 
 ## M6 — Dream-RSI adaptation for search improvement
 
-Deferred until M8; not started. The plan adapts [Dream-RSI](https://arxiv.org/html/2609.14858v1) to
+Not started. The plan adapts [Dream-RSI](https://arxiv.org/html/2609.14858v1) to
 evolve only the scheduling policy using replayed discovery trees, with the model,
 checkers, contracts, and budgets frozen, and compares it with the fixed policy on
 untouched live tasks. It depends on M5. M1's ledger already records the identities
@@ -232,7 +145,7 @@ to carry forward.
 
 ## M3a — Jev as a System 1 classifier and judge
 
-Deferred until M8; not started and optional. The idea is to evaluate
+Not started and optional. The idea is to evaluate
 [TypeSafe's Jev](https://docs.typesafe.ai/introduction) for routing and for
 contract-designated judgment gates, first in shadow mode and outside the A–E and
 Dream-RSI comparisons. See the [design](design.md#jev-system-1-classification-and-judgment).
@@ -244,11 +157,6 @@ Dream-RSI comparisons. See the [design](design.md#jev-system-1-classification-an
 - Further domain adapters, parallelism, or multiple writers.
 
 ## Open decisions
-
-For M7: the public module layout and naming; the file and command convention for
-host-mediated operations; how checker verdicts expose worker-visible feedback
-without revealing private inputs; and the campaign file format. For M8: whether
-ReSchema's efficiency metric becomes a Warranted report or stays domain code.
 
 Before measured M5 trials: choose provider/model versions and a total spending
 cap; pin equal capabilities, scheduling, per-attempt limits, and task-success
