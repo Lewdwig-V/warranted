@@ -21,6 +21,18 @@ from warranted.worker import AttemptResult, Episode, UnknownOutcome, submitted_f
 SCRIPT = Path(__file__).resolve().parents[1] / "examples/m5/treatments.py"
 
 
+def scripted_podman_version(monkeypatch):
+    """Pin the recorded runtime version so scripted runs need no installed Podman."""
+    real = subprocess.check_output
+
+    def check_output(args, *rest, **options):
+        if list(args[:2]) == ["podman", "--version"]:
+            return "podman version scripted\n"
+        return real(args, *rest, **options)
+
+    monkeypatch.setattr(subprocess, "check_output", check_output)
+
+
 def scripted(
     tmp_path,
     monkeypatch,
@@ -32,6 +44,7 @@ def scripted(
 ):
     from test_proof_receipts import boundary
 
+    scripted_podman_version(monkeypatch)
     demo = runpy.run_path(str(SCRIPT))
     scope = demo["demonstrate"].__globals__
     bundle = tmp_path / "bundle.json"
