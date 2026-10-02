@@ -16,6 +16,7 @@ from time import perf_counter_ns
 from types import MappingProxyType
 
 from warranted.ledger import (
+    ROOT_SCOPE,
     ArtifactRef,
     BudgetExceeded,
     Completion,
@@ -116,8 +117,10 @@ class Acceptance:
         ledger: Ledger,
         session: str,
         resolve: Callable[[Evidence], AcceptanceContext],
+        scope: str = ROOT_SCOPE,
     ):
         self.ledger, self.session, self.resolve = ledger, session, resolve
+        self.scope = scope
 
     def _read(self, evidence: Evidence):
         return json.loads(
@@ -192,15 +195,13 @@ class Acceptance:
         self, kind: str, evidence: list[Evidence], body: dict, started: int
     ) -> Completion:
         # Also check before cached reuse: a later budget breach cannot be bypassed.
-        if any(
-            op.completion and op.completion.breaches for op in self.ledger.operations()
-        ) or any(
-            balance.available < 0 for balance in self.ledger.accounting().values()
-        ):
-            raise BudgetExceeded("recorded budget breach blocks acceptance")
+        try:
+            self.ledger.check_budget(self.scope)
+        except BudgetExceeded as error:
+            raise BudgetExceeded("recorded budget breach blocks acceptance") from error
         request = self._request(kind, evidence, body)
         raw = {f"{kind}.json": _encode(body)}
-        operation = self.ledger.reserve(self.session, request, {})
+        operation = self.ledger.reserve(self.session, request, {}, self.scope)
         if operation.completion is not None:
             completion = operation.completion
             if (

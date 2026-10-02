@@ -73,8 +73,8 @@ def killed(root, pipe, when):
         pipe.send("tool completed externally")
         pipe.recv()
 
-    def reserve_pause(self, session, request, reservation):
-        result = reserve(self, session, request, reservation)
+    def reserve_pause(self, session, request, reservation, *scope):
+        result = reserve(self, session, request, reservation, *scope)
         if when == "reserved" and request.origin.kind == "tool":
             barrier()
         return result

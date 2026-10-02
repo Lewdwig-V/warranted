@@ -230,7 +230,7 @@ def test_write_failures_preserve_old_evidence(ledger, monkeypatch):
 
 
 @pytest.mark.parametrize("changed_schema", [False, True])
-@pytest.mark.parametrize("version", [1, 999])
+@pytest.mark.parametrize("version", [1, 2, 999])
 def test_unsupported_or_invalid_metadata_is_rejected(ledger, changed_schema, version):
     root = ledger.root
     ledger.close()
@@ -667,10 +667,13 @@ def test_cached_completion_requires_intact_artifacts(ledger, damage):
 
 
 def test_unreserved_usage_is_recorded_and_other_unknown_work_can_still_settle(ledger):
+    # Two operations can be in flight together only in different scopes: an
+    # unknown operation blocks further dispatch in its own scope.
     session = ledger.start_session()
     first, second = request(ledger), request(ledger, "second")
-    for req in (first, second):
-        ledger.reserve(session, req, {"synthetic-work": 2})
+    for req, scope in ((first, "run-a"), (second, "run-b")):
+        ledger.open_scope(session, scope, {})
+        ledger.reserve(session, req, {"synthetic-work": 2}, scope)
         assert ledger.begin(session, req)
     receipt = replace(result(), usage={"synthetic-work": 2, "unexpected-cost": 9})
     completion = ledger.complete(session, first, receipt, {"stdout": b"done"})

@@ -149,7 +149,9 @@ class Verdict:
     facts: Sequence[FactSpec] = ()  # recorded as verified if accepted
 ```
 
-Checkers are trusted host code, like ReSchema's in-process qiling recorder.
+Checkers are trusted host code, like ReSchema's in-process qiling recorder. A
+checker that touches no state shared with other runs declares `isolated = True`;
+only isolated checks are confined to their run's [ledger scope](m7-run-scopes.md).
 Untrusted code runs only through `run_job`: a one-shot container from a pinned
 image, with no network and only a per-job scratch directory mounted. Each job,
 seed, and verdict is a ledger operation, so a completed check is reused on resume
@@ -327,6 +329,9 @@ What did not:
   any operation in the project is unknown, so one lost response in one run turns a
   fresh run in the same project into `unknown` without any new attempt. Blocking
   needs to be scoped to the run, or campaigns cannot survive a single lost response.
+- Both findings above are now addressed by [run scopes](m7-run-scopes.md): each run
+  has its own ledger scope with caps under the project total, and unknown
+  operations and breaches block only their own run.
 - **Domain identity misses imported code.** The source digest covers the domain's
   own file, but the CSV checker imports the M2 evaluator, so a change there would
   not block resume. This answers open question 3: a source digest alone is not
@@ -358,5 +363,5 @@ Evidence on the open questions:
 4. Should verdict feedback have a size limit enforced by the host?
 5. Which `warranted.host` names do the fixtures still need once they move onto the
    task layer? That list decides what the host kit has to keep exposing.
-6. How are budgets and unknown-operation blocking scoped to a run within a
-   shared project? See the [run scopes design note](m7-run-scopes.md).
+6. Answered: budgets and blocking are scoped to a run by ledger scopes. See the
+   [run scopes design note](m7-run-scopes.md).

@@ -70,10 +70,13 @@ with Sandbox(ledger_root, episode) as shell:
 | `model_reservation`, `tool_reservation` | Units reserved for each attempt (default 1) |
 | `container_timeout_seconds` | 30–3600 (default 120) |
 | `continues` | A different, already recorded episode that this one continues |
+| `scope` | [Ledger scope](evidence-ledger.md#scopes) for the episode's model and tool attempts (default `ROOT_SCOPE`) |
 
 `run_workflow` refuses a checkpoint database inside the ledger root. It runs
-`reconcile` (when one is supplied) for each unknown operation, refuses to proceed
-while any operation remains unknown, and returns mini's result only when the
+`reconcile` (when one is supplied) for each unknown operation in the episode's
+scope or the root scope, never another run's, refuses to proceed
+while an unknown operation blocks the episode's scope (its own or the root
+scope's), and returns mini's result only when the
 graph's receipt matches an intact host receipt `episode/<id>/finished`.
 
 Worker protocol:
@@ -110,7 +113,8 @@ an existing slot fails with `OperationConflict`.
 
 On resume, the adapter rebuilds the same conversation from exact cached calls and
 does not re-execute any of them. Unknown work blocks reconstruction, fresh
-continuation, and new episodes. The block persists through repeated host deaths
+continuation, and new episodes in the same scope; `Ledger.begin` enforces this
+even for callers that skip the preflight. The block persists through repeated host deaths
 and fresh sessions. `Episode.continues` records the predecessor's exact episode
 evidence. The host chooses that continuation under its fixed policy, and the
 continuation starts a fresh conversation without changing allowances or erasing

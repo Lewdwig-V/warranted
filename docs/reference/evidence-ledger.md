@@ -25,7 +25,7 @@ An artifact is an exact byte sequence stored at `artifacts/sha256/<digest>`.
 Storage paths derive only from validated digests; callers cannot choose paths.
 Temporary files are created in the same directory before publication.
 
-The database has four tables. Identity, ordering, and session references are
+The database has five tables. Identity, ordering, and session references are
 columns; manifests, origins, requests, and artifact references are versioned JSON
 validated before writing and on read.
 
@@ -34,10 +34,11 @@ validated before writing and on read.
 | Project | Project ID, storage format version, creation time, immutable manifest, named snapshot references | Identify the project and its exact starting context after reopening. |
 | Session | Session ID, start time | Separate process sessions without discarding history. |
 | Observation | Committed sequence, session ID, capture time, origin, named artifact references, optional superseded sequence | Preserve one capture and its lineage. Sequence orders history independently of wall-clock time; it is stable but need not be gapless. |
-| Operation | Operation ID, request, reservation, original session/time, optional dispatch session/time, optional completion observation/result/breaches | Preserve identity, uncertain execution, and settled usage. |
+| Scope | Scope ID, creating session, creation time, immutable per-unit caps | Bound and isolate one run's work inside the project. |
+| Operation | Operation ID, scope, request, reservation, original session/time, optional dispatch session/time, optional completion observation/result/breaches | Preserve identity, uncertain execution, and settled usage. |
 
-The current storage format is version 2. A version 1 project fails explicitly on
-open and remains unchanged; there is no automatic migration.
+The current storage format is version 3. Projects in earlier formats fail
+explicitly on open and remain unchanged; there is no migration.
 
 ## Value types
 
@@ -100,12 +101,16 @@ The names and parameter shapes are provisional until a second use case tests the
 | `ledger.record(session_id, origin, raw, supersedes=None)` | Publish non-empty named raw bytes and commit one observation with all references. Return the committed `Observation`. |
 | `ledger.history(after=0)` | Observations in committed sequence order with origins and references, without loading artifact contents. |
 | `ledger.read_artifact(ref)` | Return exact bytes after checking digest and length. |
-| `ledger.reserve(session_id, request, reservation)` | See [operation identity](#operation-identity-and-recovery). |
-| `ledger.begin(session_id, request)` | Commit a dispatch marker; only `True` permits execution. |
+| `ledger.open_scope(session_id, scope_id, caps)` | Record a scope once; see [scopes](#scopes). |
+| `ledger.scopes()` | Recorded scopes and their caps. |
+| `ledger.reserve(session_id, request, reservation, scope=ROOT_SCOPE)` | See [operation identity](#operation-identity-and-recovery). |
+| `ledger.begin(session_id, request)` | Commit a dispatch marker; only `True` permits execution. Refuses dispatch in a blocked scope. |
 | `ledger.complete(session_id, request, result, raw)` | Commit evidence and completion together; settle usage once. |
 | `ledger.lookup(request)` | Match identity, verify bytes, return the `Operation` or `None`. |
 | `ledger.operations()` | Operation metadata in reservation order, including pending and unknown work. |
-| `ledger.accounting()` | Per-unit `Balance` derived from committed operations. |
+| `ledger.accounting(scope=None)` | Per-unit `Balance` derived from committed operations, for the project or one scope. |
+| `ledger.check_budget(scope=ROOT_SCOPE)` | Raise `BudgetExceeded` if a breach or the project total blocks this scope. |
+| `ledger.unresolved(scope=ROOT_SCOPE)` | Unknown operations that block this scope. |
 
 `Ledger` is a context manager that closes its connection; `close()` does the same.
 There is no arbitrary SQL access, generic event writer, update, or delete method.
@@ -124,10 +129,11 @@ operation methods when execution identity matters.
 | Exception | Raised when |
 | --- | --- |
 | `InvalidProject` | The project header, schema, or stored metadata is incomplete or invalid. |
-| `UnsupportedVersion` | The storage format version is not 2. |
+| `UnsupportedVersion` | The storage format version is not 3. |
 | `CorruptArtifact` | Stored bytes do not match their digest or length. A missing file raises `FileNotFoundError`. |
 | `OperationConflict` | An operation ID names a different request, reservation, or completion, or the request context differs from the project. |
-| `BudgetExceeded` | A recorded breach or negative balance blocks a reservation or dispatch, or a reservation exceeds the remaining allowance. |
+| `BudgetExceeded` | A recorded breach or negative project total blocks a reservation or dispatch in this scope, or a reservation exceeds the remaining project allowance or scope cap. |
+| `UnknownOutcome` | `begin` is refused because an unknown operation blocks the operation's scope. |
 
 Other invalid input raises `TypeError` or `ValueError`. File and database errors
 propagate to the caller.
@@ -180,12 +186,12 @@ the result.
 
 | Method | Contract |
 | --- | --- |
-| `reserve(session_id, request, reservation)` | Reserve nonnegative integer amounts in declared units before execution. An identical repeat returns the existing operation. A changed identity or reservation raises `OperationConflict`. Unknown units, a recorded breach, or insufficient balance fail. Never dispatches. |
-| `begin(session_id, request)` | Commit a dispatch marker, then return `True`; only this return permits execution. Return `False` for unknown or completed work. Unreserved work raises `ValueError`; a recorded breach raises `BudgetExceeded`. |
+| `reserve(session_id, request, reservation, scope=ROOT_SCOPE)` | Reserve nonnegative integer amounts in declared units, in one scope, before execution. An identical repeat returns the existing operation. A changed identity, reservation, or scope raises `OperationConflict`. Unknown units or scopes, a blocking breach, or insufficient project or scope balance fail. Never dispatches. |
+| `begin(session_id, request)` | Commit a dispatch marker, then return `True`; only this return permits execution. Return `False` for unknown or completed work. Unreserved work raises `ValueError`. An unknown operation in the same scope or the root scope raises `UnknownOutcome`; a breach there, or a negative project total, raises `BudgetExceeded`. |
 | `complete(session_id, request, result, raw)` | Require a prior dispatch marker and non-empty raw bytes. Publish bytes, then commit one observation and the completion together. Settle usage once. |
 | `lookup(request)` | Check identity and that input, snapshot, and result bytes are intact. Return the operation, or `None` when the ID has no reservation. |
 | `operations()` | Metadata only; does not certify artifact availability. |
-| `accounting()` | Each unit's `limit`, `spent`, `reserved` (unresolved reservations), and `available`. Does not read artifacts. |
+| `accounting(scope=None)` | Each unit's `limit`, `spent`, `reserved` (unresolved reservations), and `available`, for the project or for one scope. A scope's limit is its cap, or the project allowance for an uncapped unit. Does not read artifacts. |
 
 | `Operation.state` | Meaning |
 | --- | --- |
@@ -218,11 +224,37 @@ reservation, including units with no allowance, is retained and named in
 `Completion.breaches`. Balances can be negative; nothing is clipped. Totals derive
 from committed receipts; there is no separate mutable total.
 
-A recorded breach blocks new reservations and pending dispatches. Existing unknown
-operations can still record their results. Completed requests remain readable. An
+A recorded breach blocks new reservations and pending dispatches in its own scope,
+and in every scope when it is in the root scope. Existing unknown operations can
+still record their results. Completed requests remain readable. An
 identical repeat completion (same result, elapsed time, and named raw bytes)
 returns the original and changes nothing. A conflicting completion fails and
 preserves the original evidence and charge.
+
+## Scopes
+
+A scope is a host-created subdivision of the project, normally one run. Every
+operation belongs to exactly one scope, fixed at reservation. Work outside any run
+uses `ROOT_SCOPE`, which behaves as the whole project did before scopes existed.
+
+`open_scope(session_id, scope_id, caps)` records a scope once with immutable
+per-unit caps. Repeating it with the same caps is a no-op; different caps raise
+`OperationConflict`. Caps must name project units; `ROOT_SCOPE` is reserved.
+
+- **Budgets.** A reservation must fit the scope's remaining cap and the project's
+  remaining allowance. Caps are ceilings, not set-asides: caps may sum above the
+  project total, and the project total still bounds every reservation.
+- **Blocking.** `begin` refuses dispatch while the operation's own scope or the
+  root scope has an unknown operation or a recorded breach, or while the project
+  total is negative. An unknown operation or breach in one run's scope does not
+  block another run.
+- **Reservations.** An unknown operation keeps its reservation, counted in its
+  scope and in the project total, until an attributable result settles it.
+
+Scoping the block is safe only when runs share no external state through an
+operation whose outcome is unknown. An operation that writes to a shared external
+resource belongs in the root scope. The design and its alternatives are in the
+[run scopes note](../proposals/m7-run-scopes.md).
 
 ## Permitted exports
 
@@ -311,10 +343,11 @@ sleeps or exception-only crash simulation.
 | Test file | Observable guarantees |
 | --- | --- |
 | [`tests/test_ledger.py`](../../tests/test_ledger.py) | Fresh-process reopen recovers project, sessions, order, origins, and bytes. Duplicate bytes keep separate origins; corrections keep the old observation. Termination during publication and around the commit exposes all or nothing. Invalid sessions, references, digests, and superseded records add no history. Missing or corrupt bytes fail and are never replaced. Incomplete or unsupported projects fail without repair. Storage errors propagate without partial records. Termination before and after reservation, dispatch, execution, publication, evidence insertion, and completion commit recovers either the unresolved reservation or the entire completion, with a separate execution counter. Reuse, conflicting identities and receipts, multiple units, and persistent breaches. |
+| [`tests/test_scopes.py`](../../tests/test_scopes.py) | Scope caps under the project total, caps that sum above it, unknown operations and breaches blocking only their own scope across restart, root-scope blocking of every scope, `begin` refusing without a preflight, immutable scopes and operation binding, and invalid or unopened scopes. |
 | [`tests/test_exports.py`](../../tests/test_exports.py) | Disclosure limits, indirect references, copy independence, damaged selected bytes, destination overlap, write failure, unknown operations, and termination before and after index publication. |
 | [`tests/test_walkthrough.py`](../../tests/test_walkthrough.py) | The CSV walkthrough in separate processes keeps the operation's original evidence across resume. |
 
 ```bash
-uv run --locked pytest -q tests/test_ledger.py tests/test_exports.py
+uv run --locked pytest -q tests/test_ledger.py tests/test_scopes.py tests/test_exports.py
 uv run --locked pytest -q tests
 ```

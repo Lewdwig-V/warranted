@@ -1,7 +1,8 @@
 # M7 design note: run-scoped budgets and blocking
 
-Proposed 2026-10-02. This is a design for review, not a description of existing
-behavior. It answers open question 6 of the [M7 proposal](m7-harness-api.md):
+Proposed and accepted 2026-10-02; implemented in the ledger, worker, acceptance
+boundary, and the experimental task layer. The [evidence ledger reference](../reference/evidence-ledger.md#scopes)
+describes the implemented behaviour. This note answers open question 6 of the [M7 proposal](m7-harness-api.md):
 how budgets and blocking work for one run inside a project shared by a campaign.
 
 ## Problem
@@ -32,7 +33,8 @@ fixture so far is built. They become wrong when a project holds independent runs
    both its run and the project total, forever, as today. No retry is introduced.
 5. Scopes and their allowances survive restart and cannot be redefined. Workers
    cannot create, change, or select a scope.
-6. Existing projects and their retained evidence stay readable.
+6. There are no external users, so earlier storage formats need no compatibility
+   or migration.
 
 ## Proposal: scopes in the ledger
 
@@ -95,6 +97,12 @@ operation whose outcome is unknown. That holds for today's operations:
 - each shell episode runs in its own container;
 - checks and proofs run on captured bytes in fresh contained processes.
 
+A domain checker is arbitrary trusted Python, so the task layer cannot assume it
+is side-effect free. Its checks run in the run's scope only when the checker
+declares `isolated = True`; otherwise they run in the root scope. A task-level
+check budget is accepted only when every required checker is isolated, so a cap is
+never silently unenforced.
+
 An operation that writes to a shared external resource must not be placed in a
 run scope. It goes in the root scope, where an unknown outcome blocks everything,
 until a later design gives scopes an explicit resource identity. This rule belongs
@@ -119,15 +127,9 @@ pattern.
 
 ### Storage format
 
-Scopes change the schema, so the storage format becomes version 3. Version 2
-projects hold retained evidence for published experiment records, so they must
-stay readable:
-
-- A version 3 build opens version 2 projects with every operation in the root
-  scope, without modifying the file. That keeps today's behaviour for them.
-- Writing scopes requires a version 3 project. There is no in-place upgrade.
-
-Version 1 projects keep failing explicitly, as they do today.
+Scopes change the schema, so the storage format becomes version 3. Warranted has
+no external users, so there is no read compatibility or migration: version 1 and
+version 2 projects fail explicitly on open and remain unchanged.
 
 ## Negative cases to implement first
 
@@ -145,8 +147,7 @@ Version 1 projects keep failing explicitly, as they do today.
   and be accepted.
 - Reopening a scope with different caps, or reserving an existing operation ID in
   another scope, raises `OperationConflict`.
-- A version 2 project opens unchanged, reports root-scope accounting, and its
-  file bytes are not modified.
+- A version 2 project fails explicitly on open.
 - Scope and caps are recorded before any reservation in the run, and a resumed
   run cannot use a different scope.
 
@@ -162,10 +163,26 @@ Version 1 projects keep failing explicitly, as they do today.
   `Ledger.reserve` could bypass the cap. Budget enforcement belongs at the ledger
   boundary.
 
-## Open questions
+## Decisions
 
-1. Should caps become pre-allocations once runs can execute in parallel?
-2. Should token counts become ledger units so that a run's token budget is enforced
-   like other units? Today they are recorded but not reserved.
-3. Is a version 3 build opening version 2 projects read-compatibly enough, or does
-   retained evidence need a migration tool?
+- Caps stay ceilings while runs are serial. Pre-allocation is revisited only if
+  runs execute in parallel.
+- Token budgets as ledger units are a separate M7 step on the
+  [roadmap](../roadmap.md#m7--stable-harness-api-and-cli); tokens stay recorded but
+  not reserved until then.
+- No compatibility with earlier storage formats, as above.
+
+## Implementation notes
+
+`begin` now enforces unknown-operation blocking itself, which changed two existing
+test expectations, each a deliberate decision:
+
+- `tests/test_ledger.py`: two operations can be in flight together only in
+  different scopes. The breach-settlement test now places them in two scopes.
+- `tests/test_acceptance.py`: an unknown check blocks the acceptance transition
+  itself. `accept` raises `UnknownOutcome` and records no decision, where it
+  previously recorded an `unknown` decision.
+
+Review of the implementation added two rules: `run_workflow` offers only the
+episode's own and root-scope unknown operations to `reconcile`, and checks run in
+the run scope only for checkers that declare `isolated = True`.
