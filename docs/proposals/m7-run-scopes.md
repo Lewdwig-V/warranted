@@ -54,9 +54,19 @@ exactly one scope. The existing project-wide behaviour is the **root scope**.
 | --- | --- |
 | `open_scope(session, scope_id, caps)` | Record a scope once. Repeating it with the same caps returns it; different caps raise `OperationConflict`. Units must exist in the project allowances. |
 | `reserve(session, request, reservation, scope=ROOT)` | Reject if the reservation exceeds the scope's available cap **or** the project's available total. |
-| `begin(session, request)` | Block on a breach in the operation's own scope or in the root scope, or on a negative project total. |
+| `begin(session, request)` | Refuse dispatch when the operation's own scope or the root scope has an unknown operation or a breach, or when the project total is negative. |
 | `accounting(scope=None)` | Project totals as now; with a scope, that scope's limit, spent, and reserved. |
-| `unresolved(scope)` | Unknown operations that block this scope: its own, plus any in the root scope. |
+| `unresolved(scope)` | Report the unknown operations that block this scope: its own, plus any in the root scope. Read-only; enforcement is in `begin`. |
+
+Blocking lives in `begin`, the only call that permits execution, so no caller can
+dispatch past an unknown outcome by skipping a preflight. Today unknown blocking
+is a separate helper (`worker.unresolved`) that the worker and proof receipts call
+but other paths, such as the prototype's checker loop, do not.
+
+This also tightens the root scope. Code that calls `begin` directly while an
+unrelated root-scope operation is unknown is refused where it is allowed today.
+The implementation must run the existing suite and treat each changed expectation
+as an explicit decision recorded in the PR, not a silent update.
 
 Caps are ceilings, not pre-allocations. The sum of run caps may exceed the project
 total; the project total is checked on every reservation, so it can never be
@@ -92,9 +102,18 @@ in the host-mediated operations design as well.
 
 ### Task layer
 
-`Project.start` opens scope `run/<run-id>` with caps from the run configuration
-(new `budgets` table in the run file) and passes it through the worker, checks,
-and acceptance. `Acceptance` takes the scope of the run it decides for.
+`Project.start` opens scope `run/<run-id>` and passes it through the worker,
+checks, and acceptance. Its caps combine two owners, as the
+[M7 proposal](m7-harness-api.md#budgets-and-the-duplicate-guard) assigns them:
+
+- the task file's `[budgets]` supplies the `check` cap (submissions stay enforced
+  by the run loop, since they are not a ledger unit);
+- the run configuration's new `[budgets]` table supplies the `model` and `tool`
+  caps.
+
+The two sets of units are disjoint. A task or run file that names a unit owned by
+the other is rejected, so one task can be reused with different run
+configurations without duplicating its check budget. `Acceptance` takes the scope of the run it decides for.
 `worker.unresolved` takes the episode's scope. Proof receipts follow the same
 pattern.
 
@@ -118,6 +137,10 @@ Version 1 projects keep failing explicitly, as they do today.
 - An unknown operation in run A: run A cannot dispatch; run B can; after restart
   the same holds and A's reservation is still counted in both A and the project.
 - An unknown operation in the root scope blocks run A and run B.
+- `begin` itself refuses dispatch in a blocked scope, even when the caller made no
+  preflight check.
+- A run's scope caps combine the task's check cap with the run configuration's
+  model and tool caps; a file naming the other owner's unit is rejected.
 - A breach in run A blocks A's dispatch and acceptance; run B can still dispatch
   and be accepted.
 - Reopening a scope with different caps, or reserving an existing operation ID in
