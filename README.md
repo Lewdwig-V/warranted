@@ -2,15 +2,16 @@
 
 **Durable, checkable knowledge for long-horizon agent work.**
 
-Warranted is a research prototype. It asks whether an agent finishes
-interdependent work more reliably when the host preserves raw evidence, records
-what each conclusion depends on, and checks acceptance independently of the
-worker. The working principle is: **make the world legible, give the model room
-to explore, and be precise about what counts as established knowledge.**
+Warranted is a neurosymbolic harness for agents doing long, interdependent work.
+A language-model worker explores freely in a contained shell. The host keeps an
+authoritative evidence ledger, tracks what each conclusion depends on, and
+accepts work only when independent deterministic checks and Lean proofs say so.
+The working principle is: **make the world legible, give the model room to
+explore, and be precise about what counts as established knowledge.**
 
-The repository contains a Python library, two controlled task fixtures, and
-scripts that exercise them. There is no end-user command line yet; the
-`warranted` command prints help and its version only.
+Warranted is moving from a research prototype to a usable harness. Today it is
+a Python library with example drivers for two task fixtures. Its APIs are not yet
+stable, and the `warranted` command prints help and its version only.
 
 ## What exists
 

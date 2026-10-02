@@ -1,13 +1,17 @@
 # Design
 
 Updated 2026-10-02. This document states the invariants Warranted enforces and
-the reasons for them. Each section says what is implemented; the
-[roadmap](roadmap.md) gives milestone status and the [pilot](pilot.md) the
-experiments. Jev and the Dream-RSI scheduling experiment are not built.
+the reasons for them. Each section says what is implemented. The
+[reference docs](reference/) describe how to use each component, the
+[roadmap](roadmap.md) gives status, and the [evaluation design](experiments/evaluation-design.md)
+describes the experiments. Jev and the Dream-RSI scheduling experiment are not built.
 
 ## Purpose
 
-Help an agent finish interdependent work across sessions by preserving executable
+Warranted pairs a neural worker, which proposes plans, programs, and proofs, with
+symbolic machinery the worker cannot override: a versioned ledger, declared
+dependencies, deterministic checkers, and Lean verification. The goal is to help
+an agent finish interdependent work across sessions by preserving executable
 artifacts, evidence, assumptions, and the reasons conclusions are applicable.
 When an input changes, revisit the affected work instead of reconstructing the
 entire argument from prose.

@@ -2,10 +2,18 @@
 
 ## Start here
 
-Read [README.md](README.md), [docs/design.md](docs/design.md), and the relevant
-milestone in [docs/roadmap.md](docs/roadmap.md). Use [docs/pilot.md](docs/pilot.md)
-when changing an evaluator, task fixture, or experiment. Keep implementation
-status honest: planned machinery is not an existing guarantee.
+Read [README.md](README.md), [docs/design.md](docs/design.md), and
+[docs/roadmap.md](docs/roadmap.md). Component behavior is documented in
+[docs/reference/](docs/reference), task fixtures in [docs/fixtures/](docs/fixtures),
+and experiments in [docs/experiments/](docs/experiments). Use
+[the evaluation design](docs/experiments/evaluation-design.md) when changing an
+evaluator, task fixture, or experiment. Keep implementation status honest: planned
+machinery is not an existing guarantee.
+
+Warranted is becoming a usable harness. Document components for the engineer who
+runs them: what they do, how to call them, what they guarantee, and their limits.
+Record measured runs as dated files under `docs/experiments/` and leave their
+findings unchanged afterwards. Keep plans in the roadmap, not in reference docs.
 
 Warranted is independent of any existing domain harness. Start with controlled
 data transformations and repository migrations. Derive adapter boundaries from
