@@ -380,6 +380,18 @@ class Project:
                 return RunResult(
                     run_id, RunOutcome.UNKNOWN, tuple(submissions), str(error)
                 )
+            except RuntimeError as error:
+                failed = self._failed_attempt(episode.episode_id)
+                if failed is None:
+                    raise
+                if failed is Outcome.INFRASTRUCTURE_FAILURE:
+                    return RunResult(
+                        run_id,
+                        RunOutcome.INFRASTRUCTURE_FAILURE,
+                        tuple(submissions),
+                        str(error),
+                    )
+                result = {"exit_status": str(error)}
             if result.get("exit_status") != "Submitted":
                 outcome = RunOutcome.REJECTED if submissions else RunOutcome.INCOMPLETE
                 return RunResult(
@@ -396,6 +408,30 @@ class Project:
             if outcome is not None:
                 return RunResult(run_id, outcome, tuple(submissions))
         return RunResult(run_id, RunOutcome.REJECTED, tuple(submissions))
+
+    def _failed_attempt(self, episode_id: str) -> Outcome | None:
+        """The recorded outcome that stopped an episode, if a worker attempt did.
+
+        A model or tool attempt that completed as infrastructure failure, or a
+        model attempt that completed as failed, ends the episode. Anything else
+        is a host error and is re-raised by the caller.
+        """
+        prefix = f"episode/{episode_id}/"
+        found = None
+        with Ledger.open(self.ledger_root) as ledger:
+            for operation in ledger.operations():
+                origin = operation.request.origin
+                if (
+                    not origin.operation_id.startswith(prefix)
+                    or not operation.completion
+                ):
+                    continue
+                outcome = operation.completion.result.outcome
+                if outcome is Outcome.INFRASTRUCTURE_FAILURE:
+                    return outcome
+                if outcome is Outcome.FAILED and origin.kind == "model":
+                    found = outcome
+        return found
 
     def _episode(self, run: _Run, index: int) -> Episode:
         files = {name: run.evidence(f"input/{name}") for name in run.task.inputs}

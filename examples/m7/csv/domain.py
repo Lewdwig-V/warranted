@@ -33,6 +33,10 @@ class Transformation:
             return Verdict(VerdictStatus.REJECTED, {"error": "result.json is missing"})
         except ValueError as error:
             return Verdict(VerdictStatus.REJECTED, {"error": str(error)})
+        except RecursionError:
+            return Verdict(
+                VerdictStatus.REJECTED, {"error": "result.json is too deeply nested"}
+            )
         status = (
             VerdictStatus.PASSED
             if all(obligations.values())

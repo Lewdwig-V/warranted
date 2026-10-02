@@ -289,3 +289,74 @@ def test_checks_and_run_configuration_are_validated():
         RunConfig(" ")
     with pytest.raises(ValueError, match="max_steps"):
         RunConfig("m", max_steps=0)
+
+
+def test_deeply_nested_candidate_is_rejected_with_feedback():
+    nested = ("[" * 20000 + "]" * 20000).encode()
+    verdict = CSV.Transformation().check(
+        CheckContext(
+            {"result.json": nested},
+            TASK.inputs,
+            TASK.private,
+        )
+    )
+    assert verdict.status is VerdictStatus.REJECTED
+    assert "nested" in verdict.feedback["error"]
+
+
+class InfrastructureScript(Script):
+    def __call__(self, ledger_root, episode):
+        script = self
+
+        class Environment:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def __call__(self, request, payload):
+                script.calls += 1
+                return AttemptResult(
+                    Result(Outcome.INFRASTRUCTURE_FAILURE, None, {"tool": 1}, 1),
+                    {
+                        "stdout": b"",
+                        "stderr": b"",
+                        "diagnostic": b"container control failed",
+                    },
+                )
+
+        return Environment()
+
+
+class FailingModel(Model):
+    def __call__(self, request, payload):
+        self.calls += 1
+        return AttemptResult(
+            Result(Outcome.FAILED, 1, {"model": 1}, 1),
+            {"response": b"", "error.json": b'{"finish_reason": "length"}'},
+        )
+
+
+def test_worker_infrastructure_failure_is_a_typed_outcome_on_every_resume(tmp_path):
+    script = InfrastructureScript([])
+    proj = Project.create(
+        tmp_path / "project",
+        CSV.CsvDomain(),
+        {"model": 40, "tool": 40, "check": 40},
+        environment=script,
+        environment_id=ENVIRONMENT,
+    )
+    model = Model()
+    first = proj.start(TASK, CONFIG, model)
+    assert first.outcome is RunOutcome.INFRASTRUCTURE_FAILURE
+    calls = (model.calls, script.calls)
+    assert proj.resume(first.run_id, model) == first
+    assert (model.calls, script.calls) == calls
+
+
+def test_failed_model_attempt_ends_the_episode_without_submission(tmp_path):
+    proj, script = project(tmp_path, ["correct"])
+    result = proj.start(TASK, CONFIG, FailingModel())
+    assert result.outcome is RunOutcome.INCOMPLETE
+    assert script.calls == 0
