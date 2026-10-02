@@ -12,6 +12,7 @@ not been run; the dated records below are development diagnostics only.
 
 | Record | Summary |
 | --- | --- |
+| [2026-09-22 local model probe](2026-09-22-local-model-probe.md) | One `gemma4:26b` connectivity request through Ollama timed out; the unknown attempt was kept and not retried. |
 | [2026-09-23 Qwen development runs](2026-09-23-qwen-development-runs.md) | Five local `qwen3.8:27b` migration-A attempts (four- to twelve-command limits); none submitted `result.json`, so no independent check, revision, or restart ran. |
 | [2026-09-24 OpenRouter GLM diagnostic](2026-09-24-openrouter-glm-diagnostic.md) | Five `z-ai/glm-5.3-flash` migration-A attempts all stopped before submission, dominated by provider errors, truncation, and a returned provider failure. |
 | [2026-09-24 submission controls](2026-09-24-submission-controls.md) | Interface diagnostic with local Qwen: explicit submission instructions produced accepted submissions, but the twelve-run comparison combined prompt changes and cannot isolate their effects. |

@@ -11,10 +11,9 @@
 Setup: each attempt initialized a fresh plan with `examples/m5/trials.py init` and
 ran `examples/m5/treatments.py start` for migration-A only, with
 `--openrouter-model z-ai/glm-5.3-flash`, a host-only `--api-key-file`, and the
-existing pinned proof bundle `runs/m4-tools/bundle.json`. The documented
-diagnostic command used `--max-steps 12 --max-tokens 3072 --timeout 180`; the
-final attempt used 8,192 output tokens and a 300-second request deadline, as
-recorded below. The adapter changed between the source commits listed in the
+existing pinned proof bundle. Each plan pins its own request settings; this
+record states only those noted below, including the final attempt's 8,192 output
+tokens and 300-second request deadline. The adapter changed between the source commits listed in the
 table. The current adapter, including provider selection, credit-limit checks,
 and cost receipts, is described in the
 [model adapter reference](../reference/model-adapters.md).

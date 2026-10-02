@@ -122,13 +122,8 @@ uv run --locked python examples/m5/local_model.py run runs/gemma-probe
   the failure without polling Ollama again. Keep failed probe directories when you
   prepare a new probe.
 
-The first probe, run on 2026-09-22, used Ollama 0.32.9 and `gemma4:26b` (Q4_K_M,
-digest `5571076f3d70050487b26b341705799e0ab29b808164f90d20d4cf84f699d251`). It
-requested at most 64 output tokens and timed out after 120 seconds without a
-response. The ledger kept an unknown attempt with one reserved model unit and no
-token counts. A repeated invocation stopped at that unknown attempt without
-another HTTP dispatch. This is a failed connectivity probe, not a model-quality
-result.
+The first probe's result is recorded in
+[the 2026-09-22 local probe](../experiments/2026-09-22-local-model-probe.md).
 
 The treatment runner uses the same adapter through `--local-model`. It compares
 the metadata again before each new inference request (see

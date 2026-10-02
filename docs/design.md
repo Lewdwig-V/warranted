@@ -44,7 +44,7 @@ its small, shell-based agent loop fits bounded investigation sessions.
 [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) supplies
 workflow persistence and resumption. Warranted uses those projects' execution
 infrastructure while the host owns evidence semantics.
-The [worker adoption notes](m3-adoption.md) record the integration boundary and
+The [worker adoption notes](reference/worker-and-containment.md) record the integration boundary and
 pinned versions. The local demonstration uses a scripted model, native rootless shell
 containment, and independent acceptance to test recovery across a changed premise.
 
@@ -79,7 +79,7 @@ an agent can search programmatically. Their ARC-AGI-3 work inspired this project
 transfer to our task families remains an experimental question.
 
 Warranted's extension ties these artifacts and histories to explicit
-assumptions, dependencies, and acceptance receipts. The pilot's A–E conditions
+assumptions, dependencies, and acceptance receipts. The A–E conditions
 separate history, executable models, dependency tracking, and Lean to measure
 what each contributes; that comparison has not been run.
 
@@ -133,7 +133,7 @@ introduce [Lean](https://lean-lang.org/doc/reference/latest/) for obligations wh
 reuse or failure cost makes proofs worthwhile. Lean provides the formal language
 and proof-checking foundation; Warranted must connect checked statements to the
 current evidence and task requirements.
-The [verification boundary](m4-verification.md) pins the Lean toolchain, target,
+The [verification boundary](reference/proof-verification.md) pins the Lean toolchain, target,
 and permitted axioms, isolates untrusted elaboration and tactics, and uses
 Comparator to check the resulting artifact and its transitive dependencies,
 including indirect use of `sorryAx` or unapproved axioms.
@@ -188,7 +188,7 @@ changing its text. Record the owner, rationale, and affected requirements; reass
 dependent acceptance evidence against the new version. An agent's discovery of
 a gap does not waive an existing gate or turn a failed old contract into a pass.
 
-The [pilot cases](pilot.md#specification-and-behavioral-failures) exercise these
+The [specification failure cases](experiments/evaluation-design.md#specification-and-behavioral-failures) exercise these
 requirements without assuming that Warranted can infer missing user intent.
 
 ## Jev: System 1 classification and judgment
@@ -281,7 +281,7 @@ cannot satisfy a gate on its own.
 [AutoSaddler](https://github.com/microsoft/AutoSaddler) is a later candidate for
 trace-driven changes to prompts, tools, and other harness components. That wider
 mutation surface deserves a separate experiment from the Dream-RSI scheduling
-pilot. Keep both Hindsight and AutoSaddler outside the first pilot comparisons.
+experiment. Keep both Hindsight and AutoSaddler outside the A–E and scheduling comparisons.
 
 ## Sources and provenance
 

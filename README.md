@@ -20,15 +20,15 @@ Scope limits are stated in each linked document.
 
 | Component | What it does | Module | Details |
 | --- | --- | --- | --- |
-| Evidence ledger | Immutable observations, SHA-256 artifact files, operation receipts, reservations, and usage in SQLite; survives process termination | `ledger.py` | [Persistence](docs/m1-persistence.md) |
-| Exports | Explicitly selected, non-authoritative copies for inspection | `exports.py` | [Persistence](docs/m1-persistence.md#permitted-exports) |
-| Claims and support | Assertions with assumption versions, historical checks, and conservative staleness through declared dependencies | `claims.py` | [Claims](docs/m2-claims.md) |
-| Acceptance boundary | Gates checked against exact current versions; scoped rule exceptions; owner-approved contract revisions | `acceptance.py` | [Acceptance](docs/m2-acceptance.md) |
-| Worker integration | mini-swe-agent 2.4.6 inside a serial LangGraph 1.2.11 lifecycle with its SQLite checkpointer | `worker.py` | [Worker adoption](docs/m3-adoption.md) |
-| Containment | One rootless Podman container per episode, with no host mounts or network; candidate capture after worker processes stop | `sandbox.py`, `containers.py` | [Containment](docs/m3-adoption.md#containment-and-acceptance) |
-| External attempts | Single-attempt adapters for a loopback fake service, a local OpenAI-compatible server (Ollama), and OpenRouter; lost responses stay blocked | `attempts.py`, `chat_completions.py`, `openrouter.py` | [Local model probe](docs/m5-migration.md#local-model-probe), [OpenRouter](docs/m5-openrouter.md) |
-| Lean verification | Pinned Lean, Comparator, and Landrun check an exact target and axiom policy; durable proof receipts | `proofs.py`, `proof_receipts.py`, `proof/` | [Verification](docs/m4-verification.md) |
-| A–E contexts | Host-selected worker context for the five knowledge-workflow conditions | `contexts.py` | [Contexts](docs/m5-contexts.md) |
+| Evidence ledger | Immutable observations, SHA-256 artifact files, operation receipts, reservations, and usage in SQLite; survives process termination | `ledger.py` | [Evidence ledger](docs/reference/evidence-ledger.md) |
+| Exports | Explicitly selected, non-authoritative copies for inspection | `exports.py` | [Exports](docs/reference/evidence-ledger.md#permitted-exports) |
+| Claims and support | Assertions with assumption versions, historical checks, and conservative staleness through declared dependencies | `claims.py` | [Claims](docs/reference/claims-and-acceptance.md#claims) |
+| Acceptance boundary | Gates checked against exact current versions; scoped rule exceptions; owner-approved contract revisions | `acceptance.py` | [Acceptance](docs/reference/claims-and-acceptance.md#acceptance) |
+| Worker integration | mini-swe-agent 2.4.6 inside a serial LangGraph 1.2.11 lifecycle with its SQLite checkpointer | `worker.py` | [Worker](docs/reference/worker-and-containment.md) |
+| Containment | One rootless Podman container per episode, with no host mounts or network; candidate capture after worker processes stop | `sandbox.py`, `containers.py` | [Containment](docs/reference/worker-and-containment.md#container-sandbox) |
+| External attempts | Single-attempt adapters for a loopback fake service, a local OpenAI-compatible server (Ollama), and OpenRouter; lost responses stay blocked | `attempts.py`, `chat_completions.py`, `openrouter.py` | [Model adapters](docs/reference/model-adapters.md) |
+| Lean verification | Pinned Lean, Comparator, and Landrun check an exact target and axiom policy; durable proof receipts | `proofs.py`, `proof_receipts.py`, `proof/` | [Proof verification](docs/reference/proof-verification.md) |
+| A–E contexts | Host-selected worker context for the five knowledge-workflow conditions | `contexts.py` | [Contexts](docs/reference/contexts.md) |
 
 The fixtures live under [`examples/`](examples): a CSV transformation with a
 revised timestamp interpretation (M1–M4) and a configuration-file repository
@@ -50,16 +50,16 @@ quality or general task performance.
   ([M2 experiments](#run-the-m2-fixture-experiments)).
 - **Contained worker across a host kill.** A scripted model completes the
   changed-premise CSV task in a rootless container across a forced restart, with
-  unchanged independent gates ([M3 demonstration](docs/m3-adoption.md#changed-premise-demonstration)).
+  unchanged independent gates ([M3 demonstration](docs/fixtures/csv-transformation.md#m3-changed-premise-demonstration)).
 - **Proof support without proof overreach.** One Lean uniqueness theorem applies
   to correct, record-dropping, and empty candidates; only the correct one passes
-  the task gates ([M4 fixture](docs/m4-fixture.md)). Migration and timestamp proof
-  cases repeat this pattern ([M5 proofs](docs/m5-proofs.md)).
+  the task gates ([M4 fixture](docs/fixtures/csv-transformation.md#m4-uniqueness-application)). Migration and timestamp proof
+  cases repeat this pattern ([M5 proofs](docs/fixtures/config-migration.md#proof-cases)).
 - **Second task family.** A fixed worker delivers the approved migration
-  revision across a host kill and a repeated resume ([M5 fixture](docs/m5-fixture.md)).
+  revision across a host kill and a repeated resume ([M5 fixture](docs/fixtures/config-migration.md)).
   Scripted tests run all ten family × condition combinations; native tests take
   condition E on both families through a kill and two fresh resumes
-  ([contexts](docs/m5-contexts.md#run-and-verify)).
+  ([contexts](docs/reference/contexts.md#run-and-verify)).
 
 ## What live-model runs have shown
 
@@ -69,15 +69,15 @@ development diagnostics on the migration task under condition A.
 - Early local Qwen runs and five OpenRouter GLM attempts never submitted a
   candidate. The GLM attempts ended in configuration, provider, or token-limit
   failures before useful task work
-  ([contexts](docs/m5-contexts.md#local-model-development-runs),
-  [OpenRouter](docs/m5-openrouter.md#diagnostic-attempts-on-september-24-2026)).
+  ([contexts](docs/experiments/2026-09-23-qwen-development-runs.md),
+  [OpenRouter](docs/experiments/2026-09-24-openrouter-glm-diagnostic.md)).
 - The submission instructions omitted the required payload structure. With
   explicit packaging instructions, a separate submission helper, or both, most
   Qwen runs submitted accepted payloads. Across both twelve-run comparisons, only
   one of fifteen accepted submissions also rejected a boolean `version`, a case
   the private checks omit
-  ([submission controls](docs/m5-submission-controls.md),
-  [corrected controls](docs/m5-corrected-submission.md)).
+  ([submission controls](docs/experiments/2026-09-24-submission-controls.md),
+  [corrected controls](docs/experiments/2026-09-25-corrected-submission-controls.md)).
 
 No run has yet completed the approved revision and restart sequence with a live
 model, and no A–E comparison has been run.
@@ -174,7 +174,7 @@ provide worker isolation. A changed fixture or environment fails before reuse.
 Unknown execution keeps its reservation and is not retried.
 
 CI runs both commands and retains the exports, reports, and execution counter in
-the `m1-walkthrough` artifact for 14 days. The [pilot](docs/pilot.md#m1-scripted-walkthrough)
+the `m1-walkthrough` artifact for 14 days. The [CSV fixture](docs/fixtures/csv-transformation.md#m1-scripted-walkthrough)
 defines the fixed outputs and the limits of this demonstration.
 
 ## Run the M2 fixture experiments
@@ -191,12 +191,12 @@ without changing the main output, and rejects five fixed failure candidates.
 The correct candidate passes. Each report links to copied evidence and shows
 charged operations, retained reservations, and an independent execution count.
 
-The [pilot](docs/pilot.md#m2-fixture-experiments) gives the expected results and
+The [CSV fixture](docs/fixtures/csv-transformation.md#m2-fixture-experiments) gives the expected results and
 operation counts. CI runs all three experiments and retains the public development
 evidence for 14 days. The host uses explicit dependencies and trusted revision
-events. [Claims and current support](docs/m2-claims.md) separate historical checks
+events. [Claims and current support](docs/reference/claims-and-acceptance.md#claims) separate historical checks
 from current dependency versions and retain approved revision provenance.
-The [acceptance boundary](docs/m2-acceptance.md) enforces all four gates and
+The [acceptance boundary](docs/reference/claims-and-acceptance.md#acceptance) enforces all four gates and
 records a separate source-format rule exception. Its protected operation records
 local acceptance. Owner authentication and external-effect authorization remain
 planned. This M2 script uses trusted code. M3 exercises a separately contained
@@ -279,7 +279,7 @@ execution. This Python API does not isolate a worker or intercept shell commands
 The storage format is now version 2. Version 1 projects fail explicitly on open
 and remain unchanged. Automatic migration is not implemented.
 
-The [persistence contract](docs/m1-persistence.md) describes the API and tests.
+The [evidence ledger reference](docs/reference/evidence-ledger.md) describes the API and tests.
 The tests establish recovery from process termination on a working local
 filesystem. They do not establish recovery from power loss or disk loss.
 Keep the authoritative project outside any untrusted worker's writable workspace.
@@ -291,7 +291,9 @@ Keep the authoritative project outside any untrusted worker's writable workspace
 | [AGENTS.md](AGENTS.md) | Guidance for coding agents and contributors |
 | [docs/design.md](docs/design.md) | Invariants, boundaries, and the reasoning behind them |
 | [docs/roadmap.md](docs/roadmap.md) | Milestone status, remaining work, and open decisions |
-| [docs/pilot.md](docs/pilot.md) | Task fixtures, expected results, and the A–E comparison design |
+| [docs/reference](docs/reference) | How each component works, its API, guarantees, and limits |
+| [docs/fixtures](docs/fixtures) | The two task fixtures, how to run them, and what they establish |
+| [docs/experiments](docs/experiments) | Evaluation design and dated records of measured runs |
 | [src/warranted](src/warranted) | Library modules listed under [What exists](#what-exists) |
 | [examples](examples) | M1–M5 fixtures, demonstration scripts, and diagnostic runners |
 | [tests](tests) | Fast tests plus `container` and `proof` native groups |

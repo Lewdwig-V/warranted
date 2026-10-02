@@ -38,12 +38,22 @@ a receipt written by the worker cannot grant acceptance. See
 from warranted.sandbox import SANDBOX_ID, Sandbox
 from warranted.worker import Episode, run_workflow, submitted_candidate
 
-episode = Episode("initial", "Solve task.md and submit result.json.", ("input.csv",),
-                  environment=SANDBOX_ID, model_service=service_id)
+episode = Episode(
+    "initial",
+    "Solve task.md and submit result.json.",
+    ("input.csv",),
+    environment=SANDBOX_ID,
+    model_service=service_id,
+)
 with Sandbox(ledger_root, episode) as shell:
-    result = run_workflow(ledger_root, checkpoint_path, episode,
-                          model=model_boundary, environment=shell,
-                          reconcile=None)
+    result = run_workflow(
+        ledger_root,
+        checkpoint_path,
+        episode,
+        model=model_boundary,
+        environment=shell,
+        reconcile=None,
+    )
 ```
 
 `Episode` is a frozen, validated specification:

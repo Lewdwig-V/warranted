@@ -324,20 +324,9 @@ offset.
 
 ### Crash boundaries
 
-| Boundary | Required observation | Test |
-| --- | --- | --- |
-| Reserved, before dispatch | Same pending slot executes once | `test_worker.py` |
-| Dispatch marker, before observed effect | Unknown and reserved, no retry | `test_worker.py` |
-| External response lost | Exact receipt settles once or remains unknown | `test_attempts.py` |
-| Repeated death during reconciliation | One POST, reservation retained until settled | `test_attempts.py` |
-| Shell submission, before capture | Unknown, no candidate acceptance | `test_sandbox.py` |
-| Candidate captured, before ledger commit | Unknown, no duplicate shell dispatch | `test_sandbox.py` |
-| Candidate receipt committed | Exact bytes reused after container removal | `test_sandbox.py` |
-| Episode receipt before graph checkpoint | Completed attempts or episode receipt reused | `test_worker.py` |
-| Graph checkpoint committed or deleted | No additional execution or charge | `test_worker.py` |
-| Graph claims a missing host receipt | Blocked, success not inferred | `test_worker.py` |
-| Approved revision, then host kill | Old checks stale; new candidate passes current gates | `test_m3_demo.py` |
-| Acceptance interrupted before/after commit | Unknown, or committed receipt reused | `test_acceptance.py` |
+The demonstration exercises every worker crash boundary listed in the
+[worker reference](../reference/worker-and-containment.md#demonstrated-crash-boundaries),
+including an approved revision followed by a host kill.
 
 Native [LangGraph time travel](https://docs.langchain.com/oss/python/langgraph/use-time-travel)
 can re-execute downstream calls; it is not Warranted replay, which may reveal only
