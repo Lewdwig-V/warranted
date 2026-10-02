@@ -90,7 +90,9 @@ The next work is a stable public API and CLI, so that
 and keep only its reverse-engineering logic
 ([M7 and M8](docs/roadmap.md#m7--stable-harness-api-and-cli)). Until then:
 
-- There is no stable public API; module interfaces may change.
+- There is no stable public API; module interfaces may change. A prototype task
+  layer, `warranted.experimental`, exists to test the
+  [M7 proposal](docs/proposals/m7-harness-api.md) and has no stability promise.
 - There is no domain checker, host-mediated operation, or campaign interface for
   projects outside this repository.
 - The measured A–E comparison, with frontier and smaller models, separated

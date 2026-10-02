@@ -295,6 +295,57 @@ campaign continues exactly the runs it planned.
 - Parallel runs and multiple writers.
 - An MCP interface to Warranted.
 
+## Prototype findings
+
+### Slice 1: CSV task through the task layer
+
+`warranted.experimental` implements TOML tasks, a domain's checkers, explicit run
+IDs, one episode per submission, worker-visible feedback, and the six run outcomes.
+It reuses the existing worker, ledger, and acceptance boundary: each required check
+becomes a gate on a `passed` field. `examples/m7/csv/` wraps the M2 transformation
+evaluator as one checker. `tests/test_experimental_tasks.py` runs it with a
+scripted model and a scripted environment; the real container sandbox is not
+exercised in this slice.
+
+What worked:
+
+- Acceptance needed no changes. Rejected, unsupported, unknown, and
+  infrastructure-failure verdicts stay distinct through the existing gate.
+- One episode per submission fits the current worker: feedback files and the
+  restored workspace are ordinary episode inputs, and resume reuses completed
+  episodes, checks, and decisions without new model, tool, or check charges.
+- Private task files never reach episode inputs, and host-only verdict data stays
+  out of the feedback file.
+
+What did not:
+
+- **Budgets are project-wide.** Ledger allowances are fixed when the project is
+  created, so per-run model, tool, and check budgets cannot be enforced by the
+  ledger. Only the submission budget is enforced, by the run loop. With one
+  project per campaign, the ledger needs run-scoped allowances.
+- **An unknown operation blocks every run.** The worker refuses to dispatch while
+  any operation in the project is unknown, so one lost response in one run turns a
+  fresh run in the same project into `unknown` without any new attempt. Blocking
+  needs to be scoped to the run, or campaigns cannot survive a single lost response.
+- **Domain identity misses imported code.** The source digest covers the domain's
+  own file, but the CSV checker imports the M2 evaluator, so a change there would
+  not block resume. This answers open question 3: a source digest alone is not
+  enough.
+- **The worker convention is not implemented.** The current sandbox captures only
+  `result.json` and `workspace/`, and uses its own pinned image. The prototype keeps
+  that convention, records the domain's `worker_image` without using it, and passes
+  feedback as `feedback-NNN.json` input files.
+
+Evidence on the open questions:
+
+- Question 1: the restored workspace plus feedback files were enough for scripted
+  runs. Live-model behaviour is untested.
+- Question 4: the CSV checker's feedback is 293 bytes; no reason for a cap yet.
+- Question 5: the prototype imports `Acceptance`, `AcceptanceContext`, `Evidence`,
+  `Status`, `Ledger`, `Manifest`, `Origin`, `Outcome`, `Request`, `Result`,
+  `Sandbox`, `SANDBOX_ID`, `Episode`, `UnknownOutcome`, `record_once`,
+  `run_workflow`, and `submitted_files`, and no private helpers.
+
 ## Open questions
 
 1. Does a follow-on episode receive the earlier conversation, or only the restored
@@ -302,8 +353,10 @@ campaign continues exactly the runs it planned.
    from its inputs.
 2. How are a task's private inputs supplied: a private section of the task file,
    or artifacts imported with a host-only flag?
-3. How is the domain's code identified for pinning: package version, a digest of
-   its source files, or both?
+3. How is the domain's code identified for pinning? Slice 1 showed a digest of
+   the domain's own source file misses code it imports.
 4. Should verdict feedback have a size limit enforced by the host?
 5. Which `warranted.host` names do the fixtures still need once they move onto the
    task layer? That list decides what the host kit has to keep exposing.
+6. How are budgets and unknown-operation blocking scoped to a run within a
+   shared project?

@@ -1,0 +1,16 @@
+# First-slice prototype task: the M1–M3 CSV transformation under the first offset.
+id = "csv-offset-v1"
+objective = "Read worker-task.md and the current offset. Write result.json, then submit."
+checks = ["transformation"]
+
+[inputs]
+"input.csv" = "../../m2/fixture/input.csv"
+"worker-task.md" = "../../m3/worker-task.md"
+"offset-v1" = "offset-v1"
+
+[private]
+"references.json" = "../../m2/fixture/references.json"
+"versions.json" = "../../m2/fixture/versions.json"
+
+[budgets]
+submissions = 3
