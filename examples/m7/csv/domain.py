@@ -15,6 +15,7 @@ class Transformation:
     """Four independent obligations. Feedback names failed obligations only."""
 
     version = "1"
+    isolated = True  # a pure function of the candidate and task bytes
 
     def check(self, ctx: CheckContext) -> Verdict:
         offset = next(name for name in ctx.inputs if name.startswith("offset-"))

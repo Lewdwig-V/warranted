@@ -73,7 +73,8 @@ with Sandbox(ledger_root, episode) as shell:
 | `scope` | [Ledger scope](evidence-ledger.md#scopes) for the episode's model and tool attempts (default `ROOT_SCOPE`) |
 
 `run_workflow` refuses a checkpoint database inside the ledger root. It runs
-`reconcile` (when one is supplied) for each unknown operation, refuses to proceed
+`reconcile` (when one is supplied) for each unknown operation in the episode's
+scope or the root scope, never another run's, refuses to proceed
 while an unknown operation blocks the episode's scope (its own or the root
 scope's), and returns mini's result only when the
 graph's receipt matches an intact host receipt `episode/<id>/finished`.

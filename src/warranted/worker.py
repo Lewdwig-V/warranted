@@ -449,7 +449,8 @@ def run_workflow(
     with Ledger.open(ledger_root) as ledger:
         if reconcile is not None:
             session = ledger.start_session()
-            for operation in ledger.operations():
+            # Only this episode's own scope and the root scope; never another run's.
+            for operation in ledger.unresolved(episode.scope):
                 if operation.state == "unknown":
                     response = reconcile(operation.request)
                     if response is not None:

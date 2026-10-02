@@ -25,6 +25,7 @@ from uuid import uuid4
 
 from warranted.acceptance import Acceptance, AcceptanceContext, Evidence, Status
 from warranted.ledger import (
+    ROOT_SCOPE,
     BudgetExceeded,
     Ledger,
     Manifest,
@@ -93,9 +94,21 @@ class CheckContext:
 
 
 class Checker(Protocol):
+    """Trusted host code that assesses captured bytes.
+
+    Set `isolated = True` only when the check touches no state shared with other
+    runs: no files, services, or caches outside its inputs. Isolated checks run in
+    the run's ledger scope; others run in the root scope, where an unknown outcome
+    blocks every run.
+    """
+
     version: str
 
     def check(self, ctx: CheckContext) -> Verdict: ...
+
+
+def _isolated(checker: Checker) -> bool:
+    return getattr(checker, "isolated", False) is True
 
 
 class Domain(Protocol):
@@ -121,6 +134,7 @@ def domain_identity(domain: Domain) -> dict[str, str]:
     }
     for name, checker in sorted(domain.checkers.items()):
         identity[f"checker/{name}"] = checker.version
+        identity[f"checker/{name}/isolated"] = str(_isolated(checker)).lower()
     return identity
 
 
@@ -340,6 +354,13 @@ class Project:
         run_id = "run-" + uuid4().hex[:12]
         caps = dict(config.budgets)
         if task.check_budget is not None:
+            shared = [n for n in task.checks if not _isolated(self.domain.checkers[n])]
+            if shared:
+                # A shared-state check runs in the root scope, where a run's cap
+                # cannot apply; refuse rather than silently ignore the budget.
+                raise ValueError(
+                    f"check budgets require isolated checkers; not isolated: {shared}"
+                )
             caps["check"] = task.check_budget
         with Ledger.open(self.ledger_root) as ledger:
             session = ledger.start_session()
@@ -597,7 +618,8 @@ class Project:
     ) -> str:
         target = self._target(ledger, run, index)
         request = self._check_request(ledger, run, index, name, target)
-        operation = ledger.reserve(session, request, {"check": 1}, run.scope)
+        scope = run.scope if _isolated(self.domain.checkers[name]) else ROOT_SCOPE
+        operation = ledger.reserve(session, request, {"check": 1}, scope)
         if operation.completion is None:
             if not ledger.begin(session, request):
                 raise UnknownOutcome(f"unknown outcome: {request.origin.operation_id}")

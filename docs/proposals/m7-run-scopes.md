@@ -97,6 +97,12 @@ operation whose outcome is unknown. That holds for today's operations:
 - each shell episode runs in its own container;
 - checks and proofs run on captured bytes in fresh contained processes.
 
+A domain checker is arbitrary trusted Python, so the task layer cannot assume it
+is side-effect free. Its checks run in the run's scope only when the checker
+declares `isolated = True`; otherwise they run in the root scope. A task-level
+check budget is accepted only when every required checker is isolated, so a cap is
+never silently unenforced.
+
 An operation that writes to a shared external resource must not be placed in a
 run scope. It goes in the root scope, where an unknown outcome blocks everything,
 until a later design gives scopes an explicit resource identity. This rule belongs
@@ -176,3 +182,7 @@ test expectations, each a deliberate decision:
 - `tests/test_acceptance.py`: an unknown check blocks the acceptance transition
   itself. `accept` raises `UnknownOutcome` and records no decision, where it
   previously recorded an `unknown` decision.
+
+Review of the implementation added two rules: `run_workflow` offers only the
+episode's own and root-scope unknown operations to `reconcile`, and checks run in
+the run scope only for checkers that declare `isolated = True`.

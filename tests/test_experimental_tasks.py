@@ -418,3 +418,82 @@ def test_budgets_belong_to_their_owner(tmp_path):
     task.write_text('id = "t"\nobjective = "o"\nchecks = ["c"]\n[budgets]\nmodel = 3\n')
     with pytest.raises(ValueError, match="task budget"):
         TaskSpec.load(task)
+
+
+def test_reconciliation_only_sees_the_episodes_own_scope(tmp_path):
+    from warranted.worker import Episode, run_workflow
+
+    proj, script = project(tmp_path, [RuntimeError("host killed mid-dispatch")])
+    with pytest.raises(RuntimeError, match="host killed"):
+        proj.start(TASK, CONFIG, Model())
+    seen = []
+
+    def reconcile(request):
+        seen.append(request.origin.operation_id)
+        raise AssertionError("asked to reconcile another run's operation")
+
+    with Ledger.open(proj.ledger_root) as ledger:
+        ledger.open_scope(ledger.start_session(), "run/other", {})
+    script.plan = ["correct"]
+    episode = Episode(
+        "other-s001",
+        "Submit.",
+        (),
+        model=CONFIG.model,
+        model_service=CONFIG.model,
+        environment=ENVIRONMENT,
+        max_steps=2,
+        scope="run/other",
+    )
+    with script(proj.ledger_root, episode) as environment:
+        result = run_workflow(
+            proj.ledger_root,
+            proj.root / "graph.sqlite3",
+            episode,
+            model=Model(),
+            environment=environment,
+            reconcile=reconcile,
+        )
+    assert result["exit_status"] == "Submitted"
+    assert seen == []
+
+
+class Isolated:
+    version = "1"
+    isolated = True
+
+    def __init__(self):
+        self.calls = 0
+
+    def check(self, ctx):
+        self.calls += 1
+        raise KeyboardInterrupt  # host death during a check
+
+
+def test_an_unknown_shared_state_check_blocks_every_run(tmp_path):
+    checker = Interrupting()
+    proj, script = project(tmp_path, ["correct", "correct"], Domain(checker))
+    with pytest.raises(KeyboardInterrupt):
+        proj.start(TASK, CONFIG, Model())
+    script.plan = ["correct"]
+    assert proj.start(TASK, CONFIG, Model()).outcome is RunOutcome.UNKNOWN
+    assert checker.calls == 1
+
+
+def test_an_unknown_isolated_check_blocks_only_its_own_run(tmp_path):
+    checker = Isolated()
+    proj, script = project(tmp_path, ["correct"], Domain(checker))
+    with pytest.raises(KeyboardInterrupt):
+        proj.start(TASK, CONFIG, Model())
+    checker.check = lambda ctx: Verdict(VerdictStatus.PASSED)
+    assert proj.start(TASK, CONFIG, Model()).outcome is RunOutcome.ACCEPTED
+    assert proj.resume(proj.runs()[0], Model()).outcome is RunOutcome.UNKNOWN
+
+
+def test_check_budgets_require_isolated_checkers(tmp_path):
+    proj, _ = project(tmp_path, ["correct"], Domain(Unsupported()))
+    task = TaskSpec(
+        TASK.id, TASK.objective, TASK.inputs, TASK.private, TASK.checks, 3, 2
+    )
+    with pytest.raises(ValueError, match="isolated"):
+        proj.start(task, CONFIG, Model())

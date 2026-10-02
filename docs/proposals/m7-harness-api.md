@@ -149,7 +149,9 @@ class Verdict:
     facts: Sequence[FactSpec] = ()  # recorded as verified if accepted
 ```
 
-Checkers are trusted host code, like ReSchema's in-process qiling recorder.
+Checkers are trusted host code, like ReSchema's in-process qiling recorder. A
+checker that touches no state shared with other runs declares `isolated = True`;
+only isolated checks are confined to their run's [ledger scope](m7-run-scopes.md).
 Untrusted code runs only through `run_job`: a one-shot container from a pinned
 image, with no network and only a per-job scratch directory mounted. Each job,
 seed, and verdict is a ledger operation, so a completed check is reused on resume
