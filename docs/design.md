@@ -22,8 +22,10 @@ acceptable total cost. A fixed model should suffice for either experiment.
 Neither benefit is assumed, and Lean must earn its cost over executable models
 and ordinary checks.
 
-Neither hypothesis has been tested yet. The A–E knowledge comparison is the next
-experiment; the scheduling experiment follows it.
+Neither hypothesis has been tested yet. Both experiments are deferred while
+Warranted gains a stable API and CLI and ReSchema is rebuilt on it (see the
+[roadmap](roadmap.md#m7--stable-harness-api-and-cli)). The A–E knowledge comparison
+then comes before the scheduling experiment.
 
 ## Boundaries and ownership
 
