@@ -324,9 +324,10 @@ offset.
 
 ### Crash boundaries
 
-The demonstration exercises every worker crash boundary listed in the
-[worker reference](../reference/worker-and-containment.md#demonstrated-crash-boundaries),
-including an approved revision followed by a host kill.
+The demonstration itself exercises one boundary: an approved revision followed
+by a host kill. The other worker crash boundaries are covered by the test suite,
+as listed in the
+[worker reference](../reference/worker-and-containment.md#demonstrated-crash-boundaries).
 
 Native [LangGraph time travel](https://docs.langchain.com/oss/python/langgraph/use-time-travel)
 can re-execute downstream calls; it is not Warranted replay, which may reveal only
