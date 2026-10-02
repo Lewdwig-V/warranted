@@ -37,7 +37,7 @@ The ledger records the world, session, input, and allowance identities that late
 replay would need. No replay engine exists.
 
 **Evidence:** process-termination tests and a two-process CSV walkthrough
-([persistence](m1-persistence.md), [walkthrough](../README.md#run-the-m1-walkthrough)).
+([persistence](reference/evidence-ledger.md), [walkthrough](../README.md#run-the-m1-walkthrough)).
 
 **Limits:** durability covers process termination on a working local filesystem,
 not power or disk loss. The storage format is version 2 with no migration from
@@ -53,8 +53,8 @@ contract revisions retain the old outcome and require reassessment.
 
 **Evidence:** three fixture experiments: selective rebuilding, a changed definition
 with identical output, and independent failures that a narrow success cannot
-override ([pilot](pilot.md#m2-fixture-experiments), [claims](m2-claims.md),
-[acceptance](m2-acceptance.md)).
+override ([CSV fixture](fixtures/csv-transformation.md#m2-fixture-experiments), [claims](reference/claims-and-acceptance.md#claims),
+[acceptance](reference/claims-and-acceptance.md#acceptance)).
 
 **Limits:** one trusted, serialized host. Approvals are pinned local fixture data;
 remote owner authentication and external-effect authorization do not exist.
@@ -70,7 +70,7 @@ receipts settle usage, and missing receipts leave the attempt blocked.
 
 **Evidence:** the changed-premise CSV task runs across a forced host kill and
 repeated resumes, with unchanged independent gates and costs
-([M3 demonstration](m3-adoption.md#changed-premise-demonstration)).
+([M3 demonstration](fixtures/csv-transformation.md#m3-changed-premise-demonstration)).
 
 **Limits:** the model is scripted. The host, kernel, and container runtime are
 trusted.
@@ -86,7 +86,7 @@ application without invalidating it.
 **Evidence:** the same theorem applies to correct, record-dropping, and empty
 candidates; only the correct candidate passes the task gates. Native tests kill
 the host before application and resume twice; the second resume adds no verifier
-or checker executions ([verification](m4-verification.md), [fixture](m4-fixture.md)).
+or checker executions ([verification](reference/proof-verification.md), [fixture](fixtures/csv-transformation.md#m4-uniqueness-application)).
 
 **Limits:** proofs are fixed proposals. Model proof search and a cost comparison
 against executable checks have not been run.
@@ -97,24 +97,24 @@ against executable checks have not been run.
 
 - A configuration-migration fixture with a preserved legacy consumer, an approved
   safe-repetition requirement, contained candidate execution, and an independent
-  checker under both contracts ([fixture](m5-fixture.md)).
+  checker under both contracts ([fixture](fixtures/config-migration.md)).
 - Recovery through the approved revision and a host kill with a fixed worker.
 - Migration and timestamp proof cases alongside M4 uniqueness, each with a
-  successful control and an independent task failure ([proofs](m5-proofs.md)).
+  successful control and an independent task failure ([proofs](fixtures/config-migration.md#proof-cases)).
 - A shared context boundary and an A–E treatment runner across both families
-  ([contexts](m5-contexts.md)).
+  ([contexts](reference/contexts.md)).
 - Pinned trial plans and reports that keep missing runs and failures
-  ([trial accounting](m5-migration.md#scripted-trial-accounting)).
+  ([trial accounting](experiments/evaluation-design.md#trial-plans-and-accounting)).
 - Opt-in adapters for local Ollama and OpenRouter models with token and cost
-  receipts ([local probe](m5-migration.md#local-model-probe),
-  [OpenRouter](m5-openrouter.md)).
+  receipts ([local probe](reference/model-adapters.md#local-openai-compatible-endpoint),
+  [OpenRouter](reference/model-adapters.md#openrouter)).
 
 **Live-model findings so far:** development diagnostics only, on migration
 condition A. Qwen and GLM did not submit under the original instructions. Explicit
 packaging instructions and a submission helper let most Qwen runs submit accepted
 payloads, but accepted programs still missed an unchecked boolean case
-([submission controls](m5-submission-controls.md),
-[corrected controls](m5-corrected-submission.md)). No live run has reached the
+([submission controls](experiments/2026-09-24-submission-controls.md),
+[corrected controls](experiments/2026-09-25-corrected-submission-controls.md)). No live run has reached the
 revision and restart stage.
 
 **Remaining:**

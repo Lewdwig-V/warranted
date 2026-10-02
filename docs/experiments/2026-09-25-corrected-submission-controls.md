@@ -1,9 +1,17 @@
-# M5 corrected submission controls
+# Corrected submission controls, 2026-09-25
+
+| | |
+| --- | --- |
+| Date | 2026-09-25 |
+| Model | Local `qwen3.8:27b` through Ollama |
+| Task | Repository migration (initial contract), condition A |
+| Kind | Development diagnostic |
+| Outcome | Seven accepted submissions, two rejected submissions, three without recognized submission; only two final programs reject the boolean-version case |
 
 This development experiment repeats the six submission controls after the prompt fixes in PR #32.
 It keeps submission, checker results, and additional diagnostic cases separate.
 It does not complete M5 or compare models.
-The [earlier report](m5-submission-controls.md#results-of-the-twelve-run-comparison) retains the measurements from the original, confounded controls.
+The [earlier report](2026-09-24-submission-controls.md#results-of-the-twelve-run-comparison) retains the measurements from the original, confounded controls.
 
 All twelve runs finish on 2026-09-25.
 Seven submit accepted payloads, two submit rejected payloads, and three end without recognized submission.
@@ -181,7 +189,7 @@ The next development run must then attempt the approved revision and recovery se
 
 ## Reproduce a run
 
-Prepare the container and proof bundle through the existing [M5 instructions](m5-contexts.md).
+Prepare the container and proof bundle through the existing [M5 instructions](../reference/contexts.md).
 Use the preserved source tag and a fresh directory for each run.
 Replace `helper` with the required control.
 

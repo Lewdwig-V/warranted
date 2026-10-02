@@ -1,4 +1,12 @@
-# M5 submission controls
+# Submission controls, 2026-09-24
+
+| | |
+| --- | --- |
+| Date | 2026-09-24 |
+| Model | Local `qwen3.8:27b` through Ollama 0.34.2 |
+| Task | Repository migration (initial contract) |
+| Kind | Development diagnostic |
+| Outcome | Both initial controls submitted accepted payloads; in the twelve-run comparison, nine runs submitted (eight accepted, one rejected) and three did not |
 
 The early Qwen runs mixed two questions: can the worker solve the task, and can it submit its work?
 On 2026-09-24, we paused model comparisons to test the submission interface.
@@ -16,7 +24,7 @@ The Qwen records provide direct evidence of the interface problem.
 
 ## Controls
 
-[The diagnostic runner](../examples/m5/diagnostics.py) reuses mini-swe-agent,
+[The diagnostic runner](../../examples/m5/diagnostics.py) reuses mini-swe-agent,
 LangGraph, the rootless container, and the migration checker.
 It changes the worker interface in two separate controls:
 
@@ -84,7 +92,7 @@ Local electricity and human development costs are unmeasured.
 The original twelve-turn run never submitted, although its reconstructed program now passes the same initial contract.
 This controlled change demonstrates a working completion path for Qwen on this task.
 It does not prove which individual interface change caused the improvement.
-The next development slice must apply a clear submission contract before any further model comparison.
+A clear submission contract must be applied before any further model comparison.
 Then the same model must attempt the approved revision and recovery sequence.
 
 ## Inspecting earlier work
@@ -159,7 +167,7 @@ Those recorded prompts include two additional changes identified during PR revie
 The budget arms therefore combine a countdown with response-format guidance.
 The helper arms combine helper availability with conflicting final-command wording.
 Their results cannot isolate the effects of countdown visibility or helper availability alone.
-The [corrected twelve-run comparison](m5-corrected-submission.md) records fresh live measurements from 2026-09-25.
+The [corrected twelve-run comparison](2026-09-25-corrected-submission-controls.md) records fresh live measurements from 2026-09-25.
 It keeps these historical results separate.
 
 | Control | Added instructions | Helper file | Remaining turns |
@@ -196,7 +204,7 @@ change in the earlier `plain` control or complete the revision/recovery experime
 
 Use the same commands above with the desired `--control` and a fresh run directory.
 Use the preserved comparison tag to reproduce the recorded protocol.
-The [corrected comparison](m5-corrected-submission.md) uses the current prompts and a separate preserved source tag.
+The [corrected comparison](2026-09-25-corrected-submission-controls.md) uses the current prompts and a separate preserved source tag.
 
 ## Results of the twelve-run comparison
 
@@ -267,7 +275,7 @@ These results support treating packaging, verification coverage, and stopping be
 The direct packaging failure supports documenting the payload contract.
 The boolean witness supports a regression case in a later checker change.
 It does not justify rewarding immediate submission after the first checker pass or selecting a winning prompt.
-The task checker and normal A–E worker instructions are unchanged in this diagnostic slice.
+The task checker and normal A–E worker instructions are unchanged in this diagnostic.
 
 ### Work after a checker-passing source version
 
