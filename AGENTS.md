@@ -19,17 +19,17 @@ dependencies change; let uv generate the lockfile.
 
 ```bash
 uv sync --locked
+uv run --locked pytest -q tests
 uv run --locked ruff check .
 uv run --locked ruff format --check .
-uv run --locked warranted --help
-uv run --locked warranted --version
 uv build --no-sources
 ```
 
-The current CLI is a scaffold. Do not describe help/version output as validation
-of the planned runtime. Add pytest through uv when the first behavior-bearing
-slice lands, and run its focused tests via `uv run`; do not add passing placeholder
-tests or a test command that silently accepts an empty suite.
+The default suite needs no credentials, network services, or containers. Tests
+marked `container` or `proof` need rootless Podman and the pinned images; CI runs
+them in separate jobs. The CLI prints help and version only, so its output
+validates nothing about the library. Run focused tests via `uv run`, and do not
+add passing placeholder tests.
 
 ## Implementation style
 
