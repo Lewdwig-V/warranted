@@ -27,6 +27,7 @@ Scope limits are stated in each linked document.
 | Acceptance boundary | Gates checked against exact current versions; scoped rule exceptions; owner-approved contract revisions | `acceptance.py` | [Acceptance](docs/reference/claims-and-acceptance.md#acceptance) |
 | Worker integration | mini-swe-agent 2.4.6 inside a serial LangGraph 1.2.11 lifecycle with its SQLite checkpointer | `worker.py` | [Worker](docs/reference/worker-and-containment.md) |
 | Containment | One rootless Podman container per episode, with no host mounts or network; candidate capture after worker processes stop | `sandbox.py`, `containers.py` | [Containment](docs/reference/worker-and-containment.md#container-sandbox) |
+| Checker jobs | One-shot contained jobs that let a checker run untrusted code, such as a candidate program | `jobs.py` | [Checker jobs](docs/reference/worker-and-containment.md#checker-jobs) |
 | External attempts | Single-attempt adapters for a loopback fake service, a local OpenAI-compatible server (Ollama), and OpenRouter; lost responses stay blocked | `attempts.py`, `chat_completions.py`, `openrouter.py` | [Model adapters](docs/reference/model-adapters.md) |
 | Lean verification | Pinned Lean, Comparator, and Landrun check an exact target and axiom policy; durable proof receipts | `proofs.py`, `proof_receipts.py`, `proof/` | [Proof verification](docs/reference/proof-verification.md) |
 | A–E contexts | Host-selected worker context for the five knowledge-workflow conditions | `contexts.py` | [Contexts](docs/reference/contexts.md) |

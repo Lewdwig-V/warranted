@@ -1,0 +1,15 @@
+# Second prototype slice: model a black-box program, checked on hidden inputs.
+id = "mystery-rle"
+objective = "Read task.md, model mystery.py, write result.json, then submit."
+checks = ["replay"]
+
+[inputs]
+"mystery.py" = "mystery.py"
+"task.md" = "task.md"
+
+[private]
+"hidden.json" = "hidden.json"
+
+[budgets]
+submissions = 3
+checks = 3
