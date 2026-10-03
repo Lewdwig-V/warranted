@@ -416,6 +416,30 @@ def test_unsafe_delivery_paths_are_refused(tmp_path):
                 sandbox.deliver(path, files)
 
 
+def test_worker_notes_are_captured_beside_the_candidate(tmp_path):
+    episode = setup(tmp_path)
+    submit = (
+        "printf '{}' > result.json && printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'"
+    )
+    result, raw = run(
+        tmp_path, episode, f"""printf '["a hint"]' > notes.json && {submit}"""
+    )
+    assert result["exit_status"] == "Submitted"
+    assert raw["candidate/notes.json"] == b'["a hint"]'
+
+
+def test_oversized_or_linked_notes_are_a_capture_error_not_a_failure(tmp_path):
+    episode = setup(tmp_path)
+    submit = (
+        "printf '{}' > result.json && printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'"
+    )
+    big = "head -c 16385 /dev/zero > notes.json"
+    result, raw = run(tmp_path, episode, f"{big} && {submit}")
+    assert result["exit_status"] == "Submitted"
+    assert "candidate/notes.json" not in raw
+    assert b"notes" in raw["candidate/notes-error.txt"]
+
+
 def entrypoint_image() -> str:
     """A local image whose entrypoint would make any wrapped command fail."""
     import tempfile
