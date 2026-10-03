@@ -152,9 +152,11 @@ Checkers are trusted host code, like ReSchema's in-process qiling recorder. A
 checker that touches no state shared with other runs declares `isolated = True`;
 only isolated checks are confined to their run's [ledger scope](m7-run-scopes.md).
 Untrusted code runs only through `run_job`: a one-shot container from a pinned
-image, with no network and only a per-job scratch directory mounted. Each job,
-seed, and verdict is a ledger operation, so a completed check is reused on resume
-and an interrupted one stays unknown.
+image, with no network and only a per-job scratch directory mounted. The check is
+the ledger operation: its seeds, job records, job output, and verdict are recorded
+as evidence of that one operation, so a completed check is reused on resume and an
+interrupted one stays unknown. Jobs are not separate operations; see
+[question 7](#answers-to-open-questions-1-5-and-7).
 
 The host builds the acceptance decision from the task's required checks. A
 missing, unknown, or stale required verdict blocks acceptance, as it does now.
