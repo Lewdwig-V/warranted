@@ -89,6 +89,14 @@ def _json(value: Any) -> bytes:
     return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
 
 
+def _safe_repr(value: Any) -> str:
+    """A bounded description of untrusted checker output; never raises."""
+    try:
+        return repr(value)[:FEEDBACK_LIMIT]
+    except Exception as error:
+        return f"<unrepresentable {type(value).__name__}: {type(error).__name__}>"
+
+
 def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -179,6 +187,9 @@ class Checker(Protocol):
     runs: no files, services, or caches outside its inputs. Isolated checks run in
     the run's ledger scope; others run in the root scope, where an unknown outcome
     blocks every run.
+
+    `check` must return a `Verdict`. Anything else, including a subclass or an
+    object with the same attributes, is recorded as an infrastructure failure.
     """
 
     version: str
@@ -2162,7 +2173,18 @@ class Project:
             except Exception as error:  # a checker crash is the host's failure
                 verdict = Verdict(
                     VerdictStatus.INFRASTRUCTURE_FAILURE,
-                    host_only={"error": repr(error)},
+                    host_only={"error": _safe_repr(error)},
+                )
+            if type(verdict) is not Verdict:
+                # Only a real Verdict was validated at construction; anything else,
+                # however it looks, is a checker fault and never a pass.
+                verdict = Verdict(
+                    VerdictStatus.INFRASTRUCTURE_FAILURE,
+                    host_only={
+                        "error": f"checker returned {type(verdict).__name__}, "
+                        "not a Verdict",
+                        "result": _safe_repr(verdict),
+                    },
                 )
             shown = len(_json(verdict.feedback))
             if shown > FEEDBACK_LIMIT:
