@@ -8,12 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
-from warranted import proofs as verifier
-from warranted.acceptance import Evidence, Status, _encode
-from warranted.claims import Claims
-from warranted.ledger import Ledger, Manifest, Snapshot
-from warranted.proof_receipts import Proofs
-from warranted.proofs import ProofStatus
+from warranted import _proofs as verifier
+from warranted._acceptance import Evidence, Status, _encode
+from warranted._claims import Claims
+from warranted._ledger import Ledger, Manifest, Snapshot
+from warranted._proof_receipts import Proofs
+from warranted._proofs import ProofStatus
 
 pytestmark = [
     pytest.mark.proof,

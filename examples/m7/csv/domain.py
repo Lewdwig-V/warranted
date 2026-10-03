@@ -4,8 +4,7 @@ import json
 import runpy
 from pathlib import Path
 
-from warranted.experimental import CheckContext, Verdict, VerdictStatus
-from warranted.sandbox import IMAGE
+from warranted import DEFAULT_WORKER_IMAGE, CheckContext, Verdict, VerdictStatus
 
 HERE = Path(__file__).resolve().parent
 M2_SOURCE = HERE.parent.parent / "m2/experiments.py"
@@ -50,6 +49,6 @@ class Transformation:
 class CsvDomain:
     name = "csv-transformation"
     version = "0.1"
-    worker_image = IMAGE
+    worker_image = DEFAULT_WORKER_IMAGE
     checkers = {"transformation": Transformation()}
     sources = (M2_SOURCE,)  # loaded with runpy, so not found by following imports

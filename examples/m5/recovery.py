@@ -15,15 +15,15 @@ from uuid import uuid4
 
 os.environ["MSWEA_SILENT_STARTUP"] = "1"
 
-from warranted import worker  # noqa: E402
-from warranted.acceptance import (  # noqa: E402
+from warranted import _worker as worker
+from warranted._acceptance import (  # noqa: E402
     Acceptance,
     AcceptanceContext,
     Evidence,
     _encode,
 )
-from warranted.exports import export_evidence  # noqa: E402
-from warranted.ledger import (  # noqa: E402
+from warranted._exports import export_evidence  # noqa: E402
+from warranted._ledger import (  # noqa: E402
     Ledger,
     Manifest,
     Observation,
@@ -33,8 +33,8 @@ from warranted.ledger import (  # noqa: E402
     Result,
     Snapshot,
 )
-from warranted.sandbox import SANDBOX_ID, Sandbox  # noqa: E402
-from warranted.worker import (  # noqa: E402
+from warranted._sandbox import SANDBOX_ID, Sandbox  # noqa: E402
+from warranted._worker import (  # noqa: E402
     AttemptResult,
     Episode,
     record_once,

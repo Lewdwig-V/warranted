@@ -8,6 +8,7 @@ before parsing or mini's submission control flow. No provider SDK is enabled her
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields
@@ -18,11 +19,15 @@ from typing import TypedDict
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
-from minisweagent.agents.default import DefaultAgent
-from minisweagent.exceptions import FormatError, Submitted
 
-from warranted.acceptance import Evidence, _encode
-from warranted.ledger import (
+# mini-swe-agent prints a banner on import unless told not to; the CLI's output,
+# including --json, must stay clean. An explicit setting is left alone.
+os.environ.setdefault("MSWEA_SILENT_STARTUP", "1")
+from minisweagent.agents.default import DefaultAgent  # noqa: E402
+from minisweagent.exceptions import FormatError, Submitted  # noqa: E402
+
+from warranted._acceptance import Evidence, _encode
+from warranted._ledger import (
     ROOT_SCOPE,
     Completion,
     Ledger,
@@ -47,7 +52,7 @@ Boundary = Callable[[Request, bytes], AttemptResult]
 
 SUBMIT_MARKER = b"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
 # A successful command whose first stdout line is this marker requests host
-# operations; see warranted.operations.
+# operations; see warranted._operations.
 REQUEST_MARKER = b"WARRANTED_REQUEST"
 
 # Token units are enforced for every model call once a project allows them.

@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from warranted.ledger import (
+from warranted._ledger import (
     ROOT_SCOPE,
     BudgetExceeded,
     InvalidProject,

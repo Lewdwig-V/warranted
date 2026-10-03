@@ -9,9 +9,9 @@ SDK, streaming, automatic retries, redirects, or environment proxies.
 
 | Adapter | Module | Endpoint | Lost response | Cost recorded |
 | --- | --- | --- | --- | --- |
-| `ReceiptService` | `warranted.attempts` | Loopback fake service (`http://127.0.0.1:<port>`) | Reconciled from an exact receipt, or left unknown | Synthetic integer units |
-| `LocalChatCompletions` | `warranted.chat_completions` | Local OpenAI-compatible `http://127.0.0.1:<port>/v1` (Ollama) | Unknown; cannot be reconciled | Attempts plus token counts |
-| `OpenRouterChatCompletions` | `warranted.openrouter` | `https://openrouter.ai/api/v1` | Unknown; cannot be reconciled; paid cost unknown | Attempts, tokens, and reported USD |
+| `ReceiptService` | `warranted.host` | Loopback fake service (`http://127.0.0.1:<port>`) | Reconciled from an exact receipt, or left unknown | Synthetic integer units |
+| `LocalChatCompletions` | `warranted` | Local OpenAI-compatible `http://127.0.0.1:<port>/v1` (Ollama) | Unknown; cannot be reconciled | Attempts plus token counts |
+| `OpenRouterChatCompletions` | `warranted` | `https://openrouter.ai/api/v1` | Unknown; cannot be reconciled; paid cost unknown | Attempts, tokens, and reported USD |
 
 ## Shared attempt contract
 

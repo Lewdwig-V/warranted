@@ -1,9 +1,9 @@
 # Claims and acceptance
 
 Two host-side APIs sit on top of the [evidence ledger](evidence-ledger.md).
-`warranted.claims.Claims` records assertions about exact evidence and reports
+`warranted.host.Claims` records assertions about exact evidence and reports
 their current support: checker result and dependency applicability, kept
-separate. `warranted.acceptance.Acceptance` is the local gate: it resolves the
+separate. `warranted.host.Acceptance` is the local gate: it resolves the
 current host-owned policy, checks independent checker receipts, and commits an
 acceptance decision. Claims never grant acceptance. Both record into the
 existing ledger schema and add no dependencies.
@@ -18,7 +18,7 @@ definition revisions) are described in
 
 ## Evidence references
 
-`Evidence(name, artifact)` (in `warranted.acceptance`) binds a snapshot name or an
+`Evidence(name, artifact)` (in `warranted.host`) binds a snapshot name or an
 observation channel `observation/<sequence>/<channel>` to its `ArtifactRef`.
 `Evidence.captured(observation, channel)` builds one from a committed observation.
 Equal bytes from different observations keep different references.

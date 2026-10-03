@@ -15,9 +15,9 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 from urllib.request import Request as HTTPRequest
 
-from warranted.acceptance import _digest, _encode
-from warranted.ledger import Outcome, Request, Result, _json_object
-from warranted.worker import AttemptResult
+from warranted._acceptance import _digest, _encode
+from warranted._ledger import Outcome, Request, Result, _json_object
+from warranted._worker import AttemptResult
 
 
 class _NoRedirect(HTTPRedirectHandler):

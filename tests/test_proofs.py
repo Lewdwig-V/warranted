@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from warranted.proofs import (
+from warranted._proofs import (
     RESOURCES,
     SOURCE_LIMIT,
     ProofStatus,
@@ -51,8 +51,8 @@ def test_changed_bundle_pin_fails_before_runtime_dispatch(tmp_path, field):
 
 
 def test_runtime_preflight_timeout_is_infrastructure_failure(tmp_path, monkeypatch):
-    from warranted import proofs
-    from warranted.containers import SandboxFailure
+    from warranted import _proofs as proofs
+    from warranted._containers import SandboxFailure
 
     path = tmp_path / "bundle.json"
     path.write_text(
@@ -72,3 +72,20 @@ def test_runtime_preflight_timeout_is_infrastructure_failure(tmp_path, monkeypat
     monkeypatch.setattr(proofs, "require_runtime", unavailable)
     result = verify(b"theorem fake : True := True.intro", path, target_id="uniqueness")
     assert result.status is ProofStatus.INFRASTRUCTURE_FAILURE
+
+
+def test_the_policy_digest_covers_the_container_runner(monkeypatch):
+    from pathlib import Path
+
+    from warranted import _containers
+
+    before = policy_digest()
+    read_bytes = Path.read_bytes
+    runner = Path(_containers.__file__)
+
+    def changed(path):
+        data = read_bytes(path)
+        return data + b"\n# changed\n" if path == runner else data
+
+    monkeypatch.setattr(Path, "read_bytes", changed)
+    assert policy_digest() != before

@@ -9,10 +9,10 @@ from decimal import Decimal
 import pytest
 from test_chat_completions import query
 
-from warranted import openrouter
-from warranted.ledger import Ledger, Manifest, Outcome, Snapshot
-from warranted.openrouter import OpenRouterChatCompletions
-from warranted.worker import UnknownOutcome
+from warranted import _openrouter as openrouter
+from warranted._ledger import Ledger, Manifest, Outcome, Snapshot
+from warranted._openrouter import OpenRouterChatCompletions
+from warranted._worker import UnknownOutcome
 
 
 def setup(root, client):
@@ -228,7 +228,7 @@ def test_metadata_http_failure_retains_raw_receipt(
 ):
     from test_m5_treatments import scripted
 
-    from warranted.contexts import Condition
+    from warranted._contexts import Condition
 
     client, _, _, _, _, _ = remote
     demo, _, bundle = scripted(tmp_path, monkeypatch, "migration", Condition.A)
@@ -274,7 +274,7 @@ def test_remote_credentials_cannot_be_sent_to_another_host(remote):
 def test_successful_preflight_survives_restart(tmp_path, remote, monkeypatch):
     from test_m5_treatments import scripted
 
-    from warranted.contexts import Condition
+    from warranted._contexts import Condition
 
     client, _, limits, _, _, secret = remote
     demo, _, bundle = scripted(tmp_path, monkeypatch, "migration", Condition.A)
@@ -313,7 +313,7 @@ def test_preflight_survives_lost_completion_without_retry(
 ):
     from test_m5_treatments import scripted
 
-    from warranted.contexts import Condition
+    from warranted._contexts import Condition
 
     client, calls, _, _, _, secret = remote
     demo, _, bundle = scripted(tmp_path, monkeypatch, "migration", Condition.A)
@@ -374,7 +374,7 @@ def test_preflight_time_is_separate_from_inference(remote, monkeypatch, failed):
 def test_key_rotation_after_preflight_cannot_dispatch(tmp_path, remote, monkeypatch):
     from test_m5_treatments import scripted
 
-    from warranted.contexts import Condition
+    from warranted._contexts import Condition
 
     client, calls, _, _, _, _ = remote
     demo, _, bundle = scripted(tmp_path, monkeypatch, "migration", Condition.A)
@@ -428,7 +428,7 @@ def test_paid_treatment_checks_cap_before_dispatch_and_pins_twelve_steps(
 ):
     from test_m5_treatments import scripted
 
-    from warranted.contexts import Condition
+    from warranted._contexts import Condition
 
     demo, _, bundle = scripted(tmp_path, monkeypatch, "migration", Condition.A)
     client, calls, limits, _, _, _ = remote

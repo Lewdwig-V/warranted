@@ -37,8 +37,8 @@ def test_empty_and_dropped_candidates_have_all_premises_but_fail_task_checks():
 
 
 def test_current_but_rejected_or_unproved_premise_cannot_support_application():
-    from warranted.acceptance import Status
-    from warranted.claims import Applicability, Assessment
+    from warranted._acceptance import Status
+    from warranted._claims import Applicability, Assessment
 
     demo = module()
     passing = Assessment(Status.PASSED, Applicability.CURRENT, {})
@@ -73,8 +73,8 @@ def test_wrong_correspondence_unknown_mapping_and_invalid_selection_block_suppor
 
 
 def scripted(root, monkeypatch):
-    from warranted import proofs
-    from warranted.proofs import ProofStatus, Verification
+    from warranted import _proofs as proofs
+    from warranted._proofs import ProofStatus, Verification
 
     demo = module()
     bundle = root.parent / "bundle.json"
@@ -151,7 +151,7 @@ def assert_completed(report):
 def test_three_applications_and_premise_revision_keep_results_and_costs(
     tmp_path, monkeypatch
 ):
-    from warranted.ledger import Ledger
+    from warranted._ledger import Ledger
 
     root = tmp_path / "demo"
     demo, bundle = scripted(root, monkeypatch)
@@ -197,8 +197,8 @@ def test_application_cannot_substitute_other_passing_evidence(
 ):
     from dataclasses import asdict
 
-    from warranted.acceptance import Evidence, _digest
-    from warranted.ledger import Ledger, Origin
+    from warranted._acceptance import Evidence, _digest
+    from warranted._ledger import Ledger, Origin
 
     root = tmp_path / "demo"
     demo, bundle = scripted(root, monkeypatch)
@@ -242,8 +242,8 @@ def test_application_cannot_substitute_other_passing_evidence(
 
 
 def test_premise_revision_requires_the_pinned_owner_transition(tmp_path, monkeypatch):
-    from warranted.acceptance import Evidence
-    from warranted.ledger import Ledger
+    from warranted._acceptance import Evidence
+    from warranted._ledger import Ledger
 
     root = tmp_path / "demo"
     demo, bundle = scripted(root, monkeypatch)
@@ -265,9 +265,9 @@ def test_premise_revision_requires_the_pinned_owner_transition(tmp_path, monkeyp
 def test_changed_fixture_and_unknown_verification_cannot_dispatch_on_resume(
     tmp_path, monkeypatch
 ):
-    from warranted import proofs
-    from warranted.ledger import CorruptArtifact, Ledger
-    from warranted.worker import UnknownOutcome
+    from warranted import _proofs as proofs
+    from warranted._ledger import CorruptArtifact, Ledger
+    from warranted._worker import UnknownOutcome
 
     root = tmp_path / "demo"
     demo, bundle = scripted(root, monkeypatch)
@@ -296,7 +296,7 @@ def test_cli_kills_host_before_ledger_teardown(tmp_path, monkeypatch):
     import signal
     import sys
 
-    from warranted.ledger import Ledger
+    from warranted._ledger import Ledger
 
     root = tmp_path / "demo"
     demo, bundle = scripted(root, monkeypatch)

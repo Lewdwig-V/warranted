@@ -18,9 +18,9 @@ from time import perf_counter_ns
 from types import MappingProxyType
 from typing import Any, Literal, Protocol
 
-from warranted.acceptance import Evidence, _encode
-from warranted.jobs import _FILE_NAME, JobContext, JobRunner
-from warranted.ledger import (
+from warranted._acceptance import Evidence, _encode
+from warranted._jobs import _FILE_NAME, JobContext, JobRunner
+from warranted._ledger import (
     ROOT_SCOPE,
     BudgetExceeded,
     Completion,
@@ -30,7 +30,7 @@ from warranted.ledger import (
     Result,
     _json_object,
 )
-from warranted.worker import (
+from warranted._worker import (
     SUBMIT_MARKER,
     AttemptResult,
     Journal,

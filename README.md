@@ -19,19 +19,20 @@ stable, and the `warranted` command prints help and its version only.
 Everything below runs locally with one trusted host process writing the ledger.
 Scope limits are stated in each linked document.
 
-| Component | What it does | Module | Details |
+| Component | What it does | Import | Details |
 | --- | --- | --- | --- |
-| Evidence ledger | Immutable observations, SHA-256 artifact files, operation receipts, reservations, and usage in SQLite; survives process termination | `ledger.py` | [Evidence ledger](docs/reference/evidence-ledger.md) |
-| Exports | Explicitly selected, non-authoritative copies for inspection | `exports.py` | [Exports](docs/reference/evidence-ledger.md#permitted-exports) |
-| Claims and support | Assertions with assumption versions, historical checks, and conservative staleness through declared dependencies | `claims.py` | [Claims](docs/reference/claims-and-acceptance.md#claims) |
-| Acceptance boundary | Gates checked against exact current versions; scoped rule exceptions; owner-approved contract revisions | `acceptance.py` | [Acceptance](docs/reference/claims-and-acceptance.md#acceptance) |
-| Worker integration | mini-swe-agent 2.4.6 inside a serial LangGraph 1.2.11 lifecycle with its SQLite checkpointer | `worker.py` | [Worker](docs/reference/worker-and-containment.md) |
-| Containment | One rootless Podman container per episode, with no host mounts or network; candidate capture after worker processes stop | `sandbox.py`, `containers.py` | [Containment](docs/reference/worker-and-containment.md#container-sandbox) |
-| Checker jobs | One-shot contained jobs that let a checker run untrusted code, such as a candidate program | `jobs.py` | [Checker jobs](docs/reference/worker-and-containment.md#checker-jobs) |
-| Host-mediated operations | Worker requests the host executes, reserves, records, and reuses, with results shown apart from command output | `operations.py` | [Host-mediated operations](docs/reference/worker-and-containment.md#host-mediated-operations) |
-| External attempts | Single-attempt adapters for a loopback fake service, a local OpenAI-compatible server (Ollama), and OpenRouter; lost responses stay blocked | `attempts.py`, `chat_completions.py`, `openrouter.py` | [Model adapters](docs/reference/model-adapters.md) |
-| Lean verification | Pinned Lean, Comparator, and Landrun check an exact target and axiom policy; durable proof receipts | `proofs.py`, `proof_receipts.py`, `proof/` | [Proof verification](docs/reference/proof-verification.md) |
-| A–E contexts | Host-selected worker context for the five knowledge-workflow conditions | `contexts.py` | [Contexts](docs/reference/contexts.md) |
+| Task layer | Projects, TOML tasks, runs with resume, domain checkers, the duplicate guard, and scoped memory | `warranted` | [M7 proposal](docs/proposals/m7-harness-api.md) |
+| Evidence ledger | Immutable observations, SHA-256 artifact files, operation receipts, reservations, and usage in SQLite; survives process termination | `warranted.host` | [Evidence ledger](docs/reference/evidence-ledger.md) |
+| Exports | Explicitly selected, non-authoritative copies for inspection | `warranted.host` | [Exports](docs/reference/evidence-ledger.md#permitted-exports) |
+| Claims and support | Assertions with assumption versions, historical checks, and conservative staleness through declared dependencies | `warranted.host` | [Claims](docs/reference/claims-and-acceptance.md#claims) |
+| Acceptance boundary | Gates checked against exact current versions; scoped rule exceptions; owner-approved contract revisions | `warranted.host` | [Acceptance](docs/reference/claims-and-acceptance.md#acceptance) |
+| Worker integration | mini-swe-agent 2.4.6 inside a serial LangGraph 1.2.11 lifecycle with its SQLite checkpointer | `warranted.host` | [Worker](docs/reference/worker-and-containment.md) |
+| Containment | One rootless Podman container per episode, with no host mounts or network; candidate capture after worker processes stop | `warranted.host` | [Containment](docs/reference/worker-and-containment.md#container-sandbox) |
+| Checker jobs | One-shot contained jobs that let a checker run untrusted code, such as a candidate program | `warranted` | [Checker jobs](docs/reference/worker-and-containment.md#checker-jobs) |
+| Host-mediated operations | Worker requests the host executes, reserves, records, and reuses, with results shown apart from command output | `warranted` | [Host-mediated operations](docs/reference/worker-and-containment.md#host-mediated-operations) |
+| External attempts | Single-attempt adapters for a loopback fake service, a local OpenAI-compatible server (Ollama), and OpenRouter; lost responses stay blocked | `warranted`, `warranted.host` | [Model adapters](docs/reference/model-adapters.md) |
+| Lean verification | Pinned Lean, Comparator, and Landrun check an exact target and axiom policy; durable proof receipts | `warranted.host` | [Proof verification](docs/reference/proof-verification.md) |
+| A–E contexts | Host-selected worker context for the five knowledge-workflow conditions | `warranted.host` | [Contexts](docs/reference/contexts.md) |
 
 The fixtures live under [`examples/`](examples): a CSV transformation with a
 revised timestamp interpretation (M1–M4) and a configuration-file repository
@@ -92,11 +93,13 @@ The next work is a stable public API and CLI, so that
 and keep only its reverse-engineering logic
 ([M7 and M8](docs/roadmap.md#m7--stable-harness-api-and-cli)). Until then:
 
-- There is no stable public API; module interfaces may change. A prototype task
-  layer, `warranted.experimental`, exists to test the
-  [M7 proposal](docs/proposals/m7-harness-api.md) and has no stability promise.
-- There is no domain checker, host-mediated operation, or campaign interface for
-  projects outside this repository.
+- The public API is not yet stable. `warranted` exports the task layer
+  (projects, tasks, runs, domains, checkers, operations, and memory) from the
+  [M7 proposal](docs/proposals/m7-harness-api.md), and `warranted.host` exports
+  the low-level kit. Modules whose names start with an underscore are private.
+  Until 1.0, either surface may change; changes will be listed in the changelog.
+- There is no campaign interface, and contract revisions are not yet part of the
+  task layer.
 - The measured A–E comparison, with frontier and smaller models, separated
   development and held-out tasks, and full cost reporting.
 - Replay of recorded histories and the planned

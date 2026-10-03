@@ -6,10 +6,10 @@ from dataclasses import replace
 
 import pytest
 
-from warranted.acceptance import Evidence
-from warranted.contexts import Condition, capture_context
-from warranted.ledger import Ledger, Manifest, OperationConflict, Origin, Snapshot
-from warranted.worker import Episode, Journal, input_files
+from warranted._acceptance import Evidence
+from warranted._contexts import Condition, capture_context
+from warranted._ledger import Ledger, Manifest, OperationConflict, Origin, Snapshot
+from warranted._worker import Episode, Journal, input_files
 
 
 def project(root, condition):

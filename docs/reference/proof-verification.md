@@ -137,7 +137,7 @@ image), source pins, policy digest, and `build_elapsed_ns`. The image ID also
 identifies the base system and libraries. A bundle whose policy digest, image ID
 format, or toolchain pins disagree with the current source is refused before
 dispatch, so rebuild after changing anything under `src/warranted/proof/`,
-`proofs.py`, or `containers.py`.
+`_proofs.py`, or `_containers.py`.
 
 The ordinary suite skips native proof tests unless `WARRANTED_PROOF_TESTS=1`.
 An enabled native test fails when isolation or the tool image is unavailable.
@@ -154,7 +154,7 @@ Download and cached build times vary and do not measure proof reuse.
 import json
 from pathlib import Path
 
-from warranted.proofs import verify
+from warranted.host import verify_proof as verify
 
 source = Path("examples/m4/Solution.lean").read_bytes()
 result = verify(source, Path("runs/m4-tools/bundle.json"), target_id="uniqueness")
@@ -220,7 +220,7 @@ artifact and policy. No status other than `proved` shows the target theorem fals
 
 ## Durable proof receipts
 
-`warranted.proof_receipts.Proofs` connects the verifier to the
+`warranted.host.Proofs` connects the verifier to the
 [evidence ledger](evidence-ledger.md) and [claims](claims-and-acceptance.md), with
 one trusted writer outside worker storage. Build the bundle first, then run once
 with a new ledger destination:
@@ -228,10 +228,10 @@ with a new ledger destination:
 ```python
 from pathlib import Path
 
-from warranted.acceptance import Evidence
-from warranted.claims import Claims
-from warranted.ledger import Ledger, Manifest, Snapshot
-from warranted.proof_receipts import Proofs
+from warranted.host import Evidence
+from warranted.host import Claims
+from warranted.host import Ledger, Manifest, Snapshot
+from warranted.host import Proofs
 
 root = Path("runs/m4-receipts")
 root.parent.mkdir(parents=True, exist_ok=True)

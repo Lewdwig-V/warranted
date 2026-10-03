@@ -6,8 +6,9 @@ from dataclasses import replace
 import pytest
 from test_experimental_tasks import CANDIDATES, CONFIG, CSV, ENVIRONMENT, TASK, Model
 
-from warranted.claims import Applicability
-from warranted.experimental import (
+from warranted._claims import Applicability
+from warranted._ledger import Ledger, Outcome, Result
+from warranted._tasks import (
     MEMORY_LIMIT,
     MemorySpec,
     Project,
@@ -16,8 +17,7 @@ from warranted.experimental import (
     Verdict,
     VerdictStatus,
 )
-from warranted.ledger import Ledger, Outcome, Result
-from warranted.worker import AttemptResult
+from warranted._worker import AttemptResult
 
 
 class Remembering:
@@ -319,7 +319,7 @@ def test_a_non_finite_fact_is_a_checker_fault_not_a_poisoned_memory(setup):
 
 
 def test_a_changed_note_does_not_make_a_repeat_look_new(setup):
-    from warranted.guard import DuplicateGuard
+    from warranted._guard import DuplicateGuard
 
     make, worker = setup
     project = make()

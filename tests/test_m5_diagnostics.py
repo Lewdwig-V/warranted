@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 from minisweagent.exceptions import FormatError
 
-from warranted.acceptance import Evidence
-from warranted.contexts import Condition
-from warranted.ledger import Ledger, Outcome, Result
-from warranted.worker import AttemptResult, Episode, Journal, submitted_candidate
+from warranted._acceptance import Evidence
+from warranted._contexts import Condition
+from warranted._ledger import Ledger, Outcome, Result
+from warranted._worker import AttemptResult, Episode, Journal, submitted_candidate
 
 SCRIPT = Path(__file__).resolve().parents[1] / "examples/m5/diagnostics.py"
 
@@ -117,7 +117,7 @@ def test_ablation_changes_only_declared_instructions_and_helper(tmp_path):
 def test_ablation_dispatch_keeps_countdown_and_helper_separate(tmp_path, monkeypatch):
     from test_m5_treatments import scripted
 
-    from warranted import worker
+    from warranted import _worker as worker
 
     _, _, bundle = scripted(tmp_path, monkeypatch, "migration", Condition.A)
     demo = runpy.run_path(str(SCRIPT))

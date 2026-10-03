@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from warranted.ledger import Ledger
+from warranted._ledger import Ledger
 
 SCRIPT = Path(__file__).resolve().parents[1] / "examples/m3/demo.py"
 pytestmark = [

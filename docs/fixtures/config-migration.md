@@ -270,7 +270,7 @@ in a fresh process:
 
 ```bash
 uv run --locked python scripts/build_proof_bundle.py runs/m4-tools
-podman pull "$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
+podman pull "$(uv run --locked python -c 'from warranted.host import IMAGE; print(IMAGE)')"
 uv run --locked python examples/m5/proof_cases.py start runs/m5-proofs --bundle runs/m4-tools/bundle.json --crash
 uv run --locked python examples/m5/proof_cases.py resume runs/m5-proofs --bundle runs/m4-tools/bundle.json
 uv run --locked python examples/m5/proof_cases.py resume runs/m5-proofs --bundle runs/m4-tools/bundle.json

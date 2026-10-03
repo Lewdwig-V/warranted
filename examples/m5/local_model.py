@@ -8,11 +8,11 @@ import re
 from pathlib import Path
 from time import monotonic_ns
 
-from warranted import chat_completions
-from warranted.acceptance import _encode
-from warranted.chat_completions import MAX_BYTES, LocalChatCompletions, http_response
-from warranted.ledger import Ledger, Manifest, Outcome, Result, Snapshot, _json_object
-from warranted.worker import AttemptResult, Episode, Journal, WorkerModel
+from warranted import _chat_completions as chat_completions
+from warranted._acceptance import _encode
+from warranted._chat_completions import MAX_BYTES, LocalChatCompletions, http_response
+from warranted._ledger import Ledger, Manifest, Outcome, Result, Snapshot, _json_object
+from warranted._worker import AttemptResult, Episode, Journal, WorkerModel
 
 PROMPT = 'Return exactly this JSON object: {"command":"true"}. No other text.'
 METADATA_REQUEST_TIMEOUT_SECONDS = 10

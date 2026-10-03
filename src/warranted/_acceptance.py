@@ -15,7 +15,7 @@ from enum import StrEnum
 from time import perf_counter_ns
 from types import MappingProxyType
 
-from warranted.ledger import (
+from warranted._ledger import (
     ROOT_SCOPE,
     ArtifactRef,
     BudgetExceeded,

@@ -291,7 +291,7 @@ versions, and literal answers stay private.
 After pulling the pinned image, run:
 
 ```bash
-podman pull "$(uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)')"
+podman pull "$(uv run --locked python -c 'from warranted.host import IMAGE; print(IMAGE)')"
 uv run --locked python examples/m3/demo.py start runs/m3 --crash
 # The expected SIGKILL exit status is 137 in a shell.
 uv run --locked python examples/m3/demo.py resume runs/m3

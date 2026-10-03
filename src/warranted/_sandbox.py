@@ -15,10 +15,10 @@ from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 from time import perf_counter_ns
 
-from warranted.containers import SandboxFailure, _run, require_runtime
-from warranted.jobs import _FILE_NAME, pinned_image
-from warranted.ledger import Ledger, Outcome, Request, Result, _json_object
-from warranted.worker import (
+from warranted._containers import SandboxFailure, _run, require_runtime
+from warranted._jobs import _FILE_NAME, pinned_image
+from warranted._ledger import Ledger, Outcome, Request, Result, _json_object
+from warranted._worker import (
     REQUEST_MARKER,
     SUBMIT_MARKER,
     AttemptResult,

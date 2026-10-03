@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-warranted = "warranted.cli:main"
+warranted = "warranted._cli:main"
 
 [project.urls]
 Repository = "https://github.com/Lewdwig-V/warranted"

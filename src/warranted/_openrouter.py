@@ -13,11 +13,11 @@ from pathlib import Path
 from time import monotonic_ns
 from typing import ClassVar
 
-from warranted.acceptance import _encode
-from warranted.chat_completions import MAX_BYTES, LocalChatCompletions
-from warranted.containers import SandboxFailure, _run
-from warranted.ledger import Ledger, Origin, Outcome, Result, _json_object
-from warranted.worker import AttemptResult, UnknownOutcome, record_once
+from warranted._acceptance import _encode
+from warranted._chat_completions import MAX_BYTES, LocalChatCompletions
+from warranted._containers import SandboxFailure, _run
+from warranted._ledger import Ledger, Origin, Outcome, Result, _json_object
+from warranted._worker import AttemptResult, UnknownOutcome, record_once
 
 # A child process gives DNS, TLS, headers, and body reads one killable deadline.
 # Credentials travel over stdin, never argv, captured requests, or worker files.

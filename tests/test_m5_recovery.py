@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from warranted.ledger import Ledger, Outcome, Result
-from warranted.worker import AttemptResult, UnknownOutcome
+from warranted._ledger import Ledger, Outcome, Result
+from warranted._worker import AttemptResult, UnknownOutcome
 
 SCRIPT = Path(__file__).resolve().parents[1] / "examples/m5/recovery.py"
 

@@ -32,6 +32,10 @@ existing fixtures and ReSchema can be written against one public API.
 | 6 | Task versus run | A task says what to solve; a run configuration says who solves it and with what limits. |
 | 7 | Memory | Verified facts record what they depend on and become stale when a dependency changes. Included in M7. |
 | 8 | Domain builds | Corpus builds and similar steps stay in the domain project. Warranted imports their outputs as pinned artifacts. |
+| 9 | How do internals become private? | Implementation modules are renamed with a leading underscore. `warranted` exports the task layer and `warranted.host` the host kit; a test keeps the CLI and the M7 examples on those two surfaces. Decided 2026-10-03. |
+| 10 | How does the CLI find a domain? | `warranted init DIR --domain REF` accepts `package.module:Object` or `path/to/domain.py:Object`; a file path is stored relative to the project. Decided 2026-10-03. |
+| 11 | CLI exit codes | 0 accepted, 1 rejected or incomplete, 2 usage error, 3 unknown, 4 unsupported, 5 infrastructure failure. Decided 2026-10-03. |
+| 12 | First CLI slice | `init`, `run`, `resume`, `status`, `memory`, and `export`. Campaigns and `import` follow; `revise` waits for contract revisions in the task layer. Decided 2026-10-03. |
 
 ## Layers
 

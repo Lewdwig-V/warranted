@@ -32,7 +32,7 @@ then comes before the scheduling experiment.
 | Component | Responsibility | Current implementation |
 | --- | --- | --- |
 | Host controller | Operation permissions, authoritative writes, budgets, recovery, acceptance | Python modules with one trusted ledger writer |
-| Evidence ledger | Versioned observations, claims, dependencies, attempts, and receipts | SQLite plus SHA-256-addressed artifact files (`ledger.py`, `claims.py`) |
+| Evidence ledger | Versioned observations, claims, dependencies, attempts, and receipts | SQLite plus SHA-256-addressed artifact files (`warranted.host.Ledger`, `warranted.host.Claims`) |
 | Worker | Inspect permitted context, propose artifacts and investigations | mini-swe-agent 2.4.6 with shell and files in rootless Podman |
 | Workflow runner | Dispatch and checkpoint bounded sessions | LangGraph 1.2.11 with a separate SQLite checkpoint database |
 | Domain environment | Supply observations and execute permitted operations | Two local fixtures: CSV transformation and configuration migration |

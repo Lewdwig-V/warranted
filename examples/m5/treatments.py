@@ -15,19 +15,21 @@ from uuid import uuid4
 
 os.environ["MSWEA_SILENT_STARTUP"] = "1"
 
-from warranted import (  # noqa: E402
-    containers,
-    contexts,
-    sandbox,
-    worker,
+from warranted import _containers as containers
+from warranted import _contexts as contexts
+from warranted import _proofs as verifier
+from warranted import _sandbox as sandbox
+from warranted import _worker as worker
+from warranted._acceptance import Evidence, _encode  # noqa: E402
+from warranted._chat_completions import LocalChatCompletions  # noqa: E402
+from warranted._containers import PODMAN_COMMAND_TIMEOUT_SECONDS  # noqa: E402
+from warranted._contexts import (  # noqa: E402
+    Condition,
+    capture_context,
+    capture_history,
 )
-from warranted import proofs as verifier
-from warranted.acceptance import Evidence, _encode  # noqa: E402
-from warranted.chat_completions import LocalChatCompletions  # noqa: E402
-from warranted.containers import PODMAN_COMMAND_TIMEOUT_SECONDS  # noqa: E402
-from warranted.contexts import Condition, capture_context, capture_history  # noqa: E402
-from warranted.exports import export_evidence  # noqa: E402
-from warranted.ledger import (  # noqa: E402
+from warranted._exports import export_evidence  # noqa: E402
+from warranted._ledger import (  # noqa: E402
     Ledger,
     Manifest,
     Origin,
@@ -35,10 +37,13 @@ from warranted.ledger import (  # noqa: E402
     Result,
     Snapshot,
 )
-from warranted.openrouter import OpenRouterChatCompletions, command_format  # noqa: E402
-from warranted.proof_receipts import Proofs, proof_status  # noqa: E402
-from warranted.sandbox import SANDBOX_ID, Sandbox, decode_workspace  # noqa: E402
-from warranted.worker import (  # noqa: E402
+from warranted._openrouter import (  # noqa: E402
+    OpenRouterChatCompletions,
+    command_format,
+)
+from warranted._proof_receipts import Proofs, proof_status  # noqa: E402
+from warranted._sandbox import SANDBOX_ID, Sandbox, decode_workspace  # noqa: E402
+from warranted._worker import (  # noqa: E402
     AttemptResult,
     Episode,
     record_once,

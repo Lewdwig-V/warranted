@@ -8,10 +8,10 @@ from dataclasses import replace
 
 import pytest
 
-from warranted.acceptance import Evidence
-from warranted.ledger import Ledger, Manifest, Outcome, Result, Snapshot
-from warranted.sandbox import SANDBOX_ID, Sandbox
-from warranted.worker import AttemptResult, Episode, UnknownOutcome, run_workflow
+from warranted._acceptance import Evidence
+from warranted._ledger import Ledger, Manifest, Outcome, Result, Snapshot
+from warranted._sandbox import SANDBOX_ID, Sandbox
+from warranted._worker import AttemptResult, Episode, UnknownOutcome, run_workflow
 
 pytestmark = [
     pytest.mark.container,
@@ -234,7 +234,7 @@ def test_workspace_links_and_special_files_fail_capture(tmp_path, command):
 
 
 def capture_crash(root, episode, pipe, when):
-    from warranted import sandbox
+    from warranted import _sandbox as sandbox
 
     execute, complete = sandbox._run, Ledger.complete
 
@@ -336,7 +336,7 @@ def test_shell_failure_keeps_workspace_for_correction(tmp_path, command, code):
 
 
 def test_runtime_exec_failure_remains_infrastructure_failure(tmp_path, monkeypatch):
-    from warranted import sandbox
+    from warranted import _sandbox as sandbox
 
     episode = setup(tmp_path)
     execute = sandbox._run
@@ -358,7 +358,7 @@ def test_runtime_exec_failure_remains_infrastructure_failure(tmp_path, monkeypat
 
 
 def test_delivered_operation_files_are_root_owned_and_read_only(tmp_path):
-    from warranted.operations import Delivery
+    from warranted._operations import Delivery
 
     episode = replace(setup(tmp_path), max_steps=3)
     commands = iter(
@@ -444,7 +444,7 @@ def entrypoint_image() -> str:
     """A local image whose entrypoint would make any wrapped command fail."""
     import tempfile
 
-    from warranted.sandbox import IMAGE
+    from warranted._sandbox import IMAGE
 
     with tempfile.TemporaryDirectory() as context:
         subprocess.run(
@@ -467,7 +467,7 @@ def entrypoint_image() -> str:
 
 
 def local_id() -> str:
-    from warranted.sandbox import IMAGE
+    from warranted._sandbox import IMAGE
 
     return subprocess.run(
         ["podman", "image", "inspect", "--format", "{{.Id}}", IMAGE],
@@ -479,7 +479,7 @@ def local_id() -> str:
 
 @pytest.mark.parametrize("image", [local_id, entrypoint_image])
 def test_a_worker_runs_in_a_domain_image_pinned_by_local_id(tmp_path, image):
-    from warranted.sandbox import sandbox_id
+    from warranted._sandbox import sandbox_id
 
     image_id = image()
     episode = replace(setup(tmp_path), environment=sandbox_id(image_id))

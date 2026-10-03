@@ -19,8 +19,8 @@ from pathlib import Path
 from time import perf_counter_ns
 from uuid import uuid4
 
-from warranted.exports import export_evidence
-from warranted.ledger import (
+from warranted._exports import export_evidence
+from warranted._ledger import (
     ArtifactRef,
     Completion,
     Ledger,

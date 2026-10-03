@@ -24,14 +24,14 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from warranted.acceptance import _encode
-from warranted.chat_completions import (
+from warranted.host import (
     MAX_BYTES,
     MESSAGE_MARGIN,
     LocalChatCompletions,
     http_response,
 )
-from warranted.ledger import _json_object
+from warranted.host import encode_json as _encode
+from warranted.host import strict_json_object as _json_object
 
 PROSE = (
     "The harness records every model request and tool result before the worker "

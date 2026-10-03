@@ -9,7 +9,14 @@ from collections.abc import Mapping
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from warranted.ledger import ArtifactRef, Ledger, Origin, _integer, _json_default, _text
+from warranted._ledger import (
+    ArtifactRef,
+    Ledger,
+    Origin,
+    _integer,
+    _json_default,
+    _text,
+)
 
 
 def _names(values: tuple[str, ...]) -> tuple[str, ...]:

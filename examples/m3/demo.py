@@ -18,13 +18,15 @@ from uuid import uuid4
 
 os.environ["MSWEA_SILENT_STARTUP"] = "1"
 
-from warranted import attempts, sandbox, worker  # noqa: E402
-from warranted.acceptance import Evidence  # noqa: E402
-from warranted.attempts import ReceiptService  # noqa: E402
-from warranted.exports import export_evidence  # noqa: E402
-from warranted.ledger import Ledger, Manifest, Snapshot  # noqa: E402
-from warranted.sandbox import SANDBOX_ID, Sandbox  # noqa: E402
-from warranted.worker import Episode, run_workflow, submitted_candidate  # noqa: E402
+from warranted import _attempts as attempts
+from warranted import _sandbox as sandbox
+from warranted import _worker as worker
+from warranted._acceptance import Evidence  # noqa: E402
+from warranted._attempts import ReceiptService  # noqa: E402
+from warranted._exports import export_evidence  # noqa: E402
+from warranted._ledger import Ledger, Manifest, Snapshot  # noqa: E402
+from warranted._sandbox import SANDBOX_ID, Sandbox  # noqa: E402
+from warranted._worker import Episode, run_workflow, submitted_candidate  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 M2 = runpy.run_path(str(HERE.parent / "m2/experiments.py"))

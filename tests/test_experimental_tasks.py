@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from warranted.experimental import (
+from warranted._ledger import Ledger, Outcome, Result
+from warranted._tasks import (
     FEEDBACK_LIMIT,
     CheckContext,
     Project,
@@ -19,8 +20,7 @@ from warranted.experimental import (
     _source_files,
     domain_identity,
 )
-from warranted.ledger import Ledger, Outcome, Result
-from warranted.worker import AttemptResult
+from warranted._worker import AttemptResult
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples/m7/csv"
 CANDIDATES = json.loads(
@@ -431,7 +431,7 @@ def test_budgets_belong_to_their_owner(tmp_path):
 
 
 def test_reconciliation_only_sees_the_episodes_own_scope(tmp_path):
-    from warranted.worker import Episode, run_workflow
+    from warranted._worker import Episode, run_workflow
 
     proj, script = project(tmp_path, [RuntimeError("host killed mid-dispatch")])
     with pytest.raises(RuntimeError, match="host killed"):
@@ -608,7 +608,7 @@ def test_changed_warranted_code_blocks_reopening_even_at_the_same_version(
 ):
     import shutil
 
-    import warranted.experimental as experimental
+    import warranted._tasks as experimental
 
     package = tmp_path / "warranted"
     shutil.copytree(experimental.PACKAGE_ROOT, package)
@@ -617,7 +617,7 @@ def test_changed_warranted_code_blocks_reopening_even_at_the_same_version(
     options = {"environment": Script([]), "environment_id": ENVIRONMENT}
     Project.create(root, CSV.CsvDomain(), {"model": 1}, **options)
     Project(root, CSV.CsvDomain(), **options)
-    acceptance = package / "acceptance.py"
+    acceptance = package / "_acceptance.py"
     acceptance.write_bytes(acceptance.read_bytes() + b"\n# changed\n")
     with pytest.raises(ValueError, match="domain or environment differs"):
         Project(root, CSV.CsvDomain(), **options)

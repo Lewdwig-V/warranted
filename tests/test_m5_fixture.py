@@ -68,8 +68,8 @@ def test_candidate_cannot_edit_protected_paths_or_forge_payload(payload):
 
 
 def scripted(tmp_path, monkeypatch):
-    from warranted.ledger import Outcome, Result
-    from warranted.worker import AttemptResult
+    from warranted._ledger import Outcome, Result
+    from warranted._worker import AttemptResult
 
     demo = module()
     root = tmp_path / "demo"
@@ -156,8 +156,8 @@ def test_matrix_keeps_independent_failures_and_reuses_actual_checks(
 
 
 def test_old_contract_receipt_cannot_pass_revised_acceptance(tmp_path, monkeypatch):
-    from warranted.acceptance import Acceptance, AcceptanceContext, Evidence, Status
-    from warranted.ledger import Ledger
+    from warranted._acceptance import Acceptance, AcceptanceContext, Evidence, Status
+    from warranted._ledger import Ledger
 
     demo, root = scripted(tmp_path, monkeypatch)
     demo["demonstrate"](root)
@@ -191,8 +191,8 @@ def test_old_contract_receipt_cannot_pass_revised_acceptance(tmp_path, monkeypat
 
 
 def test_unknown_execution_retains_reservation_and_blocks_retry(tmp_path, monkeypatch):
-    from warranted.ledger import Ledger
-    from warranted.worker import UnknownOutcome
+    from warranted._ledger import Ledger
+    from warranted._worker import UnknownOutcome
 
     demo, root = scripted(tmp_path, monkeypatch)
 
@@ -213,8 +213,8 @@ def test_unknown_execution_retains_reservation_and_blocks_retry(tmp_path, monkey
 def test_unavailable_isolation_never_runs_or_reports_candidate_success(
     tmp_path, monkeypatch
 ):
-    from warranted.containers import SandboxFailure
-    from warranted.ledger import Outcome
+    from warranted._containers import SandboxFailure
+    from warranted._ledger import Outcome
 
     demo = module()
     closed = []
@@ -243,8 +243,8 @@ def test_unavailable_isolation_never_runs_or_reports_candidate_success(
 def test_infrastructure_failure_cannot_be_mistaken_for_input_rejection(
     tmp_path, monkeypatch
 ):
-    from warranted.ledger import Outcome, Result
-    from warranted.worker import AttemptResult
+    from warranted._ledger import Outcome, Result
+    from warranted._worker import AttemptResult
 
     demo, root = scripted(tmp_path, monkeypatch)
 
@@ -290,9 +290,9 @@ def test_native_migration_matrix_and_fresh_process_reuse(tmp_path):
 
 
 def native_case(root, source, inputs=None):
-    from warranted.ledger import Ledger, Manifest, Snapshot
-    from warranted.sandbox import SANDBOX_ID
-    from warranted.worker import Episode
+    from warranted._ledger import Ledger, Manifest, Snapshot
+    from warranted._sandbox import SANDBOX_ID
+    from warranted._worker import Episode
 
     demo = module()
     with Ledger.create(
@@ -322,7 +322,7 @@ def native_case(root, source, inputs=None):
 @pytest.mark.container
 @native
 def test_native_timeout_preserves_output_and_known_failure(tmp_path):
-    from warranted.ledger import Outcome
+    from warranted._ledger import Outcome
 
     result, raw = native_case(
         tmp_path, b"import time\nprint('started', flush=True)\ntime.sleep(60)\n"
@@ -339,7 +339,7 @@ def test_native_timeout_preserves_output_and_known_failure(tmp_path):
 @pytest.mark.container
 @native
 def test_native_candidate_cannot_forge_status_or_read_answers(tmp_path):
-    from warranted.ledger import Outcome
+    from warranted._ledger import Outcome
 
     result, raw = native_case(
         tmp_path,
@@ -366,7 +366,7 @@ os._exit(7)
 @pytest.mark.container
 @native
 def test_native_batch_stops_children_and_bounds_output_between_cases(tmp_path):
-    from warranted.ledger import Outcome
+    from warranted._ledger import Outcome
 
     result, raw = native_case(
         tmp_path,

@@ -1,6 +1,6 @@
 # Contexts and treatments
 
-`warranted.contexts` controls what a worker episode may see. The trusted host
+`warranted.host.capture_context` controls what a worker episode may see. The trusted host
 assigns each file to one of five cumulative layers, A through E, and a run's
 pinned condition decides which layers reach the worker. The selection is frozen
 as evidence and bound to the episode. `examples/m5/treatments.py` applies this
@@ -84,9 +84,9 @@ copying an E episode into a B run or disclosing a future revision before its
 checkpoint.
 
 ```python
-from warranted.contexts import capture_context
-from warranted.sandbox import SANDBOX_ID
-from warranted.worker import Episode
+from warranted.host import capture_context
+from warranted.host import SANDBOX_ID
+from warranted.host import Episode
 
 files = capture_context(ledger, session, "revised", layers)
 episode = Episode(
