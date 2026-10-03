@@ -38,6 +38,7 @@ from warranted.ledger import (
 )
 from warranted.sandbox import SANDBOX_ID, Sandbox
 from warranted.worker import (
+    TOKEN_UNITS,
     Episode,
     UnknownOutcome,
     record_once,
@@ -228,7 +229,7 @@ class TaskSpec:
         budgets = data.get("budgets", {})
         if not budgets.keys() <= {"submissions", "checks"}:
             raise ValueError(
-                "unknown task budget; model and tool budgets belong to runs"
+                "unknown task budget; model, tool, and token budgets belong to runs"
             )
 
         def files(table: Mapping[str, str]) -> dict[str, bytes]:
@@ -307,11 +308,11 @@ class RunConfig:
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("max_steps must be an integer from 1 to 100")
         budgets = dict(self.budgets)
-        if not budgets.keys() <= {"model", "tool"} or any(
+        if not budgets.keys() <= {"model", "tool"} | TOKEN_UNITS or any(
             type(value) is not int or value < 0 for value in budgets.values()
         ):
             raise ValueError(
-                "run budgets cover model and tool units only, as non-negative "
+                "run budgets cover model, tool, and token units only, as non-negative "
                 "integers; check budgets belong to tasks"
             )
         object.__setattr__(self, "budgets", MappingProxyType(budgets))
@@ -424,6 +425,8 @@ class Project:
             raise ValueError(f"task names unknown checks: {sorted(unknown)}")
         run_id = "run-" + uuid4().hex[:12]
         caps = dict(config.budgets)
+        with Ledger.open(self.ledger_root) as ledger:
+            self._require_token_units(model, ledger.project.manifest.allowances)
         if task.check_budget is not None:
             shared = [n for n in task.checks if not _isolated(self.domain.checkers[n])]
             if shared:
@@ -500,6 +503,8 @@ class Project:
             raise ValueError("task differs from the one this run recorded")
         if getattr(model, "model", None) != run.config.model:
             raise ValueError("model boundary differs from the run configuration")
+        with Ledger.open(self.ledger_root) as ledger:
+            self._require_token_units(model, ledger.project.manifest.allowances)
         submissions: list[Submission] = []
         for index in range(1, run.task.submissions + 1):
             episode = self._episode(run, index)
@@ -549,6 +554,17 @@ class Project:
             if outcome is not None:
                 return RunResult(run_id, outcome, tuple(submissions))
         return RunResult(run_id, RunOutcome.REJECTED, tuple(submissions))
+
+    @staticmethod
+    def _require_token_units(model, allowances: Mapping[str, int]) -> None:
+        """A project that allows token units enforces them on every model call."""
+        enforced = TOKEN_UNITS & allowances.keys()
+        declared = set(getattr(model, "reserved_units", {"model"}))
+        if not enforced <= declared:
+            raise ValueError(
+                "model service does not reserve the project's token units: "
+                f"{sorted(enforced - declared)}"
+            )
 
     @staticmethod
     def _exhausted(run_id, submissions, error) -> RunResult:

@@ -139,9 +139,11 @@ domain project supplies only domain knowledge. Specifically:
   run, enforced in `Ledger.begin` ([design](proposals/m7-run-scopes.md),
   [reference](reference/evidence-ledger.md#scopes)).
 - [ ] **Token budgets.** Make prompt and completion tokens reserved ledger units
-  so that a run's token budget is enforced like model, tool, and check units.
-  Tokens are recorded but not reserved today; each model adapter's reservation
-  logic must change ([design](proposals/m7-token-budgets.md)).
+  so that a run's token budget is enforced like model, tool, and check units
+  ([design](proposals/m7-token-budgets.md),
+  [reference](reference/model-adapters.md#token-budgets)). Enforcement is
+  implemented. The item completes when a first model is verified by a recorded
+  measurement; until then no adapter reserves tokens.
 - [ ] **Submission policy.** Budgets for probes and submissions, and a
   repeated-candidate guard using a domain-supplied normalisation, enforced by
   the host rather than the worker.

@@ -1,6 +1,9 @@
 # M7 design note: token budgets
 
-Proposed and accepted 2026-10-02; not yet implemented. This note designs the
+Proposed and accepted 2026-10-02; implemented 2026-10-03 in the worker, both
+chat-completions adapters, and the experimental task layer, with no verified model
+yet. The [model adapters reference](../reference/model-adapters.md#token-budgets)
+describes the implemented behaviour. This note designs the
 **token budgets** step of
 [M7](../roadmap.md#m7--stable-harness-api-and-cli): model tokens become reserved
 ledger units, enforced like model, tool, and check units, in the project and in
@@ -201,3 +204,23 @@ prompt tokens. Include requests with a single short message.
   rests on an unmeasured tokenizer, and the `reserved_units` declaration, so a
   service cannot leave a capped unit unreserved.
 - USD budgets are out of scope until a provider offers a reservable cost bound.
+
+## Implementation notes
+
+- **Enforcement follows the project allowances.** A token unit is enforced on
+  every model call once the project allows it, not only in scopes that cap it.
+  The root scope's caps are the project allowances, so this is the same rule
+  applied to the root, and it also keeps the project total binding for model calls
+  outside any run. A project without token allowances runs any model service as
+  before.
+- **Budget exhaustion keeps the existing run outcomes.** The task layer has no
+  `budget_exhausted` outcome; a run that cannot reserve its next call ends
+  `incomplete` (or `rejected` after an earlier submission) with a detail starting
+  "budget exhausted", as for model, tool, and check units.
+- **Usage read before a later error is settled as reported.** If a response
+  carries valid counts but fails a later check, such as an unexpected choice, the
+  reported counts are settled; only a response whose counts were never read is
+  charged at the bound.
+- The per-message margin is 16 tokens, applied once per message and once for the
+  generation prompt. It is a starting value for the first measurement to confirm
+  or raise.

@@ -45,6 +45,31 @@ class AttemptResult:
 
 Boundary = Callable[[Request, bytes], AttemptResult]
 
+# Token units are enforced for every model call once a project allows them.
+TOKEN_UNITS = frozenset({"prompt_tokens", "completion_tokens"})
+
+
+def model_reservation(
+    boundary, payload: bytes, allowances: Mapping[str, int], default: int
+) -> dict[str, int]:
+    """The reservation for one model request; enforced token units cannot be omitted.
+
+    A service that bounds its own usage provides `reserved_units` and
+    `reservation(payload)`; any other service reserves `{"model": default}`.
+    """
+    if hasattr(boundary, "reservation"):
+        reservation = dict(boundary.reservation(payload))
+        if set(reservation) != set(boundary.reserved_units):
+            raise ValueError("model service reserved units it did not declare")
+    else:
+        reservation = {"model": default}
+    missing = (TOKEN_UNITS & allowances.keys()) - reservation.keys()
+    if missing:
+        raise ValueError(
+            f"model service does not reserve enforced units: {sorted(missing)}"
+        )
+    return reservation
+
 
 @dataclass(frozen=True)
 class Episode:
@@ -280,10 +305,17 @@ class Journal:
             ),
             self.ledger.project,
         )
-        reservation = getattr(self.episode, kind + "_reservation")
-        op = self.ledger.reserve(
-            self.session, request, {kind: reservation}, self.episode.scope
+        reservation = (
+            model_reservation(
+                boundary,
+                encoded,
+                self.ledger.project.manifest.allowances,
+                self.episode.model_reservation,
+            )
+            if kind == "model"
+            else {kind: self.episode.tool_reservation}
         )
+        op = self.ledger.reserve(self.session, request, reservation, self.episode.scope)
         if op.completion is not None:
             return op.completion
         unresolved(self.ledger, self.episode.scope)

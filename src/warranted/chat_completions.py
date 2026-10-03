@@ -1,7 +1,9 @@
 """One local OpenAI-compatible HTTP attempt, without SDK retries.
 
-The model unit counts attempts, not tokens or money. Token counts are retained
-separately. A lost response has no reconciliation endpoint and stays unknown.
+The model unit counts attempts. For a verified model, the adapter also reserves a
+bound on prompt and completion tokens and settles the reported counts; otherwise
+token counts are only retained as evidence. Money is never a unit. A lost response
+has no reconciliation endpoint and stays unknown.
 The host must trust the local server and pin its model files outside this API.
 """
 
@@ -9,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from http.client import HTTPConnection
@@ -30,6 +33,9 @@ from warranted.ledger import (
 from warranted.worker import AttemptResult
 
 MAX_BYTES = 2 * 1024 * 1024
+# Prompt-token allowance per message, plus one for the generation prompt, covering
+# chat-template special tokens beyond the wire body's byte length.
+MESSAGE_MARGIN = 16
 
 
 @contextmanager
@@ -79,6 +85,9 @@ def http_response(url: str, data: bytes | None, timeout_seconds: float):
 class LocalChatCompletions:
     provider: ClassVar[str] = "ollama"
     adapter_name: ClassVar[str] = "local-chat-completions"
+    # Models whose reported prompt tokens a recorded measurement has shown to stay
+    # within the byte bound. Empty until such a measurement exists.
+    verified_models: ClassVar[frozenset[str]] = frozenset()
     base_url: str
     model: str
     max_tokens: int = 256
@@ -126,6 +135,73 @@ class LocalChatCompletions:
         }
 
     @property
+    def verification_key(self) -> str:
+        return self.model
+
+    @property
+    def token_bounded(self) -> bool:
+        return self.verification_key in self.verified_models
+
+    @property
+    def reserved_units(self) -> frozenset[str]:
+        if self.token_bounded:
+            return frozenset({"model", "prompt_tokens", "completion_tokens"})
+        return frozenset({"model"})
+
+    def _wire(self, payload: bytes) -> tuple[bytes, int]:
+        """The exact request body and its message count; raises on invalid input."""
+        value = json.loads(payload, object_pairs_hook=_json_object)
+        if type(value) is not dict or set(value) != {"messages"}:
+            raise ValueError("expected only model messages")
+        messages = value["messages"]
+        if (
+            type(messages) is not list
+            or not messages
+            or any(
+                type(message) is not dict
+                or message.get("role") not in ("system", "user", "assistant")
+                or type(message.get("content")) is not str
+                for message in messages
+            )
+        ):
+            raise ValueError("expected text chat messages")
+        # mini's host-only extra/actions metadata is never part of the wire prompt.
+        wire = _encode(
+            {
+                **self.parameters,
+                "messages": [
+                    {key: message[key] for key in ("role", "content")}
+                    for message in messages
+                ],
+            }
+        )
+        return wire, len(messages)
+
+    def reservation(self, payload: bytes) -> dict[str, int]:
+        """An upper bound on this request's charge, computed before dispatch."""
+        if not self.token_bounded:
+            return {"model": 1}
+        wire, messages = self._wire(payload)
+        if len(wire) > MAX_BYTES:  # never sent
+            return {"model": 1, "prompt_tokens": 0, "completion_tokens": 0}
+        return {
+            "model": 1,
+            "prompt_tokens": len(wire) + MESSAGE_MARGIN * (messages + 1),
+            "completion_tokens": self.max_tokens,
+        }
+
+    def _usage(self, model: int, tokens: Mapping[str, int] | None = None):
+        """Settled usage: token units only when reserved, zero unless given."""
+        if not self.token_bounded:
+            return {"model": model}
+        tokens = tokens or {}
+        return {
+            "model": model,
+            "prompt_tokens": tokens.get("prompt_tokens", 0),
+            "completion_tokens": tokens.get("completion_tokens", 0),
+        }
+
+    @property
     def snapshot(self) -> Snapshot:
         return Snapshot(
             _encode(
@@ -135,6 +211,10 @@ class LocalChatCompletions:
                     "timeout_seconds": self.timeout_seconds,
                     "max_bytes": MAX_BYTES,
                     "parameters": self.parameters,
+                    "token_bound": {
+                        "verified": self.token_bounded,
+                        "message_margin": MESSAGE_MARGIN,
+                    },
                 }
             ),
             "warranted-" + self.adapter_name,
@@ -172,34 +252,11 @@ class LocalChatCompletions:
             raise ValueError(
                 "model service configuration differs from the pinned request"
             )
-        value = json.loads(payload, object_pairs_hook=_json_object)
-        if type(value) is not dict or set(value) != {"messages"}:
-            raise ValueError("expected only model messages")
-        messages = value["messages"]
-        if (
-            type(messages) is not list
-            or not messages
-            or any(
-                type(message) is not dict
-                or message.get("role") not in ("system", "user", "assistant")
-                or type(message.get("content")) is not str
-                for message in messages
-            )
-        ):
-            raise ValueError("expected text chat messages")
-        # mini's host-only extra/actions metadata is never part of the wire prompt.
-        wire = _encode(
-            {
-                **self.parameters,
-                "messages": [
-                    {key: message[key] for key in ("role", "content")}
-                    for message in messages
-                ],
-            }
-        )
+        wire, _ = self._wire(payload)
+        reserved = self.reservation(payload)
         if len(wire) > MAX_BYTES:
             return AttemptResult(
-                Result(Outcome.FAILED, 1, {"model": 0}, 0),
+                Result(Outcome.FAILED, 1, self._usage(0), 0),
                 {"diagnostic": b"model request exceeds byte limit"},
             )
         started = monotonic_ns()
@@ -212,6 +269,8 @@ class LocalChatCompletions:
             "http-status.json": _encode(status),
         }
         outcome, exit_code = Outcome.INFRASTRUCTURE_FAILURE, None
+        # Unmeasured usage is charged at the bound, never as zero.
+        charged = self._usage(1, reserved)
         try:
             if status != 200:
                 raise ValueError(f"model HTTP status {status}")
@@ -230,6 +289,7 @@ class LocalChatCompletions:
             ):
                 raise ValueError("inconsistent token usage")
             raw["tokens.json"] = _encode({key: usage[key] for key in keys})
+            charged = self._usage(1, usage)
             if usage["completion_tokens"] > self.max_tokens:
                 raise ValueError(
                     "reported generation exceeds the requested token limit"
@@ -267,4 +327,4 @@ class LocalChatCompletions:
                 raise ValueError("unsupported completion finish reason")
         except (ValueError, UnicodeError) as error:
             raw["error"] = str(error).encode()
-        return AttemptResult(Result(outcome, exit_code, {"model": 1}, elapsed), raw)
+        return AttemptResult(Result(outcome, exit_code, charged, elapsed), raw)

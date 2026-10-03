@@ -15,9 +15,10 @@ SDK, streaming, automatic retries, redirects, or environment proxies.
 
 ## Shared attempt contract
 
-- The episode reserves its per-attempt allowance before dispatch (see
+- The episode reserves each attempt before dispatch (see
   [dispatch and recovery](worker-and-containment.md#dispatch-and-recovery)). The
-  `model` ledger unit counts attempts, not tokens or money.
+  `model` ledger unit counts attempts. Prompt and completion tokens are reserved
+  only for [verified models](#token-budgets). Money is never a ledger unit.
 - Each request records its service as the request producer, so the request digest
   binds the configured service identity. An adapter whose configuration differs
   from the pinned request refuses to send anything.
@@ -81,19 +82,50 @@ It uses only Python's standard library.
   that server computation stopped. Request and response bodies are limited to
   2 MiB.
 
-| Situation | Outcome | `model` units | Retained |
-| --- | --- | --- | --- |
-| Request body over 2 MiB | `failed`, not sent | 0 | Diagnostic |
-| Timeout, dropped connection, oversized or short response | Unknown, reservation kept | Reserved | — |
-| Non-200 status; malformed JSON; different `model`; missing, invalid, or inconsistent token counts; not exactly one choice; tool calls, refusal, or non-text content; unsupported finish reason | `infrastructure_failure` | 1 | Request, response, status, error |
-| Reported completion tokens above `max_tokens` | `infrastructure_failure` | 1 | Also `tokens.json` |
-| `finish_reason: "length"` (truncated; null content is read as empty) | `failed` | 1 | Response text, `tokens.json` |
-| `finish_reason: "stop"` | `succeeded` | 1 | `response`, `tokens.json` |
+| Situation | Outcome | `model` units | Token units (verified models) | Retained |
+| --- | --- | --- | --- | --- |
+| Request body over 2 MiB | `failed`, not sent | 0 | 0 | Diagnostic |
+| Timeout, dropped connection, oversized or short response | Unknown, reservation kept | Reserved | Reserved | — |
+| Missing, invalid, or inconsistent token counts | `infrastructure_failure` | 1 | The full reservation | Request, response, status, error |
+| Non-200 status; malformed JSON; different `model`; not exactly one choice; tool calls, refusal, or non-text content; unsupported finish reason | `infrastructure_failure` | 1 | Reported counts if they were read before the error, else the full reservation | Request, response, status, error |
+| Reported completion tokens above `max_tokens` | `infrastructure_failure` | 1 | Reported counts (a breach) | Also `tokens.json` |
+| `finish_reason: "length"` (truncated; null content is read as empty) | `failed` | 1 | Reported counts | Response text, `tokens.json` |
+| `finish_reason: "stop"` | `succeeded` | 1 | Reported counts | `response`, `tokens.json` |
 
 Token counts are stored in a separate `tokens.json` artifact. If they are missing,
 the attempt is unmeasured and cannot complete successfully. Truncated output never
 becomes a worker action. Malformed command text is recorded before the worker
 rejects it.
+
+### Token budgets
+
+The ledger units `prompt_tokens` and `completion_tokens` bound what model calls
+may spend ([design](../proposals/m7-token-budgets.md)). An adapter reserves them
+only when its model is in the class's `verified_models`, keyed by the model name
+for `LocalChatCompletions` and by `model@provider_tag` for
+`OpenRouterChatCompletions`. **Both lists are empty.** A model is added only after
+a recorded measurement under `docs/experiments/` shows its reported prompt tokens
+within the bound, including for short prompts.
+
+For a verified model, `reservation(payload)` returns, before dispatch:
+
+- `completion_tokens`: `max_tokens`;
+- `prompt_tokens`: the byte length of the exact wire body, plus
+  `MESSAGE_MARGIN` (16) for each message and once more for the generation prompt.
+
+The bound rests on the model's tokenizer emitting at least one byte per ordinary
+token; verification is evidence for that, not proof. Reported usage above the
+reservation is charged in full, recorded as a breach, and blocks further dispatch
+in its scope. Whether the model is verified, and the margin, are part of the
+pinned `model-api` snapshot, so they change the service identity.
+
+`reserved_units` declares the units an adapter reserves: all three for a verified
+model, only `model` otherwise. An unverified model settles only `model` usage;
+its token counts remain in `tokens.json` as evidence. A project whose allowances
+include a token unit enforces it on every model call: the journal refuses, before
+reserving anything, a service whose reservation omits such a unit or names units
+it did not declare, and `Project.start` refuses such a service before the run
+begins.
 
 ### Local probe
 
