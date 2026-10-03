@@ -2,7 +2,7 @@
 
 Proposed 2026-10-02. This is a design for review, not a description of existing
 behavior. It covers the [M7 roadmap items](../roadmap.md#m7--stable-harness-api-and-cli)
-except host-mediated operations, which get their own design document.
+except host-mediated operations, which get their own [design document](m7-host-operations.md).
 
 ## Problem
 
@@ -292,7 +292,7 @@ campaign continues exactly the runs it planned.
 
 ## Out of scope for M7
 
-- Host-mediated operations, pending their own design.
+- Host-mediated operations, pending review of [their design](m7-host-operations.md).
 - Parallel runs and multiple writers.
 - An MCP interface to Warranted.
 
