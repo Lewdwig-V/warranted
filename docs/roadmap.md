@@ -113,13 +113,14 @@ domain project supplies only domain knowledge. Specifically:
   ([CSV](fixtures/csv-transformation.md#task-layer),
   [migration](fixtures/config-migration.md#task-layer)), without their proof
   cases.
-- [ ] **Checker interface.** A domain checker assesses captured candidate bytes
+- [x] **Checker interface.** A domain checker assesses captured candidate bytes
   in a contained job and returns a typed verdict plus worker-visible feedback.
   The host keeps private inputs and seeds out of the worker, records them as
   evidence, and issues the receipt. Fresh per-submission inputs, such as
   ReSchema's hidden cases, are drawn and recorded by the host. A submission may
   nominate cases; the checker recomputes their ground truth itself, so anything
-  the worker recorded stays a hint, never evidence.
+  the worker recorded stays a hint, never evidence. Demonstrated by the
+  [reverse-engineering-style fixture](fixtures/reverse-engineering.md).
 - [x] **Domain worker images.** A domain project supplies a pinned worker image
   with its own tools, such as an emulator and the target binary, so the worker
   can investigate with ordinary shell commands. The image adds tools inside the
@@ -165,8 +166,8 @@ domain project supplies only domain knowledge. Specifically:
   receipt-backed facts kept separate from worker notes. A note is promoted only
   when its own submission is accepted. Selected facts reach later tasks as
   context files ([design](proposals/m7-scoped-memory.md)). Implemented in the
-  prototype task layer; the RE-style fixture across restart is still part of
-  M7's completion evidence.
+  prototype task layer and exercised across a restart by the
+  [reverse-engineering-style fixture](fixtures/reverse-engineering.md).
 - [x] **CLI.** Commands to initialise a project, run and resume a task, report
   status and accounting, export evidence, and run a pinned campaign of tasks. The
   CLI uses only the public API ([reference](reference/cli.md)), including
@@ -182,6 +183,10 @@ worker image, the repeated-candidate guard, and scoped memory across restart,
 with negative cases for leaked private inputs, forged verdicts, and bypassed
 budgets. Host-mediated operations are complete when their reviewed design is
 implemented with its negative cases.
+
+Status: the [reverse-engineering-style fixture](fixtures/reverse-engineering.md)
+meets its part through the public API. Both existing fixtures run through the
+public API without their proof cases, and not yet through the CLI.
 
 **Constraint:** the core contains no reverse-engineering concepts. Traces,
 canonicalisation, emulation, and fuzzing stay in ReSchema behind the checker,

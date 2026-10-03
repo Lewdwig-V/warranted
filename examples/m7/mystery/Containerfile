@@ -1,0 +1,8 @@
+# A domain worker image: the pinned Python image plus the program as a tool,
+# as ReSchema's image adds an emulator and the target binary. Build with
+#   podman build --build-arg BASE=<pinned image> -f Containerfile .
+ARG BASE
+FROM ${BASE}
+COPY mystery.py /opt/mystery/mystery.py
+RUN printf '#!/bin/sh\nexec python -I /opt/mystery/mystery.py\n' > /usr/local/bin/mystery \
+    && chmod 0555 /usr/local/bin/mystery
