@@ -126,8 +126,10 @@ domain project supplies only domain knowledge. Specifically:
   can investigate with ordinary shell commands. The image adds tools inside the
   container; it does not widen what the container can reach. The prototype task
   layer runs workers in the domain's `worker_image`, pinned by digest or local
-  image ID ([reference](reference/worker-and-containment.md#container-sandbox));
-  only the default Python image is exercised in CI.
+  image ID ([reference](reference/worker-and-containment.md#container-sandbox)).
+  CI exercises the default Python image and one domain image built from it,
+  which adds a tool the worker uses
+  ([fixture](fixtures/reverse-engineering.md#what-the-tests-establish)).
 - [x] **Host-mediated operations: design, then implement.** Some operations
   belong on the host: results that should be authoritative, reusable evidence;
   anything needing credentials, network, paid APIs, or private data; and any
