@@ -36,6 +36,9 @@ existing fixtures and ReSchema can be written against one public API.
 | 10 | How does the CLI find a domain? | `warranted init DIR --domain REF` accepts `package.module:Object` or `path/to/domain.py:Object`; a file path is stored relative to the project. Decided 2026-10-03. |
 | 11 | CLI exit codes | 0 accepted, 1 rejected or incomplete, 2 usage error, 3 unknown, 4 unsupported, 5 infrastructure failure. Decided 2026-10-03. |
 | 12 | First CLI slice | `init`, `run`, `resume`, `status`, `memory`, and `export`. Campaigns and `import` follow; `revise` waits for contract revisions in the task layer. Decided 2026-10-03. |
+| 13 | What may a contract revision change? | Worker-visible and private task files, the required checks, and a note on the objective. Never checker code or the domain. Decided 2026-10-03. |
+| 14 | A submission accepted before a scheduled checkpoint | Ends the run; the revision never applies. Decided 2026-10-03. |
+| 15 | Reassessment after a revision | The worker resubmits; checks under the new contract are fresh, and the duplicate guard compares only within one contract. Decided 2026-10-03. |
 
 ## Layers
 

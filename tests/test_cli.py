@@ -348,3 +348,20 @@ def test_import_pins_files_for_task_references(tmp_path, capsys):
     reference, name = capsys.readouterr().out.split()
     assert reference.startswith("sha256:") and name == str(data)
     assert main(["import", str(project), str(tmp_path / "missing")]) == 2
+
+
+def test_revise_records_a_revision_for_new_runs(tmp_path, capsys, scripted, model):
+    project = init(tmp_path, capsys)
+    config, _ = model
+    (tmp_path / "offset-v2").write_bytes(b'{"minutes": 0, "version": "2"}')
+    revision = tmp_path / "revision.toml"
+    revision.write_text(
+        'id = "offset-v2"\nowner = "owner"\nreason = "UTC source"\n'
+        'remove = ["offset-v1"]\n[inputs]\n"offset-v2" = "offset-v2"\n'
+    )
+    assert main(["revise", str(project), "csv-offset-v1", str(revision)]) == 0
+    assert "revised by owner: offset-v2" in capsys.readouterr().out
+    scripted += ["wrong-offset"]
+    assert main(["run", str(project), str(TASK), "--config", str(config)]) == 0
+    revision.write_text('id = "empty"\nowner = "owner"\nreason = "nothing"\n')
+    assert main(["revise", str(project), "csv-offset-v1", str(revision)]) == 2

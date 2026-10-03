@@ -16,7 +16,7 @@ import json
 import re
 import tomllib
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from functools import partial
 from importlib.metadata import version as package_version
@@ -75,6 +75,8 @@ NOTES, MEMORY = "notes.json", "memory.json"
 MODEL_PIN = "model-api.json"
 # The campaign and split a run belongs to; memory is shared within a split only.
 CAMPAIGN = "campaign.json"
+# The project revisions a run's task included when the run was created.
+REVISED = "project-revisions.json"
 FACTS_COUNT, FACTS_LIMIT = 16, 16 * 1024
 NOTES_COUNT, NOTES_LIMIT = 32, 16 * 1024
 MEMORY_LIMIT = 64 * 1024
@@ -299,9 +301,177 @@ class MemorySpec:
         return {"scope": self.scope, "depends": list(self.depends)}
 
 
+def _memory_channel(version: int) -> str:
+    """The run-spec channel holding the memory snapshot for a contract version."""
+    return MEMORY if version == 0 else f"memory/{version}.json"
+
+
+def _read_files(
+    table: Any, base: Path, resolve: Callable[[str], bytes] | None
+) -> dict[str, bytes]:
+    """Task-file values: paths relative to `base`, or `{ artifact = REF }`."""
+    if not isinstance(table, dict):
+        raise ValueError("task files must be a table of names")
+
+    def read(value) -> bytes:
+        if isinstance(value, str):
+            return (base / value).read_bytes()
+        if not isinstance(value, dict) or set(value) != {"artifact"}:
+            raise ValueError("a task file is a path or { artifact = REF }")
+        if resolve is None:
+            raise ValueError("task names imported artifacts; load it through a project")
+        return resolve(value["artifact"])
+
+    return {name: read(value) for name, value in table.items()}
+
+
+@dataclass(frozen=True)
+class Revision:
+    """An owner-approved change to a task's contract.
+
+    It may replace, add, or remove worker-visible and private task files, change
+    the required checks, and add a note to the objective. Checker code and the
+    domain never change through a revision; a changed domain is a new project.
+    The owner is attribution from trusted local files, not authentication.
+    """
+
+    id: str
+    owner: str
+    reason: str
+    inputs: Mapping[str, bytes] = field(default_factory=dict)
+    private: Mapping[str, bytes] = field(default_factory=dict)
+    remove: tuple[str, ...] = ()
+    checks: tuple[str, ...] | None = None
+    note: str = ""
+
+    def __post_init__(self):
+        if type(self.id) is not str or not _ID.fullmatch(self.id):
+            raise ValueError("invalid revision ID")
+        for value in (self.owner, self.reason):
+            if type(value) is not str or not value.strip():
+                raise ValueError("a revision names its owner and reason")
+        if type(self.note) is not str:
+            raise ValueError("a revision note is text")
+        object.__setattr__(self, "inputs", MappingProxyType(dict(self.inputs)))
+        object.__setattr__(self, "private", MappingProxyType(dict(self.private)))
+        object.__setattr__(self, "remove", tuple(self.remove))
+        if self.checks is not None:
+            object.__setattr__(self, "checks", tuple(self.checks))
+        changed = (*self.inputs, *self.private)
+        if not all(type(n) is str for n in (*changed, *self.remove)) or set(
+            changed
+        ) & set(self.remove):
+            raise ValueError("a revision cannot both set and remove a file")
+        if not (changed or self.remove or self.checks is not None or self.note):
+            raise ValueError("a revision must change something")
+
+    def apply(self, task: TaskSpec) -> TaskSpec:
+        """The task under this revision; scheduled revisions are kept."""
+        missing = set(self.remove) - task.inputs.keys() - task.private.keys()
+        if missing:
+            raise ValueError(
+                f"revision removes files the task lacks: {sorted(missing)}"
+            )
+        inputs = {n: d for n, d in task.inputs.items() if n not in self.remove}
+        private = {n: d for n, d in task.private.items() if n not in self.remove}
+        for name in self.inputs:
+            private.pop(name, None)
+        for name in self.private:
+            inputs.pop(name, None)
+        objective = task.objective + (f"\n\n{self.note}" if self.note else "")
+        return replace(
+            task,
+            objective=objective,
+            inputs=inputs | dict(self.inputs),
+            private=private | dict(self.private),
+            checks=self.checks if self.checks is not None else task.checks,
+        )
+
+    def record(self) -> dict[str, bytes]:
+        raw = {
+            "revision.json": _json(
+                {
+                    "id": self.id,
+                    "owner": self.owner,
+                    "reason": self.reason,
+                    "inputs": sorted(self.inputs),
+                    "private": sorted(self.private),
+                    "remove": list(self.remove),
+                    "checks": None if self.checks is None else list(self.checks),
+                    "note": self.note,
+                }
+            )
+        }
+        raw |= {f"input/{name}": data for name, data in self.inputs.items()}
+        raw |= {f"private/{name}": data for name, data in self.private.items()}
+        return raw
+
+    @classmethod
+    def from_record(cls, raw: Mapping[str, bytes]) -> Revision:
+        meta = json.loads(raw["revision.json"])
+        return cls(
+            meta["id"],
+            meta["owner"],
+            meta["reason"],
+            {n: raw[f"input/{n}"] for n in meta["inputs"]},
+            {n: raw[f"private/{n}"] for n in meta["private"]},
+            tuple(meta["remove"]),
+            None if meta["checks"] is None else tuple(meta["checks"]),
+            meta["note"],
+        )
+
+    @classmethod
+    def load(
+        cls, path: Path, resolve: Callable[[str], bytes] | None = None
+    ) -> Revision:
+        """Load a revision TOML file; file values work as in task files."""
+        path = Path(path)
+        data = tomllib.loads(path.read_text())
+        known = {
+            "id",
+            "owner",
+            "reason",
+            "note",
+            "checks",
+            "remove",
+            "inputs",
+            "private",
+        }
+        if not data.keys() <= known or not {"id", "owner", "reason"} <= data.keys():
+            raise ValueError("revision needs id, owner, and reason, and nothing else")
+        return cls(
+            data["id"],
+            data["owner"],
+            data["reason"],
+            _read_files(data.get("inputs", {}), path.parent, resolve),
+            _read_files(data.get("private", {}), path.parent, resolve),
+            tuple(data.get("remove", ())),
+            None if "checks" not in data else tuple(data["checks"]),
+            data.get("note", ""),
+        )
+
+
+@dataclass(frozen=True)
+class ScheduledRevision:
+    """A revision the host applies once `after_submission` submissions are used."""
+
+    after_submission: int
+    revision: Revision
+
+    def __post_init__(self):
+        if type(self.after_submission) is not int or self.after_submission < 1:
+            raise ValueError("after_submission must be a positive integer")
+        if not isinstance(self.revision, Revision):
+            raise ValueError("a scheduled revision needs a Revision")
+
+
 @dataclass(frozen=True)
 class TaskSpec:
-    """What to solve. Loaded from TOML; inputs and private files are pinned bytes."""
+    """What to solve. Loaded from TOML; inputs and private files are pinned bytes.
+
+    `revisions` are scheduled contract revisions: submissions after a checkpoint
+    are assessed under the revised contract (see `contract`).
+    """
 
     id: str
     objective: str
@@ -312,6 +482,18 @@ class TaskSpec:
     check_budget: int | None = None
     duplicate_guard: DuplicateGuard | None = None
     memory: MemorySpec | None = None
+    revisions: tuple[ScheduledRevision, ...] = ()
+
+    def version(self, index: int) -> int:
+        """How many scheduled revisions apply to submission `index`."""
+        return sum(1 for r in self.revisions if r.after_submission < index)
+
+    def contract(self, index: int) -> TaskSpec:
+        """The contract in force for submission `index`, without its schedule."""
+        task = replace(self, revisions=())
+        for scheduled in self.revisions[: self.version(index)]:
+            task = scheduled.revision.apply(task)
+        return task
 
     @classmethod
     def load(
@@ -332,6 +514,7 @@ class TaskSpec:
             "budgets",
             "duplicate_guard",
             "memory",
+            "revisions",
         }
         if not data.keys() <= known or not {"id", "objective", "checks"} <= set(data):
             raise ValueError("task needs id, objective, and checks, and nothing else")
@@ -341,19 +524,22 @@ class TaskSpec:
                 "unknown task budget; model, tool, and token budgets belong to runs"
             )
 
-        def read(value) -> bytes:
-            if isinstance(value, str):
-                return (path.parent / value).read_bytes()
-            if not isinstance(value, dict) or set(value) != {"artifact"}:
-                raise ValueError("a task file is a path or { artifact = REF }")
-            if resolve is None:
-                raise ValueError(
-                    "task names imported artifacts; load it through a project"
-                )
-            return resolve(value["artifact"])
+        def files(table: Any) -> dict[str, bytes]:
+            return _read_files(table, path.parent, resolve)
 
-        def files(table: Mapping[str, Any]) -> dict[str, bytes]:
-            return {name: read(value) for name, value in table.items()}
+        scheduled = []
+        for entry in data.get("revisions", []):
+            if not isinstance(entry, dict) or set(entry) != {
+                "after_submission",
+                "file",
+            }:
+                raise ValueError("each revision needs after_submission and file")
+            scheduled.append(
+                ScheduledRevision(
+                    entry["after_submission"],
+                    Revision.load(path.parent / entry["file"], resolve),
+                )
+            )
 
         memory = data.get("memory")
         if memory is not None:
@@ -373,6 +559,7 @@ class TaskSpec:
             budgets.get("checks"),
             _guard(data.get("duplicate_guard")),
             memory,
+            tuple(scheduled),
         )
 
     def __post_init__(self):
@@ -410,6 +597,20 @@ class TaskSpec:
                 raise ValueError("memory must be a MemorySpec")
             if not set(self.memory.depends) <= self.inputs.keys() | self.private.keys():
                 raise ValueError("memory depends names a file the task does not have")
+        object.__setattr__(self, "revisions", tuple(self.revisions))
+        if not all(isinstance(r, ScheduledRevision) for r in self.revisions):
+            raise ValueError("revisions must be ScheduledRevision entries")
+        points = [r.after_submission for r in self.revisions]
+        if points != sorted(set(points)) or any(p >= self.submissions for p in points):
+            raise ValueError(
+                "scheduled revisions need increasing checkpoints before the last "
+                "submission"
+            )
+        ids = [r.revision.id for r in self.revisions]
+        if len(set(ids)) != len(ids):
+            raise ValueError("scheduled revisions need distinct IDs")
+        if self.revisions:
+            self.contract(self.submissions)  # every revised contract must be valid
 
     def record(self) -> dict[str, bytes]:
         raw = {
@@ -425,11 +626,17 @@ class TaskSpec:
                     "duplicate_guard": self.duplicate_guard
                     and self.duplicate_guard.record(),
                     "memory": self.memory and self.memory.record(),
+                    "revisions": [r.after_submission for r in self.revisions],
                 }
             )
         }
         raw |= {f"input/{name}": data for name, data in self.inputs.items()}
         raw |= {f"private/{name}": data for name, data in self.private.items()}
+        for number, scheduled in enumerate(self.revisions, 1):
+            raw |= {
+                f"revision/{number}/{name}": data
+                for name, data in scheduled.revision.record().items()
+            }
         return raw
 
 
@@ -634,6 +841,31 @@ class _Run:
     def split(self) -> str | None:
         return None if self.campaign is None else self.campaign["split"]
 
+    def files(self, index: int) -> tuple[dict[str, Evidence], dict[str, Evidence]]:
+        """Worker-visible and private file evidence for submission `index`."""
+        inputs = {n: self.evidence(f"input/{n}") for n in self.task.inputs}
+        private = {n: self.evidence(f"private/{n}") for n in self.task.private}
+        applied = self.task.revisions[: self.task.version(index)]
+        for number, scheduled in enumerate(applied, 1):
+            revision = scheduled.revision
+            for name in revision.remove:
+                inputs.pop(name, None)
+                private.pop(name, None)
+            for name in revision.inputs:
+                private.pop(name, None)
+                inputs[name] = self.evidence(f"revision/{number}/input/{name}")
+            for name in revision.private:
+                inputs.pop(name, None)
+                private[name] = self.evidence(f"revision/{number}/private/{name}")
+        return inputs, private
+
+    def contract_evidence(self, index: int) -> Evidence:
+        """The recorded contract version that decides submission `index`."""
+        version = self.task.version(index)
+        if version == 0:
+            return self.evidence("task.json")
+        return self.evidence(f"revision/{version}/revision.json")
+
     @property
     def scope(self) -> str:
         return f"run/{self.run_id}"
@@ -724,7 +956,14 @@ class Project:
         return self._start(task, config, model, run_id, None)
 
     def _start(self, task, config, model, run_id, campaign) -> RunResult:
-        unknown = set(task.checks) - set(self.domain.checkers)
+        applied = self.revisions(task.id)
+        task = self._revised(task, applied)
+        required = {
+            name
+            for index in range(1, task.submissions + 1)
+            for name in task.contract(index).checks
+        }
+        unknown = required - set(self.domain.checkers)
         if unknown:
             raise ValueError(f"task names unknown checks: {sorted(unknown)}")
         if getattr(model, "model", None) != config.model:
@@ -752,7 +991,11 @@ class Project:
         with Ledger.open(self.ledger_root) as ledger:
             self._require_token_units(model, ledger.project.manifest.allowances)
         if task.check_budget is not None:
-            shared = [n for n in task.checks if not _isolated(self.domain.checkers[n])]
+            # Every scheduled contract's checks count: a revision must not move a
+            # check into the root scope, where the run's cap cannot see it.
+            shared = sorted(
+                n for n in required if not _isolated(self.domain.checkers[n])
+            )
             if shared:
                 # A shared-state check runs in the root scope, where a run's cap
                 # cannot apply; refuse rather than silently ignore the budget.
@@ -764,7 +1007,19 @@ class Project:
             session = ledger.start_session()
             # Fixed now and recorded with the spec, so resume never recomputes it.
             split = None if campaign is None else campaign["split"]
-            snapshot, cited = self._snapshot(ledger, session, task, split)
+            # One snapshot per contract version, each assessed against that
+            # contract's files, so a scheduled revision of a depended-on file
+            # withholds the facts it makes stale.
+            snapshots, cited = {}, {}
+            for version, index in enumerate(
+                [1, *(r.after_submission + 1 for r in task.revisions)]
+            ):
+                snapshot, found = self._snapshot(
+                    ledger, session, task.contract(index), split
+                )
+                if snapshot is not None:
+                    snapshots[_memory_channel(version)] = snapshot
+                    cited |= found
             # Caps are recorded before any run record, so a resume cannot change them.
             ledger.open_scope(session, f"run/{run_id}", caps)
             record_once(
@@ -773,26 +1028,45 @@ class Project:
                 Origin(f"run/{run_id}/spec", "run-spec", PRODUCER, "1", cited),
                 task.record()
                 | {"config.json": config.record()}
-                | ({MEMORY: snapshot} if snapshot is not None else {})
+                | snapshots
                 | ({CAMPAIGN: _json(campaign)} if campaign is not None else {})
+                | {REVISED: _json([r.id for r in applied])}
                 | self._model_record(model),
             )
-            policy = {
-                "version": 1,
-                "owner": "task-owner",
-                "transition": "accept-candidate",
-                "requirements": {
-                    name: {"kind": "gate", "check": name, "field": "passed"}
-                    for name in task.checks
-                },
-            }
             record_once(
                 ledger,
                 session,
                 Origin(f"run/{run_id}/policy", "run-policy", PRODUCER, "1", {}),
-                {"policy.json": _json(policy)},
+                {"policy.json": _json(self._policy_body(task.checks))},
             )
         return self.resume(run_id, model)
+
+    @staticmethod
+    def _policy_body(checks) -> dict:
+        return {
+            "version": 1,
+            "owner": "task-owner",
+            "transition": "accept-candidate",
+            "requirements": {
+                name: {"kind": "gate", "check": name, "field": "passed"}
+                for name in checks
+            },
+        }
+
+    def _policy(self, ledger: Ledger, session: str, run: _Run, index: int) -> Evidence:
+        """The acceptance policy of the contract that decides submission `index`."""
+        version = run.task.version(index)
+        if version == 0:
+            return run.policy
+        capture = record_once(
+            ledger,
+            session,
+            Origin(
+                f"run/{run.run_id}/policy/{version}", "run-policy", PRODUCER, "1", {}
+            ),
+            {"policy.json": _json(self._policy_body(run.task.contract(index).checks))},
+        )
+        return Evidence.captured(capture, "policy.json")
 
     def status(self, run_id: str) -> RunStatus:
         """The run's recorded submissions, outcome, blockers, and run-scope usage.
@@ -900,7 +1174,7 @@ class Project:
         if decision is None:
             return None
         verdicts = {}
-        for name in run.task.checks:
+        for name in run.task.contract(index).checks:
             operation = ledger.lookup(
                 self._check_request(ledger, run, index, name, target)
             )
@@ -936,7 +1210,11 @@ class Project:
                 channels = ()
                 if name == f"{prefix}spec":
                     channels = [
-                        c for c in o.artifacts if c in public or c.startswith("input/")
+                        c
+                        for c in o.artifacts
+                        if c in public
+                        or c.startswith(("input/", "memory/"))
+                        or (c.startswith("revision/") and "/private/" not in c)
                     ]
                 elif name.startswith(prefix) and o.origin.kind in (
                     "run-policy",
@@ -976,6 +1254,58 @@ class Project:
                 observations=observations,
                 operations=tuple(operations),
             )
+
+    def revise(self, task_id: str, revision: Revision) -> None:
+        """Record an owner-approved revision of a task for new runs.
+
+        New runs of the task use the revised contract. A run that started before
+        the revision cannot be resumed, and a campaign pinned before it is
+        refused; start a new run or campaign. Recording the same revision again
+        changes nothing; a different revision under a used ID is refused.
+        """
+        if type(task_id) is not str or not _ID.fullmatch(task_id):
+            raise ValueError("invalid task ID")
+        if not isinstance(revision, Revision):
+            raise TypeError("expected a Revision")
+        with Ledger.open(self.ledger_root) as ledger:
+            record_once(
+                ledger,
+                ledger.start_session(),
+                Origin(
+                    f"task-revision/{task_id}/{revision.id}",
+                    "task-revision",
+                    PRODUCER,
+                    "1",
+                    {},
+                ),
+                revision.record(),
+            )
+
+    def revisions(self, task_id: str) -> tuple[Revision, ...]:
+        """The task's recorded project revisions, oldest first."""
+        prefix = f"task-revision/{task_id}/"
+        with Ledger.open(self.ledger_root) as ledger:
+            return tuple(
+                Revision.from_record(
+                    {
+                        name: ledger.read_artifact(ref)
+                        for name, ref in o.artifacts.items()
+                    }
+                )
+                for o in ledger.history()
+                if o.origin.kind == "task-revision"
+                and o.origin.operation_id.startswith(prefix)
+            )
+
+    @staticmethod
+    def _revised(task: TaskSpec, revisions) -> TaskSpec:
+        for revision in revisions:
+            task = revision.apply(task)
+        return task
+
+    def current_task(self, task: TaskSpec) -> TaskSpec:
+        """`task` under every project revision recorded for its ID."""
+        return self._revised(task, self.revisions(task.id))
 
     def import_artifact(self, data: bytes) -> str:
         """Record bytes once in the project, such as a domain-built binary.
@@ -1067,7 +1397,7 @@ class Project:
         entries = [
             {
                 "task": entry.task.id,
-                "task_digest": self._task_digest(entry.task),
+                "task_digest": self._task_digest(self.current_task(entry.task)),
                 "split": entry.split,
                 "scope": entry.task.memory and entry.task.memory.scope,
                 "config": name,
@@ -1148,7 +1478,7 @@ class Project:
             # Unknown runs resume too: resume reconciles what it can and never
             # redispatches an operation whose outcome is unknown.
             if self.status(entry["run"]).outcome in (None, RunOutcome.UNKNOWN):
-                self.resume(entry["run"], models[name], task=task)
+                self.resume(entry["run"], models[name], task=self.current_task(task))
         return self.campaign_report(spec.id)
 
     def campaign_report(self, campaign_id: str) -> CampaignReport:
@@ -1205,6 +1535,7 @@ class Project:
         """
         if task.memory is None:
             return ()
+        task = self.current_task(task)
         with Ledger.open(self.ledger_root) as ledger:
             return self._memory(ledger, ledger.start_session(), task)
 
@@ -1257,7 +1588,7 @@ class Project:
 
     def _sources(self, ledger: Ledger, run: _Run, index: int, target: Evidence):
         """Checker facts and worker notes recorded for one assessed submission."""
-        for name in run.task.checks:
+        for name in run.task.contract(index).checks:
             operation = ledger.lookup(
                 self._check_request(ledger, run, index, name, target)
             )
@@ -1288,8 +1619,9 @@ class Project:
             memory = run.task.memory
             if memory is None or memory.scope != task.memory.scope:
                 continue
-            files = {**run.task.inputs, **run.task.private}
             for index in range(1, run.task.submissions + 1):
+                contract = run.task.contract(index)
+                files = {**contract.inputs, **contract.private}
                 target = self._recorded_target(ledger, run, index)
                 if target is None:
                     continue
@@ -1407,6 +1739,19 @@ class Project:
             meta["check_budget"],
             _guard(meta["duplicate_guard"]),
             meta.get("memory") and MemorySpec(**meta["memory"]),
+            tuple(
+                ScheduledRevision(
+                    after,
+                    Revision.from_record(
+                        {
+                            name.removeprefix(f"revision/{number}/"): data
+                            for name, data in read.items()
+                            if name.startswith(f"revision/{number}/")
+                        }
+                    ),
+                )
+                for number, after in enumerate(meta.get("revisions", []), 1)
+            ),
         )
         config = RunConfig(**json.loads(read["config.json"]))
         policy = Evidence.captured(found["run-policy"], "policy.json")
@@ -1419,6 +1764,19 @@ class Project:
             run = self._load(ledger, run_id)
         if task is not None and task.record() != run.task.record():
             raise ValueError("task differs from the one this run recorded")
+        with Ledger.open(self.ledger_root) as ledger:
+            recorded = (
+                json.loads(ledger.read_artifact(run.spec.artifacts[REVISED]))
+                if REVISED in run.spec.artifacts
+                else []
+            )
+        current = [r.id for r in self.revisions(run.task.id)]
+        if current != recorded:
+            raise ValueError(
+                f"task {run.task.id} was revised after this run started "
+                f"({', '.join(current[len(recorded) :]) or 'revisions changed'}); "
+                "start a new run"
+            )
         if getattr(model, "model", None) != run.config.model:
             raise ValueError("model boundary differs from the run configuration")
         if self._model_record(model) != {
@@ -1441,7 +1799,7 @@ class Project:
                         model=model,
                         environment=environment,
                         reconcile=self._reconcile(),
-                        requests=self._requests(run),
+                        requests=self._requests(run, index),
                     )
             except UnknownOutcome as error:
                 return RunResult(
@@ -1512,16 +1870,12 @@ class Project:
             return run.config.model
         return json.loads(recorded)["service"]
 
-    def _task_files(self, run: _Run) -> dict[str, Evidence]:
-        return {n: run.evidence(f"input/{n}") for n in run.task.inputs} | {
-            n: run.evidence(f"private/{n}") for n in run.task.private
-        }
-
-    def _requests(self, run: _Run) -> Requests | None:
+    def _requests(self, run: _Run, index: int) -> Requests | None:
         operations = _operations(self.domain)
         if not operations:
             return None
-        return Requests(operations, self._task_files(run), self.jobs)
+        inputs, private = run.files(index)
+        return Requests(operations, inputs | private, self.jobs)
 
     def _reconcile(self):
         """Settle unknown operations without executing them again.
@@ -1581,11 +1935,19 @@ class Project:
         return found
 
     def _episode(self, run: _Run, index: int) -> Episode:
-        files = {name: run.evidence(f"input/{name}") for name in run.task.inputs}
-        if MEMORY in run.spec.artifacts:
-            files[MEMORY] = run.evidence(MEMORY)
+        files = run.files(index)[0]
+        channel = _memory_channel(run.task.version(index))
+        if channel in run.spec.artifacts:
+            files[MEMORY] = run.evidence(channel)
         workspace = None
-        objective = run.task.objective
+        objective = run.task.contract(index).objective
+        for scheduled in run.task.revisions[: run.task.version(index)]:
+            revision = scheduled.revision
+            objective += (
+                f"\n\nThe task contract was revised after submission "
+                f"{scheduled.after_submission} (revision {revision.id}, by "
+                f"{revision.owner}): {revision.reason}"
+            )
         if index > 1:
             previous = self._episode_id(run, index - 1)
             with Ledger.open(self.ledger_root) as ledger:
@@ -1641,7 +2003,7 @@ class Project:
             )
             return Evidence.captured(capture, "feedback.json")
         checks = {}
-        for name in run.task.checks:
+        for name in run.task.contract(index).checks:
             operation = self._check_operation(ledger, run, index, name)
             verdict = json.loads(
                 ledger.read_artifact(
@@ -1687,10 +2049,8 @@ class Project:
         self, ledger: Ledger, run: _Run, index: int, name: str, target: Evidence
     ) -> Request:
         inputs = {target.name: target.artifact}
-        channels = [f"input/{name}" for name in run.task.inputs]
-        channels += [f"private/{name}" for name in run.task.private]
-        for channel in channels:
-            ref = run.evidence(channel)
+        visible, private = run.files(index)
+        for ref in (*visible.values(), *private.values()):
             inputs[ref.name] = ref.artifact
         return Request(
             Origin(
@@ -1724,8 +2084,8 @@ class Project:
                     for n, ref in files.items()
                     if n not in _WORKER_NOTES
                 },
-                run.task.inputs,
-                run.task.private,
+                run.task.contract(index).inputs,
+                run.task.contract(index).private,
                 self.jobs,
             )
             started = perf_counter_ns()
@@ -1824,10 +2184,14 @@ class Project:
                         for name, ref in refs.items()
                     }
 
+                # Only candidates rejected under the contract now in force count:
+                # resubmitting after a revision is a new question, not a repeat.
+                version = run.task.version(index)
                 compared = [
                     files(s.index)
                     for s in earlier
                     if s.decision == str(Status.REJECTED)
+                    and run.task.version(s.index) == version
                 ][-guard.window :]
                 candidate = files(index)
                 verdict = guard.verdict(
@@ -1866,9 +2230,10 @@ class Project:
             session = ledger.start_session()
             target = self._target(ledger, run, index)
             try:
+                checks = run.task.contract(index).checks
                 receipts = {
                     name: self._run_check(ledger, session, run, index, name)
-                    for name in run.task.checks
+                    for name in checks
                 }
             except UnknownOutcome:
                 return Submission(index, {}, Status.UNKNOWN)
@@ -1877,11 +2242,11 @@ class Project:
                 if candidate != target:
                     raise ValueError("acceptance target is not this submission")
                 return AcceptanceContext(
-                    run.policy,
-                    run.evidence("task.json"),
+                    self._policy(ledger, session, run, index),
+                    run.contract_evidence(index),
                     {
                         name: self._check_request(ledger, run, index, name, target)
-                        for name in run.task.checks
+                        for name in checks
                     },
                 )
 
@@ -1889,7 +2254,7 @@ class Project:
                 target, receipts
             )
             verdicts = {}
-            for name in run.task.checks:
+            for name in checks:
                 operation = self._check_operation(ledger, run, index, name)
                 verdicts[name] = VerdictStatus(
                     json.loads(

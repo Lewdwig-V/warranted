@@ -12,6 +12,7 @@ warranted status DIR [RUN] [--json]
 warranted memory DIR TASK.toml [--json]
 warranted export DIR RUN DEST
 warranted import DIR FILE...
+warranted revise DIR TASK_ID REVISION.toml
 warranted campaign run DIR CAMPAIGN.toml [--json]
 warranted campaign report DIR CAMPAIGN_ID [--json]
 ```
@@ -87,8 +88,8 @@ renaming or removing one increases the version.
 
 `campaign run` exits 3 if any planned run is unknown, otherwise 5 if any ended
 in infrastructure failure, otherwise 0; each run's outcome is in its report.
-`init`, `status`, `memory`, `export`, `import`, and `campaign report` exit 0 on
-success and 2 on a usage error.
+`init`, `status`, `memory`, `export`, `import`, `revise`, and `campaign report`
+exit 0 on success and 2 on a usage error.
 
 ## Status
 
@@ -148,6 +149,59 @@ The CLI loads every task through the project, which resolves these references
 and refuses one that was not imported. Domain builds, such as compiling a
 corpus, stay in the domain project; Warranted only pins their outputs.
 
+## Contract revisions
+
+A task's contract is its files, worker-visible and private, its required checks,
+and its objective. An owner-approved revision changes it:
+
+```toml
+id = "offset-v2"
+owner = "data-owner"            # attribution from trusted local files
+reason = "The source timestamps are UTC."
+note = "Use offset-v2."         # optional; appended to the objective
+remove = ["offset-v1"]          # optional; files the revision drops
+checks = ["transformation"]     # optional; the new required checks
+
+[inputs]                        # optional; files added or replaced
+"offset-v2" = "offset-v2"
+
+[private]                       # optional; private files added or replaced
+```
+
+File values work as in task files, including `{ artifact = REF }`. A revision
+cannot change checker code or the domain; a changed domain is a new project.
+
+**Scheduled revisions.** A task can schedule revisions at submission
+checkpoints:
+
+```toml
+[[revisions]]
+after_submission = 1
+file = "revisions/offset-v2.toml"
+```
+
+Submissions after the checkpoint are checked and decided under the revised
+contract. The next episode receives the revised files and an objective that
+names the revision, its owner, and its reason. A submission accepted before the
+checkpoint ends the run, so the revision never applies. Earlier verdicts and
+decisions stay on record under the contract that produced them; each decision
+binds the contract version it used. The duplicate guard compares a candidate
+only with candidates rejected under the same contract, so resubmitting the same
+bytes after a revision is checked again. The schedule is part of the task, so a
+restarted run resumes on the same contract sequence. When a run is created, it records
+one memory snapshot for each contract version, assessed against that version's
+files, so facts that a revision makes stale are withheld after the checkpoint.
+A task budget for checks requires every check of every scheduled contract to be
+isolated.
+
+**Project revisions.** `warranted revise DIR TASK_ID REVISION.toml` records a
+revision of a task in the project. New runs of that task use the revised
+contract, applied before any scheduled revisions. A run that started before the
+revision is refused on resume, and a campaign pinned before it is refused as a
+changed plan; start a new run or campaign. Recording the same revision again
+changes nothing, and a different revision under a used ID is refused. Nothing a
+worker writes can create or select a revision.
+
 ## Campaigns
 
 A campaign runs tasks under run configurations, repeated, in one project:
@@ -200,6 +254,5 @@ totals outcomes and spent units for each split.
 - `run` and `resume` start workers in rootless Podman containers using the
   domain's pinned worker image. The default test suite exercises the commands
   with a scripted environment and a loopback model server.
-- `revise` waits until contract revisions are part of the task layer.
 - Campaign runs are serial; there is no parallel scheduling.
 - Runs are serial. One process at a time may write a project.
