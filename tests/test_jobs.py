@@ -98,3 +98,15 @@ def test_a_local_image_id_pins_a_job():
         image_id, ["python", "-I", "-c", "print('local')"], {}, timeout_seconds=30
     )
     assert (result.returncode, result.stdout) == (0, b"local\n")
+
+
+def test_an_image_entrypoint_does_not_replace_the_job_runner():
+    from test_sandbox import entrypoint_image
+
+    result = PodmanJobs().run(
+        entrypoint_image(),
+        ["python", "-I", "-c", "print('ran')"],
+        {},
+        timeout_seconds=30,
+    )
+    assert (result.returncode, result.stdout) == (0, b"ran\n")

@@ -135,7 +135,7 @@ constructs every runtime argument without forwarding its environment.
 
 | Setting | Value |
 | --- | --- |
-| Image | `Sandbox(root, episode, image=IMAGE)`: any image pinned by `name@sha256:<digest>` or by a 64-hex local image ID, `--pull=never`. The default `IMAGE` is a Python image pinned by digest. The image must provide `/bin/sh` and Python 3.9 or later as `python`; it adds tools inside the container and changes none of these settings. The episode's environment must be `sandbox_id(image)`. |
+| Image | `Sandbox(root, episode, image=IMAGE)`: any image pinned by `name@sha256:<digest>` or by a 64-hex local image ID, `--pull=never`. The default `IMAGE` is a Python image pinned by digest. The image must provide `/bin/sh`, `sleep`, and Python 3.9 or later as `python`. Its own entrypoint is overridden, so it adds tools inside the container and changes none of these settings. The episode's environment must be `sandbox_id(image)`. |
 | Network | `--network=none`; Podman proxy forwarding disabled |
 | Namespaces | Private pid, ipc, uts, cgroup |
 | Filesystem | Read-only root; `/work` and `/tmp` are 8 MiB `noexec,nosuid,nodev` tmpfs; no host directory or runtime socket mounted |
@@ -205,7 +205,8 @@ layer exposes it as `run_job` on `CheckContext` and `OperationContext`.
 - The image must be pinned by `name@sha256:<digest>` or by a 64-hex local image ID
   (`podman image inspect --format '{{.Id}}'`), so a locally built toolchain image
   can be used. File names must be safe basenames; argv must be a nonempty list of
-  strings; the timeout is 1 to 3600 seconds.
+  strings; the timeout is 1 to 3600 seconds. The image must provide Python as
+  `python`, which runs the job wrapper; its own entrypoint is overridden.
 - `JobLimits(memory_mb=128, pids=32, scratch_mb=8, cpus=1)` sets the job's
   resources, bounded to 16–8192 MiB, 8–1024 processes, 1–4096 MiB for each of
   `/work` and `/tmp`, and 1–8 CPUs. The defaults suit a small interpreter run;

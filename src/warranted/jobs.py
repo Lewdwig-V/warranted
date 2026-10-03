@@ -190,8 +190,9 @@ class PodmanJobs:
                 "--workdir=/work",
                 f"--timeout={timeout_seconds + 30}",
                 "--log-driver=none",
+                # The image's own entrypoint would otherwise wrap the command.
+                "--entrypoint=python",
                 image,
-                "python",
                 "-I",
                 "-c",
                 _RUN,

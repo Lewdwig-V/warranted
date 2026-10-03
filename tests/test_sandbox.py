@@ -416,15 +416,48 @@ def test_unsafe_delivery_paths_are_refused(tmp_path):
                 sandbox.deliver(path, files)
 
 
-def test_a_worker_runs_in_a_domain_image_pinned_by_local_id(tmp_path):
-    from warranted.sandbox import IMAGE, sandbox_id
+def entrypoint_image() -> str:
+    """A local image whose entrypoint would make any wrapped command fail."""
+    import tempfile
 
-    image_id = subprocess.run(
+    from warranted.sandbox import IMAGE
+
+    with tempfile.TemporaryDirectory() as context:
+        subprocess.run(
+            [
+                "podman",
+                "build",
+                "--pull=never",
+                "--quiet",
+                "--file=-",
+                f"--iidfile={context}/iid",
+                context,
+            ],
+            input=f'FROM {IMAGE}\nENTRYPOINT ["false"]\n',
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        with open(f"{context}/iid") as iid:
+            return iid.read().strip().removeprefix("sha256:")
+
+
+def local_id() -> str:
+    from warranted.sandbox import IMAGE
+
+    return subprocess.run(
         ["podman", "image", "inspect", "--format", "{{.Id}}", IMAGE],
         capture_output=True,
         check=True,
         text=True,
     ).stdout.strip()
+
+
+@pytest.mark.parametrize("image", [local_id, entrypoint_image])
+def test_a_worker_runs_in_a_domain_image_pinned_by_local_id(tmp_path, image):
+    from warranted.sandbox import sandbox_id
+
+    image_id = image()
     episode = replace(setup(tmp_path), environment=sandbox_id(image_id))
 
     def model(*_):

@@ -295,8 +295,9 @@ class Sandbox:
                 f"--timeout={timeout}",
                 "--stop-timeout=0",
                 "--log-driver=none",
+                # The image's own entrypoint would otherwise wrap the command.
+                "--entrypoint=sleep",
                 self.image,
-                "sleep",
                 str(timeout + 30),
             ]
         )
