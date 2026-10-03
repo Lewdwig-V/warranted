@@ -143,9 +143,10 @@ def test_an_invalid_patch_fails_integrity_without_running(payload):
 def test_a_timeout_is_a_failed_case_not_input_rejection():
     # A nonzero exit without output would pass input rejection; a timeout must not.
     cases = json.loads(TASK.private["references.json"])
-    one = {"unsupported": cases["unsupported"]}
+    # One case of each kind the initial contract needs, to keep the test short.
+    two = {name: cases[name] for name in ("label", "unsupported")}
     task = replace(
-        TASK, private={**TASK.private, "references.json": json.dumps(one).encode()}
+        TASK, private={**TASK.private, "references.json": json.dumps(two).encode()}
     )
     verdict, _, _ = check(task, {"migrate.py": "while True:\n    pass\n"})
     assert verdict.status is VerdictStatus.REJECTED
@@ -158,6 +159,19 @@ def test_a_contract_naming_an_unknown_obligation_is_a_checker_fault():
         private={**TASK.private, "contract.json": b'{"obligations": ["fast"]}'},
     )
     with pytest.raises(ValueError, match="obligation"):
+        check(task, submit("complete"))
+
+
+@pytest.mark.parametrize("kept", [(), ("label",), ("label", "boolean")])
+def test_an_obligation_without_a_reference_case_is_a_checker_fault(kept):
+    # Missing evidence must never count as a pass (here: repetition, and more).
+    cases = json.loads(TASK.private["references.json"])
+    partial = {name: cases[name] for name in kept}
+    task = replace(
+        REVISED,
+        private={**REVISED.private, "references.json": json.dumps(partial).encode()},
+    )
+    with pytest.raises(ValueError, match="no reference case"):
         check(task, submit("complete"))
 
 

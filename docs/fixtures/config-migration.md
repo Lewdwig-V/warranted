@@ -238,8 +238,9 @@ initial contract; [`revisions/revised.toml`](../../examples/m7/migration/revisio
 replaces it with the revised one and tells the worker the new requirement.
 `scheduled.toml` applies that revision after the first submission. Feedback shows
 only the obligations of the contract in force, so the repetition result stays
-host-only under the initial contract. A contract naming an unknown obligation is
-a checker fault.
+host-only under the initial contract. A contract naming an unknown obligation, or
+a reference suite with no case for a required obligation, is a checker fault:
+missing evidence never counts as a pass.
 
 [`tests/test_migration_fixture.py`](../../tests/test_migration_fixture.py) covers
 the three-candidate matrix under both contracts, one job per case, invalid patches

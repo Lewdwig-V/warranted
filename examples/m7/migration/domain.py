@@ -40,8 +40,9 @@ class Migration:
             source, error = None, "result.json is missing"
         except (ValueError, RecursionError) as invalid:
             source, error = None, str(invalid)
-        # An invalid patch is never executed, so it establishes nothing.
-        results = dict.fromkeys(OBLIGATIONS, source is not None)
+        # An obligation is established only by the cases that assess it, and an
+        # invalid patch is never executed, so it establishes nothing.
+        results = {"repository_integrity": source is not None}
         detail = {}
         for name, case in cases.items() if source is not None else ():
             job = ctx.run_job(
@@ -55,9 +56,12 @@ class Migration:
                 case, job.stdout, job.returncode, job.timed_out or job.truncated
             )
             for obligation, passed in values.items():
-                results[obligation] = results[obligation] and passed
+                results[obligation] = results.get(obligation, True) and passed
             detail[name] = values
-        shown = {name: results[name] for name in required}
+        missing = set(required) - results.keys()
+        if source is not None and missing:
+            raise ValueError(f"no reference case assesses: {sorted(missing)}")
+        shown = {name: results.get(name, False) for name in required}
         status = VerdictStatus.PASSED if all(shown.values()) else VerdictStatus.REJECTED
         feedback = {"obligations": shown}
         if source is None:
