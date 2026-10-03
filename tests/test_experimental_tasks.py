@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from warranted.experimental import (
+    FEEDBACK_LIMIT,
     CheckContext,
     Project,
     RunConfig,
@@ -15,6 +16,8 @@ from warranted.experimental import (
     TaskSpec,
     Verdict,
     VerdictStatus,
+    _source_files,
+    domain_identity,
 )
 from warranted.ledger import Ledger, Outcome, Result
 from warranted.worker import AttemptResult
@@ -501,3 +504,97 @@ def test_check_budgets_require_isolated_checkers(tmp_path):
     )
     with pytest.raises(ValueError, match="isolated"):
         proj.start(task, CONFIG, Model())
+
+
+def domain_with(*sources):
+    class Declared(CSV.CsvDomain):
+        pass
+
+    Declared.sources = (*CSV.CsvDomain.sources, *sources)
+    return Declared()
+
+
+def test_the_csv_domain_pins_the_evaluator_it_loads_with_runpy():
+    names = [name for name, _ in _source_files(CSV.CsvDomain())]
+    assert names == ["class/domain.py", "source/0/experiments.py"]
+
+
+def test_editing_adding_or_removing_a_declared_source_blocks_reopening(tmp_path):
+    helper = tmp_path / "helper"
+    helper.mkdir()
+    (helper / "rules.py").write_text("A = 1\n")
+    root = tmp_path / "project"
+    options = {"environment": Script([]), "environment_id": ENVIRONMENT}
+    Project.create(root, domain_with(helper), {"model": 1}, **options)
+    Project(root, domain_with(helper), **options)
+    for change in (
+        lambda: (helper / "rules.py").write_text("A = 2\n"),
+        lambda: (helper / "extra.py").write_text(""),
+    ):
+        change()
+        with pytest.raises(ValueError, match="domain or environment differs"):
+            Project(root, domain_with(helper), **options)
+    (helper / "extra.py").unlink()
+    (helper / "rules.py").write_text("A = 1\n")
+    Project(root, domain_with(helper), **options)
+
+
+def test_moving_a_declared_source_tree_keeps_the_identity(tmp_path):
+    for place in ("a", "b"):
+        (tmp_path / place / "lib").mkdir(parents=True)
+        (tmp_path / place / "lib" / "rules.py").write_text("A = 1\n")
+    assert domain_identity(domain_with(tmp_path / "a/lib")) == domain_identity(
+        domain_with(tmp_path / "b/lib")
+    )
+
+
+def test_a_missing_declared_source_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="does not exist"):
+        domain_identity(domain_with(tmp_path / "absent"))
+
+
+def test_the_project_identity_records_the_warranted_version():
+    assert domain_identity(CSV.CsvDomain())["warranted"]
+
+
+class Talkative:
+    version = "1"
+    isolated = True
+
+    def __init__(self, size):
+        self.size = size
+
+    def check(self, ctx):
+        return Verdict(VerdictStatus.PASSED, "x" * self.size, {"note": "kept"})
+
+
+def talkative_domain(size):
+    class Domain(CSV.CsvDomain):
+        checkers = {"transformation": Talkative(size)}
+
+    return Domain()
+
+
+def test_feedback_over_the_limit_is_a_checker_fault_kept_as_host_evidence(
+    tmp_path,
+):
+    proj, script = project(tmp_path, ["correct"], talkative_domain(FEEDBACK_LIMIT))
+    result = proj.start(TASK, CONFIG, Model())
+    assert result.outcome is RunOutcome.INFRASTRUCTURE_FAILURE
+    with Ledger.open(proj.ledger_root) as ledger:
+        [check] = [
+            op for op in ledger.operations() if op.request.origin.kind == "check"
+        ]
+        artifacts = check.completion.observation.artifacts
+        verdict = json.loads(ledger.read_artifact(artifacts["verdict.json"]))
+        kept = json.loads(ledger.read_artifact(artifacts["host-only.json"]))
+    assert verdict == {"status": "infrastructure_failure", "feedback": None}
+    assert kept["status"] == "passed"
+    assert kept["feedback"] == "x" * FEEDBACK_LIMIT
+    assert kept["host_only"] == {"note": "kept"}
+
+
+def test_feedback_at_the_limit_is_shown(tmp_path):
+    # The recorded JSON adds two quotes and a trailing newline.
+    proj, _ = project(tmp_path, ["correct"], talkative_domain(FEEDBACK_LIMIT - 3))
+    assert proj.start(TASK, CONFIG, Model()).outcome is RunOutcome.ACCEPTED

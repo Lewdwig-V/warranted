@@ -18,6 +18,7 @@ import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from importlib.metadata import version as package_version
 from pathlib import Path
 from time import perf_counter_ns
 from types import MappingProxyType
@@ -47,6 +48,8 @@ from warranted.worker import (
 )
 
 PRODUCER = "warranted-tasks"
+# Feedback reaches the worker's context; a checker that writes more is faulty.
+FEEDBACK_LIMIT = 64 * 1024
 _NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}")
 _ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,100}")
 _RESERVED = {"context.json", "result.json", "workspace"}
@@ -174,21 +177,51 @@ class Domain(Protocol):
     version: str
     worker_image: str
     checkers: Mapping[str, Checker]
+    # Optional: further files or directories whose contents the checkers depend on,
+    # such as code loaded with runpy or importlib, or data files. Imports are not
+    # followed automatically, so undeclared code is not pinned.
+    # sources: Sequence[Path]
 
 
-def domain_identity(domain: Domain) -> dict[str, str]:
-    """Name, version, image, and a digest of the domain's and checkers' source."""
-    sources = []
+def _source_files(domain: Domain) -> list[tuple[str, bytes]]:
+    """The class source files plus every file under the domain's declared sources.
+
+    Names are machine independent: class files by file name, declared sources by
+    position and relative path. Moving the tree keeps the identity; editing,
+    adding, or removing a file changes it.
+    """
+    files: list[tuple[str, Path]] = []
     for item in (domain, *domain.checkers.values()):
         path = inspect.getsourcefile(type(item))
         if path is None:
             raise ValueError("domain and checker classes need source files")
-        sources.append(Path(path).read_bytes())
+        files.append(("class/" + Path(path).name, Path(path)))
+    for index, declared in enumerate(getattr(domain, "sources", ())):
+        path = Path(declared)
+        if path.is_file():
+            files.append((f"source/{index}/{path.name}", path))
+        elif path.is_dir():
+            files.extend(
+                (f"source/{index}/{child.relative_to(path).as_posix()}", child)
+                for child in sorted(path.rglob("*"))
+                if child.is_file() and "__pycache__" not in child.parts
+            )
+        else:
+            raise ValueError(f"declared domain source does not exist: {declared}")
+    return sorted({(name, path.read_bytes()) for name, path in files})
+
+
+def domain_identity(domain: Domain) -> dict[str, str]:
+    """Name, version, image, Warranted version, and a digest of the domain's source."""
+    sources = _source_files(domain)
     identity = {
         "domain": domain.name,
         "domain_version": domain.version,
         "worker_image": domain.worker_image,
-        "domain_source": _digest(b"".join(sorted(set(sources)))),
+        "domain_source": _digest(
+            _json([[name, _digest(data)] for name, data in sources])
+        ),
+        "warranted": package_version("warranted"),
     }
     for name, checker in sorted(domain.checkers.items()):
         identity[f"checker/{name}"] = checker.version
@@ -724,6 +757,19 @@ class Project:
                 verdict = Verdict(
                     VerdictStatus.INFRASTRUCTURE_FAILURE,
                     host_only={"error": repr(error)},
+                )
+            shown = len(_json(verdict.feedback))
+            if shown > FEEDBACK_LIMIT:
+                # Truncation could mislead the worker; oversized feedback is a
+                # checker fault, kept whole as host-only evidence.
+                verdict = Verdict(
+                    VerdictStatus.INFRASTRUCTURE_FAILURE,
+                    host_only={
+                        "error": f"feedback is {shown} bytes; limit {FEEDBACK_LIMIT}",
+                        "status": verdict.status,
+                        "feedback": verdict.feedback,
+                        "host_only": verdict.host_only,
+                    },
                 )
             outcome, code = {
                 VerdictStatus.PASSED: (Outcome.SUCCEEDED, 0),

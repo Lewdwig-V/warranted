@@ -104,6 +104,7 @@ class Domain(Protocol):
     version: str  # recorded with every run
     worker_image: str  # pinned digest; tools for the worker
     checkers: Mapping[str, Checker]
+    sources: Sequence[Path]  # optional: other files the checkers depend on
 
     def prepare(self, task: TaskSpec, ctx: PrepareContext) -> Workspace: ...
     def normalize(self, candidate: Files) -> bytes: ...  # for the duplicate guard
@@ -113,7 +114,10 @@ The CLI loads a domain from a `module:object` reference, for example
 `warranted init runs/reschema --domain reschema.domain:ReSchema`. There is no
 plugin registry. The domain's name, version, and source digest are pinned in the
 project manifest, so a changed domain blocks resume the same way a changed fixture
-does today.
+does today. The digest covers the source files of the domain and checker classes
+and every file under the domain's declared `sources`; imports are not followed,
+so code loaded any other way must be declared. The Warranted version is pinned as
+well.
 
 `prepare` writes the task files the worker sees. `PrepareContext` exposes the task
 inputs and the facts in the task's memory scope. Facts are written under
@@ -392,6 +396,29 @@ What changed or did not fit:
 - The worker convention is unchanged: cases travel inside `result.json`, not a
   separate `cases.json`.
 
+### Answers to open questions 3 and 4
+
+**Domain identity (question 3).** Following imports cannot find all the code a
+checker runs: the CSV checker loads the M2 evaluator with `runpy.run_path`, which
+leaves no import to follow. The domain therefore declares the other files it
+depends on as `sources`, files or directories, and the host digests them with the
+domain's and checkers' class source files. Each file is named by its role and
+relative path, not its absolute path, so moving a checkout keeps the identity, and
+editing, adding, or removing a file changes it. A declared path that does not
+exist is refused. Undeclared code is not pinned; that is the domain author's
+responsibility, and the reason the declaration exists. The installed Warranted
+version is also part of the identity, since the host's own checking and acceptance
+code shapes every verdict. Third-party packages are left to the domain's lockfile.
+`examples/m7/csv/` declares the M2 evaluator.
+
+**Feedback size (question 4).** The host enforces a 64 KiB limit on a verdict's
+encoded feedback, since feedback enters the worker's context. Larger feedback
+turns the verdict into an infrastructure failure: truncating it could mislead the
+worker, and rejecting would turn a pass into a false rejection. The oversized
+feedback, the original status, and the original host-only data are kept as
+host-only evidence. The CSV checker's feedback is 293 bytes, so the limit only
+catches faults.
+
 ## Open questions
 
 1. Does a follow-on episode receive the earlier conversation, or only the restored
@@ -399,9 +426,10 @@ What changed or did not fit:
    from its inputs.
 2. Provisionally answered by slices 1 and 2: a `[private]` section of the task
    file. Revisit if private data must be large or shared between tasks.
-3. How is the domain's code identified for pinning? Slice 1 showed a digest of
-   the domain's own source file misses code it imports.
-4. Should verdict feedback have a size limit enforced by the host?
+3. Answered: the domain declares `sources`, and the host digests them with the
+   class source files. See [open questions 3 and 4](#answers-to-open-questions-3-and-4).
+4. Answered: yes, 64 KiB, and oversized feedback is a checker fault. See
+   [open questions 3 and 4](#answers-to-open-questions-3-and-4).
 5. Which `warranted.host` names do the fixtures still need once they move onto the
    task layer? That list decides what the host kit has to keep exposing.
 6. Answered: budgets and blocking are scoped to a run by ledger scopes. See the
