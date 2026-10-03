@@ -98,7 +98,9 @@ and keep only its reverse-engineering logic
   (projects, tasks, runs, domains, checkers, operations, and memory) from the
   [M7 proposal](docs/proposals/m7-harness-api.md), and `warranted.host` exports
   the low-level kit. Modules whose names start with an underscore are private.
-  Until 1.0, either surface may change; changes will be listed in the changelog.
+  Until 1.0, a minor release may change either surface; every change is in the
+  [changelog](CHANGELOG.md), and the [API reference](docs/reference/api.md) states
+  the versioning and deprecation policy.
 - The CSV and migration fixtures run on the task layer
   ([`examples/m7/csv`](examples/m7/csv), [`examples/m7/migration`](examples/m7/migration))
   without their proof cases; the M1–M5 drivers remain for the guarantees the task
