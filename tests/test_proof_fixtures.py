@@ -160,30 +160,67 @@ def test_the_proof_task_is_refused_without_a_verifier(tmp_path):
         proj.start(UNIQUENESS, CONFIG, Model())
 
 
-def test_timestamp_premises_require_one_offset_for_every_row():
+def changed_id():
+    candidate = json.loads(json.dumps(CANDIDATES["correct"]))
+    candidate["rows"][0][0] = "not-a-source-id"
+    return candidate
+
+
+def shifted_offset():
+    candidate = json.loads(json.dumps(CANDIDATES["correct"]))
+    candidate["rows"][0][1] = "2025-12-31T22:30:00Z"  # one hour off the other rows
+    return candidate
+
+
+@pytest.mark.parametrize(
+    "task, check, proof, mismatch",
+    [
+        (UNIQUENESS, "uniqueness", UNIQUENESS_PROOF, changed_id),
+        (TIMESTAMP, "timestamp", TIMESTAMP_PROOF, shifted_offset),
+    ],
+    ids=["uniqueness", "timestamp"],
+)
+def test_a_candidate_outside_the_model_is_rejected_and_the_run_continues(
+    tmp_path, task, check, proof, mismatch
+):
+    plan = [(mismatch(), proof), (CANDIDATES["correct"], proof)]
+    proj, _ = csv_project(tmp_path, plan)
+    result = proj.start(task, CONFIG, Model())
+    assert [s.decision for s in result.submissions] == ["rejected", "accepted"]
+    assert [s.verdicts[check] for s in result.submissions] == [
+        VerdictStatus.REJECTED,
+        VerdictStatus.PASSED,
+    ]
+    assert result.outcome is RunOutcome.ACCEPTED
+
+
+def test_timestamp_correspondence_requires_one_offset_for_every_row():
     task = TIMESTAMP
 
     def single_offset(result):
         ctx = CheckContext(
             {"result.json": json.dumps(result).encode()}, task.inputs, task.private
         )
-        return CSV.timestamp_premises(ctx)
+        return CSV.timestamp_correspondence(ctx)
 
     assert single_offset(CANDIDATES["correct"]) == {"single_offset": True}
     assert single_offset(CANDIDATES["wrong-offset"]) == {"single_offset": True}
-    shifted = json.loads(json.dumps(CANDIDATES["correct"]))
-    shifted["rows"][0][1] = "2025-12-31T22:30:00Z"  # one hour off the other rows
-    assert single_offset(shifted) == {"single_offset": False}
+    assert single_offset(shifted_offset()) == {"single_offset": False}
 
 
-def test_uniqueness_premises_fail_closed_on_malformed_rows():
+def test_uniqueness_premise_is_about_the_input_only():
+    ctx = CheckContext({}, UNIQUENESS.inputs, UNIQUENESS.private)
+    assert CSV.uniqueness_premises(ctx) == {"input_unique": True}
+
+
+def test_uniqueness_correspondence_fails_closed_on_malformed_rows():
     def identity_selection(result):
         ctx = CheckContext(
             {"result.json": json.dumps(result).encode()},
             UNIQUENESS.inputs,
             UNIQUENESS.private,
         )
-        return CSV.uniqueness_premises(ctx)["identity_selection"]
+        return CSV.uniqueness_correspondence(ctx)["identity_selection"]
 
     rows = CANDIDATES["correct"]["rows"]
     assert identity_selection({"rows": rows}) is True
@@ -191,7 +228,8 @@ def test_uniqueness_premises_fail_closed_on_malformed_rows():
     assert identity_selection({"rows": [[]]}) is False
     assert identity_selection({"rows": [rows[0], [5, "x", 1]]}) is False
     # M4's semantics: an empty selection is an identity selection; the transformation
-    # check rejects it (unlike timestamp_premises, which needs a row to show an offset).
+    # check rejects it (unlike timestamp_correspondence, which needs a row to show an
+    # offset).
     assert identity_selection({"rows": []}) is True
 
 
@@ -219,22 +257,50 @@ def test_the_renaming_proof_omits_the_label_and_the_obligation_decides(
     assert [s.decision for s in result.submissions] == [decision]
 
 
-def test_renaming_premise_fails_closed_and_needs_a_migrate_case():
-    def premises(payload, private=MIGRATION_TASK.private):
+def test_a_wrong_renaming_is_rejected_and_the_run_continues(tmp_path):
+    keeps_host = MIGRATIONS["complete"].replace(
+        '{"version": 2, "endpoint"', '{"version": 2, "host": value[host], "endpoint"'
+    )
+    assert keeps_host != MIGRATIONS["complete"]
+    worker = Worker(
+        [
+            ({"migrate.py": keeps_host}, MIGRATION_PROOF),
+            ({"migrate.py": MIGRATIONS["complete"]}, MIGRATION_PROOF),
+        ]
+    )
+    proj = Project.create(
+        tmp_path / "project",
+        MIGRATION.MigrationDomain(),
+        {"model": 40, "tool": 40, "check": 40},
+        environment=worker,
+        environment_id=ENVIRONMENT,
+        jobs=LocalJobs(),
+        proofs=FakeVerifier(),
+    )
+    result = proj.start(MIGRATION_TASK, CONFIG, Model())
+    assert [s.decision for s in result.submissions] == ["rejected", "accepted"]
+    assert result.submissions[0].verdicts["renaming"] is VerdictStatus.REJECTED
+    assert result.outcome is RunOutcome.ACCEPTED
+
+
+def test_renaming_correspondence_fails_closed_and_needs_a_migrate_case():
+    def correspondence(payload, private=MIGRATION_TASK.private):
         ctx = CheckContext(
             {"result.json": json.dumps(payload).encode()},
             MIGRATION_TASK.inputs,
             private,
             LocalJobs(),
         )
-        return MIGRATION.renaming_premises(ctx)
+        return MIGRATION.renaming_correspondence(ctx)
 
     invalid = {"renaming_correspondence": False}
-    assert premises({"migrate.py": ""}) == invalid
-    assert premises({"migrate.py": MIGRATIONS["complete"], "extra": "x"}) == invalid
+    assert correspondence({"migrate.py": ""}) == invalid
+    assert (
+        correspondence({"migrate.py": MIGRATIONS["complete"], "extra": "x"}) == invalid
+    )
     no_cases = {**MIGRATION_TASK.private, "references.json": b"{}"}
     with pytest.raises(ValueError, match="no migrate case"):
-        premises({"migrate.py": MIGRATIONS["complete"]}, no_cases)
+        correspondence({"migrate.py": MIGRATIONS["complete"]}, no_cases)
 
 
 needs_lean = pytest.mark.skipif(

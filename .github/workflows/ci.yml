@@ -182,7 +182,7 @@ jobs:
             runs/podman-storage.tar
             runs/m4-tools/bundle.json
           # Bump v1 if the archived storage layout changes.
-          key: proof-store-v1-ubuntu-24.04-podman-${{ steps.podman.outputs.version }}-uid-${{ steps.podman.outputs.uid }}-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/_containers.py', 'src/warranted/_proofs.py', 'src/warranted/proof/**', 'src/warranted/_sandbox.py', 'examples/proof_targets.py', 'examples/m7/**/*Challenge.lean') }}
+          key: proof-store-v1-ubuntu-24.04-podman-${{ steps.podman.outputs.version }}-uid-${{ steps.podman.outputs.uid }}-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/_containers.py', 'src/warranted/_proofs.py', 'src/warranted/proof/**', 'src/warranted/_sandbox.py') }}
       - name: Restore verifier image for cache migration
         id: verifier-cache
         if: steps.podman-cache.outputs.cache-hit != 'true'
@@ -191,7 +191,7 @@ jobs:
           path: |
             runs/m4-tools/bundle.json
             runs/m4-tools/proof-image.oci
-          key: proof-ubuntu-24.04-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/_containers.py', 'src/warranted/_proofs.py', 'src/warranted/proof/**', 'examples/proof_targets.py', 'examples/m7/**/*Challenge.lean') }}
+          key: proof-ubuntu-24.04-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/_containers.py', 'src/warranted/_proofs.py', 'src/warranted/proof/**') }}
       - name: Build the pinned verifier
         if: steps.podman-cache.outputs.cache-hit != 'true' && steps.verifier-cache.outputs.cache-hit != 'true'
         run: |

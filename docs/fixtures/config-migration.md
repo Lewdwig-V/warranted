@@ -256,12 +256,20 @@ revision and a new run. The A–E treatments stay on the host kit.
 
 [`proof.toml`](../../examples/m7/migration/proof.toml) adds a `LeanProof` check
 named `renaming` beside the other obligations, verified against
-`MigrationChallenge.lean`. Its premise `renaming_correspondence` runs the candidate
-on the `migrate` reference cases and requires that host and timeout are renamed
-exactly; an invalid patch, or a reference suite with no `migrate` case, never
-yields a true premise (the latter is a checker fault). The theorem covers both
-label variants, so a candidate that drops the label passes the proof and is
-rejected by `legacy_label`. The proofs stay unable to accept on their own.
+`MigrationChallenge.lean`. Its correspondence check `renaming_correspondence`
+runs the candidate on the `migrate` reference cases and requires that host and
+timeout are renamed exactly; an invalid patch, or a reference suite with no
+`migrate` case, never yields a true result (the latter is a checker fault). A
+proved theorem whose correspondence fails is the worker's mistake, so `renaming`
+is rejected with feedback and the run continues. The theorem covers both label
+variants, so a candidate that drops the label passes the proof and is rejected by
+`legacy_label`. The proofs stay unable to accept on their own.
+
+| Case | `renaming` | Run decision |
+| --- | --- | --- |
+| `complete`, valid proof | passed | accepted |
+| `drop-label`, valid proof | passed | rejected by `legacy_label` |
+| keeps `host` beside `endpoint`, valid proof | rejected (`renaming_correspondence` fails) | rejected; a later `complete` submission is accepted |
 
 ## Proof cases
 

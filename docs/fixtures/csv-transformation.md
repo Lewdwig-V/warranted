@@ -494,9 +494,13 @@ guarantees.
 `LeanProof` check beside `transformation`, so a proof never replaces it. The worker
 submits `Solution.lean` with `result.json`; the host verifies it against the
 domain-owned challenge (`UniquenessChallenge.lean`, `TimestampChallenge.lean`).
-Premises are trusted domain code: `input_unique` and `identity_selection` for
-uniqueness, `single_offset` for the timestamp. A proved theorem whose premise fails
-is `unsupported`, not rejected. A project without a verifier refuses these tasks.
+Premises and correspondence checks are trusted domain code. The uniqueness
+premise `input_unique` is about the task's input: when it fails, the proved theorem
+does not apply, so the check is `unsupported`. The correspondence checks
+`identity_selection` (uniqueness) and `single_offset` (timestamp) are about the
+candidate: when one fails, the candidate is not the modelled one, so the check is
+`rejected` with feedback and the run continues. A project without a verifier
+refuses these tasks.
 
 | Case | Proof check | Run decision |
 | --- | --- | --- |
@@ -506,7 +510,8 @@ is `unsupported`, not rejected. A project without a verifier refuses these tasks
 | `correct`, wrong or `sorry` proof | rejected | rejected |
 | `correct`, valid timestamp proof | passed | accepted |
 | `wrong-offset`, valid timestamp proof (holds for any single offset) | passed | rejected by `transformation` |
-| rows with mixed offsets | unsupported (`single_offset` fails) | not accepted (unsupported) |
+| `correct` with one ID changed, valid uniqueness proof | rejected (`identity_selection` fails) | rejected; a later `correct` submission is accepted |
+| rows with mixed offsets, valid timestamp proof | rejected (`single_offset` fails) | rejected; a later `correct` submission is accepted |
 
 [`tests/test_proof_fixtures.py`](../../tests/test_proof_fixtures.py) runs these
 with a fake verifier; its `proof`-marked tests run the real Lean verifier in CI.
