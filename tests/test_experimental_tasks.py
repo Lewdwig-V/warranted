@@ -270,7 +270,14 @@ class LooksPassed:
     facts = ()
 
 
-@pytest.mark.parametrize("value", [True, None, {"status": "passed"}, LooksPassed()])
+class BadRepr:
+    def __repr__(self):
+        raise RuntimeError("repr fails")
+
+
+@pytest.mark.parametrize(
+    "value", [True, None, {"status": "passed"}, LooksPassed(), BadRepr()]
+)
 def test_a_checker_result_that_is_not_a_verdict_is_a_checker_fault(tmp_path, value):
     proj, _ = project(tmp_path, ["correct"], Domain(Returning(value)))
     result = proj.start(TASK, CONFIG, Model())
@@ -287,6 +294,23 @@ def test_a_checker_result_that_is_not_a_verdict_is_a_checker_fault(tmp_path, val
     assert "not a Verdict" in kept["error"]
     # A resumed run reads the recorded fault; it does not run the check again.
     assert proj.resume(result.run_id, Model()).outcome is result.outcome
+
+
+class RaisingUnrepresentable:
+    version = "1"
+
+    def check(self, ctx: CheckContext):
+        class Unrepresentable(Exception):
+            def __repr__(self):
+                raise RuntimeError("repr fails")
+
+        raise Unrepresentable()
+
+
+def test_a_checker_crash_that_cannot_be_described_is_still_a_checker_fault(tmp_path):
+    proj, _ = project(tmp_path, ["correct"], Domain(RaisingUnrepresentable()))
+    result = proj.start(TASK, CONFIG, Model())
+    assert result.outcome is RunOutcome.INFRASTRUCTURE_FAILURE
 
 
 def test_resume_refuses_a_changed_task_model_or_domain(tmp_path):
