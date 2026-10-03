@@ -68,8 +68,13 @@ class CsvDomain:
         ),
     }
 
-project = Project.create(root, CsvDomain(), allowances,
-                         proofs=LeanVerifier(Path("runs/m4-tools/bundle.json")))
+
+project = Project.create(
+    root,
+    CsvDomain(),
+    allowances,
+    proofs=LeanVerifier(Path("runs/m4-tools/bundle.json")),
+)
 ```
 
 `CheckContext` gains `verify(target, source)`. It calls the project's verifier

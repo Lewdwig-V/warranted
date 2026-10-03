@@ -303,22 +303,20 @@ Leave the rest of `prepare()` unchanged: the lake manifest, `Solution.lean` (now
 In `src/warranted/_proof_receipts.py`, change `Proofs.__init__` to take `target` instead of `target_id`:
 
 ```python
-    def __init__(
-        self,
-        ledger: Ledger,
-        session: str,
-        bundle: Path,
-        *,
-        target: proofs.ProofTarget,
-        seconds: int = proofs.LIMITS["seconds"],
-    ):
-        self.ledger, self.session = ledger, session
-        self.bundle = bundle.read_bytes()
-        self.seconds = seconds
-        self.proof_target = target
-        identity, raw = proofs._inputs(
-            b"policy preparation", self.bundle, seconds, target
-        )
+def __init__(
+    self,
+    ledger: Ledger,
+    session: str,
+    bundle: Path,
+    *,
+    target: proofs.ProofTarget,
+    seconds: int = proofs.LIMITS["seconds"],
+):
+    self.ledger, self.session = ledger, session
+    self.bundle = bundle.read_bytes()
+    self.seconds = seconds
+    self.proof_target = target
+    identity, raw = proofs._inputs(b"policy preparation", self.bundle, seconds, target)
 ```
 
 In `Proofs.check`, change the `_verify` call to:
@@ -627,7 +625,9 @@ def test_the_verifier_is_bound_into_the_project_identity(tmp_path):
 
     options = {"environment": Script([]), "environment_id": ENVIRONMENT}
     root = tmp_path / "project"
-    Project.create(root, CSV.CsvDomain(), {"model": 1}, proofs=FakeVerifier(), **options)
+    Project.create(
+        root, CSV.CsvDomain(), {"model": 1}, proofs=FakeVerifier(), **options
+    )
     Project(root, CSV.CsvDomain(), proofs=FakeVerifier(), **options)
 
     class Rebuilt(FakeVerifier):
@@ -700,7 +700,9 @@ class ProofVerifier(Protocol):
 class LeanVerifier:
     """The pinned Lean bundle and hardened container (docs/reference/proof-verification.md)."""
 
-    def __init__(self, bundle_path: Path | str, seconds: int = _proofs.LIMITS["seconds"]):
+    def __init__(
+        self, bundle_path: Path | str, seconds: int = _proofs.LIMITS["seconds"]
+    ):
         self.bundle = Path(bundle_path).read_bytes()
         _proofs._validate(b"x", seconds)
         self.seconds = seconds
@@ -924,7 +926,11 @@ def test_premises_run_even_when_the_proof_fails():
 )
 def test_a_faulty_premise_is_never_a_pass(premises):
     with pytest.raises((TypeError, ZeroDivisionError)):
-        checked(FakeVerifier({PROOF: ProofStatus.PROVED}), {"Solution.lean": PROOF}, premises)
+        checked(
+            FakeVerifier({PROOF: ProofStatus.PROVED}),
+            {"Solution.lean": PROOF},
+            premises,
+        )
 
 
 @pytest.mark.parametrize(
@@ -954,12 +960,19 @@ def test_a_task_needing_a_proof_is_refused_without_a_verifier(tmp_path):
     from test_experimental_tasks import CSV, TASK
 
     class Domain(CSV.CsvDomain):
-        checkers = {**CSV.CsvDomain.checkers, "uniqueness": LeanProof(TARGETS["uniqueness"])}
+        checkers = {
+            **CSV.CsvDomain.checkers,
+            "uniqueness": LeanProof(TARGETS["uniqueness"]),
+        }
 
     proj, script = project(tmp_path, ["correct"], Domain())
     task = TaskSpec(
-        TASK.id, TASK.objective, TASK.inputs, TASK.private,
-        ("transformation", "uniqueness"), 1,
+        TASK.id,
+        TASK.objective,
+        TASK.inputs,
+        TASK.private,
+        ("transformation", "uniqueness"),
+        1,
     )
     with pytest.raises(ValueError, match="need a proof verifier"):
         proj.start(task, CONFIG, Model())
@@ -1025,8 +1038,7 @@ class LeanProof:
                 VerdictStatus.REJECTED,
                 {
                     "proof": "invalid",
-                    "error": f"{self.source} must be 1 to "
-                    f"{_proofs.SOURCE_LIMIT} bytes",
+                    "error": f"{self.source} must be 1 to {_proofs.SOURCE_LIMIT} bytes",
                     "premises": premises,
                 },
             )
@@ -1283,7 +1295,9 @@ def test_uniqueness_proof_never_replaces_the_transformation_check(
 
 def test_duplicate_identifiers_leave_the_theorem_valid_but_unsupported(tmp_path):
     duplicates = (ROOT / "examples/m4/input-duplicates.csv").read_bytes()
-    task = one(replace(UNIQUENESS, inputs={**UNIQUENESS.inputs, "input.csv": duplicates}))
+    task = one(
+        replace(UNIQUENESS, inputs={**UNIQUENESS.inputs, "input.csv": duplicates})
+    )
     proj, _ = csv_project(tmp_path, [(CANDIDATES["correct"], UNIQUENESS_PROOF)])
     result = proj.start(task, CONFIG, Model())
     assert result.submissions[0].verdicts["uniqueness"] is VerdictStatus.UNSUPPORTED
@@ -1291,7 +1305,9 @@ def test_duplicate_identifiers_leave_the_theorem_valid_but_unsupported(tmp_path)
 
 
 def test_a_wrong_proof_is_rejected_and_reported(tmp_path):
-    proj, _ = csv_project(tmp_path, [(CANDIDATES["correct"], b"theorem nope : True := trivial")])
+    proj, _ = csv_project(
+        tmp_path, [(CANDIDATES["correct"], b"theorem nope : True := trivial")]
+    )
     result = proj.start(one(UNIQUENESS), CONFIG, Model())
     assert result.submissions[0].verdicts["uniqueness"] is VerdictStatus.REJECTED
     assert result.outcome is RunOutcome.REJECTED
@@ -1365,8 +1381,12 @@ The challenge is given to the worker under a `.md` name because the task file na
 Add `LeanProof` and `ProofTarget` to the `from warranted import ...` line, then add before `class CsvDomain`:
 
 ```python
-UNIQUENESS = ProofTarget(HERE / "UniquenessChallenge.lean", "Warranted.uniqueness_preserved")
-TIMESTAMP = ProofTarget(HERE / "TimestampChallenge.lean", "Warranted.timestamp_roundtrip")
+UNIQUENESS = ProofTarget(
+    HERE / "UniquenessChallenge.lean", "Warranted.uniqueness_preserved"
+)
+TIMESTAMP = ProofTarget(
+    HERE / "TimestampChallenge.lean", "Warranted.timestamp_roundtrip"
+)
 
 
 def _candidate_rows(ctx: CheckContext) -> list | None:
@@ -1399,7 +1419,9 @@ def timestamp_premises(ctx: CheckContext) -> dict[str, bool]:
     for row in _candidate_rows(ctx) or []:
         try:
             utc = datetime.strptime(row[1], "%Y-%m-%dT%H:%M:%SZ")
-            offsets.add(int((datetime.fromisoformat(local[row[0]]) - utc).total_seconds()))
+            offsets.add(
+                int((datetime.fromisoformat(local[row[0]]) - utc).total_seconds())
+            )
         except (KeyError, TypeError, ValueError, IndexError):
             return {"single_offset": False}
     return {"single_offset": len(offsets) == 1}
@@ -1512,7 +1534,9 @@ In `Migration.check`, replace the `for name, case in cases.items() if source is 
 Then add:
 
 ```python
-MIGRATION = ProofTarget(HERE / "MigrationChallenge.lean", "Warranted.migration_renaming")
+MIGRATION = ProofTarget(
+    HERE / "MigrationChallenge.lean", "Warranted.migration_renaming"
+)
 
 
 def renaming_premises(ctx: CheckContext) -> dict[str, bool]:
@@ -1526,7 +1550,8 @@ def renaming_premises(ctx: CheckContext) -> dict[str, bool]:
     except (KeyError, ValueError, RecursionError):
         return {"renaming_correspondence": False}
     cases = {
-        n: c for n, c in json.loads(ctx.private["references.json"]).items()
+        n: c
+        for n, c in json.loads(ctx.private["references.json"]).items()
         if c["kind"] == "migrate"
     }
     if not cases:
@@ -1589,7 +1614,9 @@ needs_lean = pytest.mark.skipif(
         (TIMESTAMP, "timestamp", TIMESTAMP_PROOF, "wrong-offset", "rejected"),
     ],
 )
-def test_real_proofs_on_the_task_layer(tmp_path, task, check, proof, candidate, decision):
+def test_real_proofs_on_the_task_layer(
+    tmp_path, task, check, proof, candidate, decision
+):
     verifier = LeanVerifier(os.environ["WARRANTED_PROOF_BUNDLE"])
     proj, _ = csv_project(tmp_path, [(CANDIDATES[candidate], proof)], verifier)
     result = proj.start(one(task), CONFIG, Model())
