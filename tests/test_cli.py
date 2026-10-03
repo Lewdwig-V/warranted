@@ -300,3 +300,51 @@ def test_status_reports_an_open_run_and_each_blocker_once(
     status = out(capsys)
     assert status["outcome"] == "unknown"
     assert status["blocked"] == ["shared/probe"]
+
+
+def campaign_file(tmp_path, config, *, repetitions=2, split="development"):
+    path = tmp_path / "campaign.toml"
+    path.write_text(
+        f'id = "csv-dev"\nrepetitions = {repetitions}\n'
+        f'[configs]\nlocal = "{config}"\n'
+        f'[[tasks]]\npath = "{TASK}"\nsplit = "{split}"\n'
+    )
+    return path
+
+
+def test_campaign_run_pins_runs_and_continues_them(tmp_path, capsys, scripted, model):
+    project = init(tmp_path, capsys)
+    config, _ = model
+    scripted += ["correct"]
+    campaign = campaign_file(tmp_path, config)
+    assert main(["campaign", "run", str(project), str(campaign), "--json"]) == 0
+    first = out(capsys)
+    assert [r["outcome"] for r in first["runs"]] == ["accepted", "accepted"]
+    assert first["splits"]["development"]["outcomes"] == {"accepted": 2}
+    assert first["splits"]["development"]["spent"]["check"] == 2
+    # Running it again continues the same plan; nothing is left to run.
+    assert main(["campaign", "run", str(project), str(campaign), "--json"]) == 0
+    assert out(capsys)["runs"] == first["runs"]
+    assert main(["campaign", "report", str(project), "csv-dev"]) == 0
+    assert "development: 2 accepted" in capsys.readouterr().out
+
+
+def test_a_changed_campaign_is_a_usage_error(tmp_path, capsys, scripted, model):
+    project = init(tmp_path, capsys)
+    config, _ = model
+    scripted += ["correct"]
+    main(["campaign", "run", str(project), str(campaign_file(tmp_path, config))])
+    capsys.readouterr()
+    changed = campaign_file(tmp_path, config, repetitions=3)
+    assert main(["campaign", "run", str(project), str(changed)]) == 2
+    assert "pinned plan" in capsys.readouterr().err
+
+
+def test_import_pins_files_for_task_references(tmp_path, capsys):
+    project = init(tmp_path, capsys)
+    data = tmp_path / "binary"
+    data.write_bytes(b"\x7fELF")
+    assert main(["import", str(project), str(data)]) == 0
+    reference, name = capsys.readouterr().out.split()
+    assert reference.startswith("sha256:") and name == str(data)
+    assert main(["import", str(project), str(tmp_path / "missing")]) == 2
