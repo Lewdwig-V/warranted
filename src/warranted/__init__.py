@@ -15,7 +15,9 @@ from warranted._jobs import JobContext, JobLimits, JobResult, JobRunner, PodmanJ
 from warranted._ledger import Balance, Outcome
 from warranted._openrouter import OpenRouterChatCompletions
 from warranted._operations import Operation, OperationContext, OperationResult
-from warranted._proofs import ProofTarget
+from warranted._proof_checks import LeanProof, LeanVerifier, ProofVerifier
+from warranted._proofs import ProofStatus, ProofTarget
+from warranted._proofs import Verification as ProofResult
 from warranted._sandbox import IMAGE as DEFAULT_WORKER_IMAGE
 from warranted._tasks import (
     FACTS_COUNT,
@@ -73,6 +75,8 @@ __all__ = [
     "JobLimits",
     "JobResult",
     "JobRunner",
+    "LeanProof",
+    "LeanVerifier",
     "LocalChatCompletions",
     "MemoryEntry",
     "MemorySpec",
@@ -82,7 +86,10 @@ __all__ = [
     "OperationResult",
     "Outcome",
     "PodmanJobs",
+    "ProofResult",
+    "ProofStatus",
     "ProofTarget",
+    "ProofVerifier",
     "Project",
     "Revision",
     "RunConfig",

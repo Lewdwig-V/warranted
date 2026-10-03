@@ -11,6 +11,7 @@ from test_experimental_tasks import CANDIDATES, CONFIG, ENVIRONMENT, Model, proj
 
 from warranted import (
     CheckContext,
+    LeanProof,
     Project,
     RunOutcome,
     TaskSpec,
@@ -19,7 +20,6 @@ from warranted import (
     domain_identity,
 )
 from warranted._ledger import Outcome, Result
-from warranted._proof_checks import LeanProof
 from warranted._proofs import ProofStatus, Verification
 from warranted._worker import AttemptResult
 from warranted.host import Ledger

@@ -83,7 +83,7 @@ published to PyPI.
 | `Checker` | Protocol: trusted host code that assesses captured candidate bytes | [checker interface](../proposals/m7-harness-api.md#checker-interface) |
 | `CheckContext` | What a checker reads (candidate, inputs, private files) and does (seeds, jobs) | [checker jobs](worker-and-containment.md#checker-jobs) |
 | `Verdict` | A checker's status, worker feedback, host-only data, and facts | [checker interface](../proposals/m7-harness-api.md#checker-interface) |
-| `VerdictStatus` | Passed, rejected, unsupported, or infrastructure failure | [checker interface](../proposals/m7-harness-api.md#checker-interface) |
+| `VerdictStatus` | Passed, rejected, unproved, unsupported, or infrastructure failure | [checker interface](../proposals/m7-harness-api.md#checker-interface) |
 | `DEFAULT_WORKER_IMAGE` | The pinned Python image used when a domain supplies no image of its own | [container sandbox](worker-and-containment.md#container-sandbox) |
 
 ## Jobs
@@ -132,6 +132,11 @@ published to PyPI.
 
 | Name | What it is | Reference |
 | --- | --- | --- |
+| `LeanProof` | A checker: verifies the worker's `Solution.lean` against a target, then checks the domain's premises | [proofs in the task layer](../proposals/m7-proofs.md#data-flow) |
+| `ProofVerifier` | Protocol for the verifier a project is created with (`proofs=`); bound into the project identity | [proofs in the task layer](../proposals/m7-proofs.md#identity-and-pinning) |
+| `LeanVerifier` | The verifier: the pinned Lean bundle and hardened container | [proof verification](proof-verification.md#verification-flow) |
+| `ProofResult` | A verification's status, diagnostic, axiom set, identity, elapsed time, and raw evidence | [proof verification](proof-verification.md#verification-flow) |
+| `ProofStatus` | Proved, rejected, unproved, unsupported, or infrastructure failure | [proofs in the task layer](../proposals/m7-proofs.md#data-flow) |
 | `ProofTarget` | A domain-owned Lean challenge file and the theorem a proof must establish | [proof verification](proof-verification.md#targets-and-axiom-policy) |
 
 ## Model adapters
