@@ -132,7 +132,8 @@ uv sync --locked
 uv run --locked python scripts/build_proof_bundle.py runs/m4-tools
 WARRANTED_PROOF_TESTS=1 \
 WARRANTED_PROOF_BUNDLE=runs/m4-tools/bundle.json \
-uv run --locked pytest -q -m proof tests/test_proofs_native.py tests/test_m4_fixture.py
+uv run --locked pytest -q -m proof tests/test_proofs_native.py tests/test_m4_fixture.py \
+  tests/test_proof_fixtures.py
 ```
 
 `build_proof_bundle.py DESTINATION [--image-archive PATH]` builds the image and
