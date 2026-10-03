@@ -58,6 +58,7 @@ Test names below are in `tests/`; `file::name` is a pytest node ID.
 | Rules have recorded exceptions | Partial | Host kit: `Acceptance.record_exception` checks scope, owner, and reason. The task layer has no rules: every required check is a gate. | `test_acceptance.py::test_rule_exception_is_scoped_and_never_waives_a_gate` |
 | Gates have no opt-out | Tested | `record_exception` refuses a gate waiver | Same test |
 | Gate evidence is independently checked | Tested | `Acceptance._check` requires the exact target among the request's inputs; `Project._run_check` | `test_acceptance.py::test_changed_checker_or_environment_cannot_reuse_a_passing_receipt`, `::test_malformed_checker_result_never_counts_as_passed` |
+| Only a real `Verdict` counts as a checker result | Tested | `Project._run_check`: any other return value, including one shaped like a passing `Verdict`, is recorded as an infrastructure failure | `test_experimental_tasks.py::test_a_checker_result_that_is_not_a_verdict_is_a_checker_fault` |
 | Unknown kinds and applicability never default to success | Tested | `Acceptance._current` | `test_acceptance.py::test_unknown_kind_and_empty_policy_fail_before_acceptance`, `::test_unknown_applicability_does_not_skip_a_gate`, `test_experimental_tasks.py::test_checker_outcomes_stay_distinct` |
 | Missing or stale evidence never defaults to success | Tested | `_acceptance.py` | `test_acceptance.py::test_missing_unknown_forged_and_narrow_evidence_cannot_grant_acceptance`, `::test_restart_rechecks_current_versions_before_reusing_an_acceptance` |
 
@@ -113,10 +114,11 @@ not replay in the M6 sense.
 
 ## Known gaps found by this audit
 
-- **A checker that returns something other than a `Verdict`** fails closed but
-  is not recorded as an infrastructure failure. The error is raised after the
-  check operation begins, outside the handler for checker faults, so the run is
-  left `unknown` instead.
+The audit also found that a checker returning something other than a `Verdict`
+left the run `unknown`. Writing its negative case showed the gap was wider: an
+object shaped like a passing `Verdict` was accepted. Both are now refused (see
+invariant 3).
+
 - **Lineage separation between splits** is not enforced (invariant 7).
 - **Host-kit staleness** is reported, not enforced: a caller of `Claims` must
   refuse a stale application itself (invariant 2).

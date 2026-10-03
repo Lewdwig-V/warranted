@@ -30,6 +30,12 @@ versioning and deprecation policy. The format follows
 - An Apache License 2.0 `LICENSE` file; the package metadata declares
   `Apache-2.0`.
 
+### Fixed
+
+- A checker result that is not a `Verdict` is recorded as an infrastructure
+  failure. Before, a non-`Verdict` left the run `unknown`, and an object shaped
+  like a passing `Verdict` was accepted.
+
 ## [0.1.0] - 2026-10-03
 
 The first tagged release, and the first a domain project can pin. The task layer
