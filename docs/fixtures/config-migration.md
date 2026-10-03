@@ -223,6 +223,38 @@ explicitly. Never supply the run directory or its exports as worker context.
 The same fixture runs under conditions A–E through the
 [treatment runner](../reference/contexts.md).
 
+## Task layer
+
+[`examples/m7/migration`](../../examples/m7/migration) runs the task through the
+public API (`warranted`). The `migration` checker reuses the M5 driver's candidate
+parser and `judge` unchanged, and runs each of the ten reference cases in its own
+[checker job](../reference/worker-and-containment.md#checker-jobs): the job runs as
+UID 1000 with a two-second deadline, no network, and per-job scratch, so cases
+share no process or filesystem, unlike the M5 batch. An invalid patch is never
+executed and fails `repository_integrity`.
+
+The private `contract.json` names the gating obligations. `task.toml` uses the
+initial contract; [`revisions/revised.toml`](../../examples/m7/migration/revisions/revised.toml)
+replaces it with the revised one and tells the worker the new requirement.
+`scheduled.toml` applies that revision after the first submission. Feedback shows
+only the obligations of the contract in force, so the repetition result stays
+host-only under the initial contract. A contract naming an unknown obligation, or
+a reference suite with no case for a required obligation, is a checker fault:
+missing evidence never counts as a pass.
+
+[`tests/test_migration_fixture.py`](../../tests/test_migration_fixture.py) covers
+the three-candidate matrix under both contracts, one job per case, invalid patches
+that run nothing, a timeout that cannot pass input rejection, a rejected first
+submission followed by the scheduled revision, an accepted one-way converter whose
+record survives a later project revision while the new run rejects it, and a job
+runner failure reported as an infrastructure failure. Its container test runs the
+matrix through rootless Podman.
+
+Differences from the M5 drivers: a candidate accepted before the checkpoint ends
+its run, so M5's "accept, revise, reject the same run" sequence becomes a project
+revision and a new run. The proof cases and the A–E treatments stay on the host
+kit.
+
 ## Proof cases
 
 `examples/m5/proof_cases.py` pairs each of three host-approved proof targets

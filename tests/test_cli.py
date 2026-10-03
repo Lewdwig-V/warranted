@@ -187,13 +187,8 @@ def test_export_includes_public_records_and_no_private_bytes(
     assert not {"host-only.json", "seeds.json", "jobs.json"} & channels
     assert not any(c.startswith("private/") for c in channels)
     blobs = b"".join(p.read_bytes() for p in (dest / "artifacts").iterdir())
-    for name in ("references.json", "versions.json"):
-        private = (
-            (EXAMPLE / "task.toml")
-            .parent.joinpath("../../m2/fixture", name)
-            .read_bytes()
-        )
-        assert private not in blobs
+    private = (EXAMPLE / "../../m2/fixture/references.json").read_bytes()
+    assert private not in blobs
     assert json.dumps(CANDIDATES["correct"]).encode() in blobs
     assert main(["export", str(project), run, str(dest)]) == 2  # never overwritten
 

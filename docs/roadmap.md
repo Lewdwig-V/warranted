@@ -109,7 +109,10 @@ domain project supplies only domain knowledge. Specifically:
 - [ ] **Public API.** One documented import surface for projects, task
   definitions, runs, status, claims, and exports, with typed results that keep
   rejected, unproved, unsupported, unknown, and infrastructure failure distinct.
-  Everything else becomes private.
+  Everything else becomes private. The CSV and migration fixtures run through it
+  ([CSV](fixtures/csv-transformation.md#task-layer),
+  [migration](fixtures/config-migration.md#task-layer)), without their proof
+  cases.
 - [ ] **Checker interface.** A domain checker assesses captured candidate bytes
   in a contained job and returns a typed verdict plus worker-visible feedback.
   The host keeps private inputs and seeds out of the worker, records them as

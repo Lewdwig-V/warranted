@@ -1,0 +1,9 @@
+# M2's offset correction: the source timestamps are UTC, not +01:00.
+id = "offset-v2"
+owner = "fixture-owner"
+reason = "The source timestamps are UTC; the +01:00 offset was wrong."
+note = "Use offset-v2 instead of offset-v1."
+remove = ["offset-v1"]
+
+[inputs]
+"offset-v2" = "../offset-v2"

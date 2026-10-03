@@ -12,16 +12,19 @@ M2 = runpy.run_path(str(M2_SOURCE))
 
 
 class Transformation:
-    """Four independent obligations. Feedback names failed obligations only."""
+    """Four independent obligations. Feedback names failed obligations only.
 
-    version = "1"
+    The current offset and identifier definition are the task's single `offset-*`
+    and `definition-*` files, so a revision changes them by replacing the file.
+    """
+
+    version = "2"
     isolated = True  # a pure function of the candidate and task bytes
 
     def check(self, ctx: CheckContext) -> Verdict:
-        offset = next(name for name in ctx.inputs if name.startswith("offset-"))
+        offset = _one(ctx.inputs, "offset-")
         reference = json.loads(ctx.private["references.json"])[offset]
-        versions = json.loads(ctx.private["versions.json"])
-        equality = versions["definition-v1"]["equality"]
+        equality = json.loads(ctx.inputs[_one(ctx.inputs, "definition-")])["equality"]
         try:
             candidate = M2["decode"](ctx.candidate["result.json"])
             obligations = M2["evaluate"](
@@ -44,6 +47,14 @@ class Transformation:
             else VerdictStatus.REJECTED
         )
         return Verdict(status, {"obligations": obligations}, {"offset": offset})
+
+
+def _one(files, prefix: str) -> str:
+    """The single versioned file with this prefix; the task must supply exactly one."""
+    names = [name for name in files if name.startswith(prefix)]
+    if len(names) != 1:
+        raise ValueError(f"task needs exactly one {prefix}* file, found {names}")
+    return names[0]
 
 
 class CsvDomain:

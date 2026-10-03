@@ -457,6 +457,36 @@ Cached reports keep historical verification costs. An interrupted or
 unattributable attempt keeps its reservation and blocks dispatch; a changed
 fixture, host, environment, or bundle fails before cached reuse.
 
+## Task layer
+
+[`examples/m7/csv`](../../examples/m7/csv) runs the same task through the public
+API (`warranted`): one domain whose `transformation` checker wraps the M2
+evaluator, and one task file per M2 revision. The checker reads the current offset
+and identifier definition from the task's single `offset-*` and `definition-*`
+files, so a revision replaces the file and nothing else; a task without exactly
+one of each is a checker fault, never a default.
+
+| Task file | Contract after the first submission |
+| --- | --- |
+| `task.toml` | Unchanged: `offset-v1`, `definition-v1` |
+| `offset.toml` | [`offset-v2`](../../examples/m7/csv/revisions/offset-v2.toml) (+00:00) |
+| `definition.toml` | [`definition-v2`](../../examples/m7/csv/revisions/definition-v2.toml) (ASCII case-insensitive) |
+| `annotation.toml` | [`annotation-v2`](../../examples/m7/csv/revisions/annotation-v2.toml) (no calculation changes) |
+
+The same revision files work as project revisions (`warranted revise`).
+[`tests/test_csv_fixture.py`](../../tests/test_csv_fixture.py) covers the
+six-candidate matrix with each obligation kept separately, the same `wrong-offset`
+bytes rejected under `offset-v1` and accepted under `offset-v2`, a restart that
+repeats nothing, an accepted run whose record survives a later project revision
+while its resume is refused, and the `rA`/`ra` witness that fails uniqueness only
+under `definition-v2`.
+
+Differences from the M2 driver: the task layer checks every submission afresh, so
+M2's selective-rebuild counts have no equivalent; a candidate accepted before a
+revision ends its run, and the revision applies to new runs. The M4 uniqueness
+proof is not yet a task-layer check; the M1–M4 drivers remain for their own
+guarantees.
+
 ## Specification failures exercised
 
 This fixture supplies two of the

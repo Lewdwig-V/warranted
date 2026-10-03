@@ -99,8 +99,10 @@ and keep only its reverse-engineering logic
   [M7 proposal](docs/proposals/m7-harness-api.md), and `warranted.host` exports
   the low-level kit. Modules whose names start with an underscore are private.
   Until 1.0, either surface may change; changes will be listed in the changelog.
-- The CSV and migration fixtures still run on their own drivers, not yet on the
-  task layer.
+- The CSV and migration fixtures run on the task layer
+  ([`examples/m7/csv`](examples/m7/csv), [`examples/m7/migration`](examples/m7/migration))
+  without their proof cases; the M1–M5 drivers remain for the guarantees the task
+  layer does not yet cover, such as proof applications.
 - The measured A–E comparison, with frontier and smaller models, separated
   development and held-out tasks, and full cost reporting.
 - Replay of recorded histories and the planned

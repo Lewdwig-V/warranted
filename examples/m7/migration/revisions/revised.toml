@@ -1,0 +1,8 @@
+# M5's approved revision: the migration must be safe to repeat.
+id = "revised"
+owner = "fixture-owner"
+reason = "Configuration deployment can repeat the migration."
+note = "Valid version 2 input must return the same parsed configuration, including every optional label."
+
+[private]
+"contract.json" = "../contract-revised.json"

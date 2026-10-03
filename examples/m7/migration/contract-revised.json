@@ -1,0 +1,11 @@
+{
+  "version": "revised",
+  "obligations": [
+    "repository_integrity",
+    "output_schema",
+    "renaming",
+    "legacy_label",
+    "input_rejection",
+    "repetition"
+  ]
+}

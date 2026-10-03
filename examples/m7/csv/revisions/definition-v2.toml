@@ -1,0 +1,9 @@
+# M2's changed definition: identifiers compare ignoring ASCII case.
+id = "definition-v2"
+owner = "fixture-owner"
+reason = "Identifiers that differ only in ASCII case name the same record."
+note = "Identifiers must be unique under definition-v2, which ignores ASCII case."
+remove = ["definition-v1"]
+
+[inputs]
+"definition-v2" = "../definition-v2"
