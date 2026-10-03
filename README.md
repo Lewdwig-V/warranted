@@ -12,7 +12,8 @@ explore, and be precise about what counts as established knowledge.**
 
 Warranted is moving from a research prototype to a usable harness. Today it is
 a Python library with example drivers for two task fixtures. Its APIs are not yet
-stable, and the `warranted` command prints help and its version only.
+stable. The `warranted` command initialises projects and runs, resumes, reports,
+and exports tasks ([command line](docs/reference/cli.md)).
 
 ## What exists
 

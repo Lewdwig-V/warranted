@@ -39,8 +39,8 @@ uv build --no-sources
 
 The default suite needs no credentials, network services, or containers. Tests
 marked `container` or `proof` need rootless Podman and the pinned images; CI runs
-them in separate jobs. The CLI prints help and version only, so its output
-validates nothing about the library. Run focused tests via `uv run`, and do not
+them in separate jobs. The CLI is a thin layer over the public API, so test
+library guarantees through the library, not through CLI output. Run focused tests via `uv run`, and do not
 add passing placeholder tests.
 
 ## Implementation style

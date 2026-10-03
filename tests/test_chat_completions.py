@@ -13,8 +13,9 @@ from time import monotonic
 import pytest
 from minisweagent.exceptions import FormatError
 
+from warranted._acceptance import Evidence
 from warranted._chat_completions import LocalChatCompletions
-from warranted._ledger import Ledger, Manifest, OperationConflict, Outcome
+from warranted._ledger import Ledger, Manifest, OperationConflict, Origin, Outcome
 from warranted._worker import Episode, Journal, UnknownOutcome, WorkerModel
 
 
@@ -399,3 +400,51 @@ def test_probe_rejects_changed_adapter_before_inference(tmp_path, monkeypatch, a
         with pytest.raises(ValueError, match="model adapter changed"):
             probe["run"](root)
         assert not any(path == "/v1/chat/completions" for path, _ in calls)
+
+
+def pinned_by_record(root, client, pinned):
+    """A project without a model-api snapshot whose episode cites a recorded pin."""
+    from warranted._worker import record_once
+
+    with Ledger.create(
+        root, Manifest("local-chat", "1", "run", "world", {}, {"model": 2}), {}
+    ):
+        pass
+    with Ledger.open(root) as ledger:
+        capture = record_once(
+            ledger,
+            ledger.start_session(),
+            Origin("run/pin", "run-spec", "test", "1", {}),
+            {"model-api.json": pinned.snapshot.data},
+        )
+    return replace(
+        episode(client), model_pin=Evidence.captured(capture, "model-api.json")
+    )
+
+
+def test_a_cited_recorded_pin_authorises_the_adapter(tmp_path):
+    with server(response()) as (url, calls):
+        client = LocalChatCompletions(url, "gemma4:26b")
+        pinned = pinned_by_record(tmp_path / "ledger", client, client)
+        with Ledger.open(tmp_path / "ledger") as ledger:
+            reply = WorkerModel(Journal(ledger, pinned), client).query(
+                [{"role": "user", "content": "Return a JSON command"}]
+            )
+        assert reply["content"] == '{"command":"true"}'
+        assert len(calls) == 1
+
+
+@pytest.mark.parametrize("pin", ["none", "different"])
+def test_an_unpinned_or_differently_pinned_adapter_is_refused(tmp_path, pin):
+    with server(response()) as (url, calls):
+        client = LocalChatCompletions(url, "gemma4:26b")
+        other = replace(client, max_tokens=99)
+        cited = pinned_by_record(tmp_path / "ledger", client, other)
+        if pin == "none":
+            cited = replace(cited, model_pin=None)
+        with Ledger.open(tmp_path / "ledger") as ledger:
+            with pytest.raises(ValueError, match="differs from the pinned request"):
+                WorkerModel(Journal(ledger, cited), client).query(
+                    [{"role": "user", "content": "Return a JSON command"}]
+                )
+        assert calls == []

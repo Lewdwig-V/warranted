@@ -28,10 +28,12 @@ from uuid import uuid4
 
 from warranted._acceptance import Acceptance, AcceptanceContext, Evidence, Status
 from warranted._claims import Applicability, Claims
+from warranted._exports import export_evidence
 from warranted._guard import DuplicateGuard, default_normalize
 from warranted._jobs import JobContext, JobRunner, PodmanJobs, pinned_image
 from warranted._ledger import (
     ROOT_SCOPE,
+    Balance,
     BudgetExceeded,
     Ledger,
     Manifest,
@@ -65,6 +67,9 @@ _NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}")
 _ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,100}")
 # Scoped memory: checker facts, worker notes, and the per-run snapshot.
 NOTES, MEMORY = "notes.json", "memory.json"
+# A real model adapter's configuration, recorded with the run so its requests can
+# cite it; scripted models have none.
+MODEL_PIN = "model-api.json"
 FACTS_COUNT, FACTS_LIMIT = 16, 16 * 1024
 NOTES_COUNT, NOTES_LIMIT = 32, 16 * 1024
 MEMORY_LIMIT = 64 * 1024
@@ -460,6 +465,25 @@ class RunResult:
 
 
 @dataclass(frozen=True)
+class RunStatus:
+    """What the ledger records about a run, read without running anything.
+
+    `outcome` is None while the run can continue: it has submissions left and no
+    recorded decision ended it. Resume it to continue. A run blocked by an
+    unresolved operation reports `unknown`.
+    """
+
+    run_id: str
+    task_id: str
+    model: str
+    submissions_allowed: int
+    submissions: tuple[Submission, ...]
+    outcome: RunOutcome | None
+    blocked: tuple[str, ...]
+    accounting: Mapping[str, Balance]
+
+
+@dataclass(frozen=True)
 class MemoryEntry:
     """Facts from one check, or notes from one submission, assessed for a task.
 
@@ -516,6 +540,13 @@ class _Run:
     @property
     def scope(self) -> str:
         return f"run/{self.run_id}"
+
+    @property
+    def model_pin(self) -> Evidence | None:
+        """The model adapter's recorded configuration, if the run pinned one."""
+        if MODEL_PIN not in self.spec.artifacts:
+            return None
+        return self.evidence(MODEL_PIN)
 
     def evidence(self, channel: str) -> Evidence:
         return Evidence.captured(self.spec, channel)
@@ -628,7 +659,8 @@ class Project:
                 Origin(f"run/{run_id}/spec", "run-spec", PRODUCER, "1", cited),
                 task.record()
                 | {"config.json": config.record()}
-                | ({MEMORY: snapshot} if snapshot is not None else {}),
+                | ({MEMORY: snapshot} if snapshot is not None else {})
+                | self._model_record(model),
             )
             policy = {
                 "version": 1,
@@ -646,6 +678,150 @@ class Project:
                 {"policy.json": _json(policy)},
             )
         return self.resume(run_id, model)
+
+    def status(self, run_id: str) -> RunStatus:
+        """The run's recorded submissions, outcome, blockers, and run-scope usage.
+
+        Read-only: it records nothing, runs no checker, and needs no model.
+        """
+        with Ledger.open(self.ledger_root) as ledger:
+            run = self._load(ledger, run_id)
+            submissions = []
+            for index in range(1, run.task.submissions + 1):
+                submission = self._recorded_submission(ledger, run, index)
+                if submission is None:
+                    break
+                submissions.append(submission)
+            blocked = tuple(
+                op.request.origin.operation_id
+                for scope in (run.scope, ROOT_SCOPE)
+                for op in ledger.unresolved(scope)
+            )
+            accounting = dict(ledger.accounting(run.scope))
+        outcome = None
+        final = {
+            str(Status.ACCEPTED): RunOutcome.ACCEPTED,
+            str(Status.UNKNOWN): RunOutcome.UNKNOWN,
+            str(Status.UNSUPPORTED): RunOutcome.UNSUPPORTED,
+            str(Status.INFRASTRUCTURE_FAILURE): RunOutcome.INFRASTRUCTURE_FAILURE,
+        }
+        if blocked:
+            outcome = RunOutcome.UNKNOWN
+        elif submissions and submissions[-1].decision in final:
+            outcome = final[submissions[-1].decision]
+        elif len(submissions) == run.task.submissions:
+            outcome = RunOutcome.REJECTED
+        return RunStatus(
+            run.run_id,
+            run.task.id,
+            run.config.model,
+            run.task.submissions,
+            tuple(submissions),
+            outcome,
+            blocked,
+            MappingProxyType(accounting),
+        )
+
+    def _recorded_submission(self, ledger: Ledger, run: _Run, index: int):
+        """A submission's recorded decision, or None if none is recorded yet."""
+        guard = f"run/{run.run_id}/submission/{index}/guard"
+        for o in ledger.history():
+            if o.origin.operation_id == guard:
+                refused = json.loads(ledger.read_artifact(o.artifacts["guard.json"]))
+                if refused["refused"]:
+                    return Submission(index, {}, DUPLICATE)
+        target = self._recorded_target(ledger, run, index)
+        if target is None:
+            return None
+        decision = None
+        for operation in ledger.operations():
+            origin = operation.request.origin
+            if (
+                origin.kind == "decision"
+                and origin.inputs.get(target.name) == target.artifact
+                and operation.completion is not None
+            ):
+                ref = operation.completion.observation.artifacts["decision.json"]
+                decision = json.loads(ledger.read_artifact(ref))["status"]
+        if decision is None:
+            return None
+        verdicts = {}
+        for name in run.task.checks:
+            operation = ledger.lookup(
+                self._check_request(ledger, run, index, name, target)
+            )
+            if operation is not None and operation.completion is not None:
+                ref = operation.completion.observation.artifacts["verdict.json"]
+                verdicts[name] = VerdictStatus(
+                    json.loads(ledger.read_artifact(ref))["status"]
+                )
+        return Submission(index, verdicts, decision)
+
+    def export(self, run_id: str, destination: Path) -> Path:
+        """Copy a run's worker-visible and decision records to a new directory.
+
+        Included: the task (without private files), configuration, memory
+        snapshot, policy, captured submissions, feedback, verdicts, facts, guard
+        decisions, and acceptance decisions, with check and decision receipts.
+        Excluded: private task files, host-only verdict data, drawn seeds, job
+        logs and outputs, and model and tool transcripts. The export is not
+        authoritative; the ledger is. Returns the export's index.json.
+        """
+        public = {"task.json", "config.json", MEMORY}
+        shown = {"result.json", "verdict.json", "facts.json"}
+        with Ledger.open(self.ledger_root) as ledger:
+            run = self._load(ledger, run_id)
+            prefix = f"run/{run.run_id}/"
+            episodes = tuple(
+                f"episode/{self._episode_id(run, i)}/tool/"
+                for i in range(1, run.task.submissions + 1)
+            )
+            observations, operations = {}, []
+            for o in ledger.history():
+                name = o.origin.operation_id
+                channels = ()
+                if name == f"{prefix}spec":
+                    channels = [
+                        c for c in o.artifacts if c in public or c.startswith("input/")
+                    ]
+                elif name.startswith(prefix) and o.origin.kind in (
+                    "run-policy",
+                    "submission",
+                    "feedback",
+                    "duplicate-guard",
+                ):
+                    channels = list(o.artifacts)
+                elif name.startswith(episodes):
+                    channels = [c for c in o.artifacts if c.startswith("candidate/")]
+                if channels:
+                    observations[o.sequence] = tuple(channels)
+            targets = {
+                ref.name
+                for i in range(1, run.task.submissions + 1)
+                if (ref := self._recorded_target(ledger, run, i)) is not None
+            }
+            for operation in ledger.operations():
+                origin = operation.request.origin
+                own_check = origin.kind == "check" and origin.operation_id.startswith(
+                    prefix
+                )
+                decision = origin.kind == "decision" and targets & origin.inputs.keys()
+                if not (own_check or decision):
+                    continue
+                operations.append(origin.operation_id)
+                if operation.completion is not None:
+                    observation = operation.completion.observation
+                    observations[observation.sequence] = tuple(
+                        c
+                        for c in observation.artifacts
+                        if c in shown or c == "decision.json"
+                    )
+            return export_evidence(
+                ledger,
+                Path(destination),
+                observations=observations,
+                operations=tuple(operations),
+            )
 
     def runs(self) -> tuple[str, ...]:
         with Ledger.open(self.ledger_root) as ledger:
@@ -869,6 +1045,12 @@ class Project:
             raise ValueError("task differs from the one this run recorded")
         if getattr(model, "model", None) != run.config.model:
             raise ValueError("model boundary differs from the run configuration")
+        if self._model_record(model) != {
+            name: data
+            for name, data in self._recorded_model(run).items()
+            if data is not None
+        }:
+            raise ValueError("model adapter configuration differs from the run")
         with Ledger.open(self.ledger_root) as ledger:
             self._require_token_units(model, ledger.project.manifest.allowances)
         submissions: list[Submission] = []
@@ -927,6 +1109,32 @@ class Project:
             if outcome is not None:
                 return RunResult(run_id, outcome, tuple(submissions))
         return RunResult(run_id, RunOutcome.REJECTED, tuple(submissions))
+
+    @staticmethod
+    def _model_record(model) -> dict[str, bytes]:
+        """A real adapter's pinned configuration and service identity, if any."""
+        snapshot = getattr(model, "snapshot", None)
+        if snapshot is None:
+            return {}
+        return {
+            MODEL_PIN: snapshot.data,
+            "model-service.json": _json({"service": model.service_id}),
+        }
+
+    def _recorded_model(self, run: _Run) -> dict[str, bytes | None]:
+        with Ledger.open(self.ledger_root) as ledger:
+            return {
+                name: ledger.read_artifact(run.spec.artifacts[name])
+                if name in run.spec.artifacts
+                else None
+                for name in (MODEL_PIN, "model-service.json")
+            }
+
+    def _model_service(self, run: _Run) -> str:
+        recorded = self._recorded_model(run)["model-service.json"]
+        if recorded is None:
+            return run.config.model
+        return json.loads(recorded)["service"]
 
     def _task_files(self, run: _Run) -> dict[str, Evidence]:
         return {n: run.evidence(f"input/{n}") for n in run.task.inputs} | {
@@ -1018,7 +1226,8 @@ class Project:
             objective,
             (),
             model=run.config.model,
-            model_service=run.config.model,
+            model_service=self._model_service(run),
+            model_pin=run.model_pin,
             environment=self.environment_id,
             max_steps=run.config.max_steps,
             continues=self._episode_id(run, index - 1) if index > 1 else None,
