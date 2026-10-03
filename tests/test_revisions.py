@@ -191,3 +191,53 @@ def test_export_includes_revised_inputs_but_no_revised_private_files(tmp_path):
     assert not any("/private/" in c for c in channels)
     blobs = b"".join(p.read_bytes() for p in (tmp_path / "export/artifacts").iterdir())
     assert secret not in blobs
+
+
+def test_a_revision_cannot_move_checks_outside_the_check_budget(tmp_path):
+    from test_experimental_tasks import CSV
+
+    class Shared(CSV.Transformation):
+        isolated = False  # touches state shared with other runs
+
+    class Domain(CSV.CsvDomain):
+        checkers = {"transformation": CSV.Transformation(), "shared": Shared()}
+
+    proj, _ = project(tmp_path, ["wrong-offset"], Domain())
+    revision = replace(REVISION, checks=("shared",))
+    task = replace(
+        TASK,
+        submissions=2,
+        check_budget=4,
+        revisions=(ScheduledRevision(1, revision),),
+    )
+    with pytest.raises(ValueError, match="not isolated: \\['shared'\\]"):
+        proj.start(task, CONFIG, Model())
+
+
+def test_memory_after_a_checkpoint_withholds_facts_the_revision_made_stale(tmp_path):
+    from test_scoped_memory import Domain as Remembering
+
+    from warranted import MemorySpec
+
+    proj, script = project(tmp_path, ["wrong-offset", "correct"], Remembering())
+    scoped = replace(TASK, submissions=2, memory=MemorySpec("csv", ("offset-v1",)))
+    assert proj.start(scoped, CONFIG, Model()).outcome is RunOutcome.ACCEPTED
+    # Same file name, new bytes: facts that depended on the old bytes are stale.
+    reworded = Revision(
+        "reword",
+        "owner",
+        "same offset, new wording",
+        inputs={"offset-v1": b'{"minutes": 60, "version": "1", "note": "x"}'},
+    )
+    revised = replace(scoped, revisions=(ScheduledRevision(1, reworded),))
+    proj.start(revised, CONFIG, Model())
+
+    def memory(episode):
+        ref = episode.files["memory.json"]
+        with Ledger.open(proj.ledger_root) as ledger:
+            return json.loads(ledger.read_artifact(ref.artifact))
+
+    before, after = script.episodes[-2:]
+    assert [e["tier"] for e in memory(before)["entries"]] == ["verified"]
+    assert memory(after)["entries"] == []
+    assert memory(after)["withheld"]["stale"] == 1

@@ -301,6 +301,11 @@ class MemorySpec:
         return {"scope": self.scope, "depends": list(self.depends)}
 
 
+def _memory_channel(version: int) -> str:
+    """The run-spec channel holding the memory snapshot for a contract version."""
+    return MEMORY if version == 0 else f"memory/{version}.json"
+
+
 def _read_files(
     table: Any, base: Path, resolve: Callable[[str], bytes] | None
 ) -> dict[str, bytes]:
@@ -986,7 +991,11 @@ class Project:
         with Ledger.open(self.ledger_root) as ledger:
             self._require_token_units(model, ledger.project.manifest.allowances)
         if task.check_budget is not None:
-            shared = [n for n in task.checks if not _isolated(self.domain.checkers[n])]
+            # Every scheduled contract's checks count: a revision must not move a
+            # check into the root scope, where the run's cap cannot see it.
+            shared = sorted(
+                n for n in required if not _isolated(self.domain.checkers[n])
+            )
             if shared:
                 # A shared-state check runs in the root scope, where a run's cap
                 # cannot apply; refuse rather than silently ignore the budget.
@@ -998,7 +1007,19 @@ class Project:
             session = ledger.start_session()
             # Fixed now and recorded with the spec, so resume never recomputes it.
             split = None if campaign is None else campaign["split"]
-            snapshot, cited = self._snapshot(ledger, session, task, split)
+            # One snapshot per contract version, each assessed against that
+            # contract's files, so a scheduled revision of a depended-on file
+            # withholds the facts it makes stale.
+            snapshots, cited = {}, {}
+            for version, index in enumerate(
+                [1, *(r.after_submission + 1 for r in task.revisions)]
+            ):
+                snapshot, found = self._snapshot(
+                    ledger, session, task.contract(index), split
+                )
+                if snapshot is not None:
+                    snapshots[_memory_channel(version)] = snapshot
+                    cited |= found
             # Caps are recorded before any run record, so a resume cannot change them.
             ledger.open_scope(session, f"run/{run_id}", caps)
             record_once(
@@ -1007,7 +1028,7 @@ class Project:
                 Origin(f"run/{run_id}/spec", "run-spec", PRODUCER, "1", cited),
                 task.record()
                 | {"config.json": config.record()}
-                | ({MEMORY: snapshot} if snapshot is not None else {})
+                | snapshots
                 | ({CAMPAIGN: _json(campaign)} if campaign is not None else {})
                 | {REVISED: _json([r.id for r in applied])}
                 | self._model_record(model),
@@ -1192,7 +1213,7 @@ class Project:
                         c
                         for c in o.artifacts
                         if c in public
-                        or c.startswith("input/")
+                        or c.startswith(("input/", "memory/"))
                         or (c.startswith("revision/") and "/private/" not in c)
                     ]
                 elif name.startswith(prefix) and o.origin.kind in (
@@ -1915,8 +1936,9 @@ class Project:
 
     def _episode(self, run: _Run, index: int) -> Episode:
         files = run.files(index)[0]
-        if MEMORY in run.spec.artifacts:
-            files[MEMORY] = run.evidence(MEMORY)
+        channel = _memory_channel(run.task.version(index))
+        if channel in run.spec.artifacts:
+            files[MEMORY] = run.evidence(channel)
         workspace = None
         objective = run.task.contract(index).objective
         for scheduled in run.task.revisions[: run.task.version(index)]:

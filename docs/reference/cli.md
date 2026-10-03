@@ -188,7 +188,11 @@ decisions stay on record under the contract that produced them; each decision
 binds the contract version it used. The duplicate guard compares a candidate
 only with candidates rejected under the same contract, so resubmitting the same
 bytes after a revision is checked again. The schedule is part of the task, so a
-restarted run resumes on the same contract sequence.
+restarted run resumes on the same contract sequence. When a run is created, it records
+one memory snapshot for each contract version, assessed against that version's
+files, so facts that a revision makes stale are withheld after the checkpoint.
+A task budget for checks requires every check of every scheduled contract to be
+isolated.
 
 **Project revisions.** `warranted revise DIR TASK_ID REVISION.toml` records a
 revision of a task in the project. New runs of that task use the revised
