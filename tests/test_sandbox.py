@@ -414,3 +414,38 @@ def test_unsafe_delivery_paths_are_refused(tmp_path):
         ):
             with pytest.raises(ValueError):
                 sandbox.deliver(path, files)
+
+
+def test_a_worker_runs_in_a_domain_image_pinned_by_local_id(tmp_path):
+    from warranted.sandbox import IMAGE, sandbox_id
+
+    image_id = subprocess.run(
+        ["podman", "image", "inspect", "--format", "{{.Id}}", IMAGE],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+    episode = replace(setup(tmp_path), environment=sandbox_id(image_id))
+
+    def model(*_):
+        return AttemptResult(
+            Result(Outcome.SUCCEEDED, 0, {"model": 1}, 1),
+            {
+                "response": json.dumps(
+                    {
+                        "command": "echo '{}' > result.json &&"
+                        " printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'"
+                    }
+                ).encode()
+            },
+        )
+
+    with Sandbox(tmp_path / "ledger", episode, image=image_id) as sandbox:
+        result = run_workflow(
+            tmp_path / "ledger",
+            tmp_path / "graph.sqlite3",
+            episode,
+            model=model,
+            environment=sandbox,
+        )
+    assert result["exit_status"] == "Submitted"

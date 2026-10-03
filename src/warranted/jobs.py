@@ -22,7 +22,44 @@ from warranted.containers import SandboxFailure, _run, require_runtime
 
 OUTPUT_LIMIT = 256 * 1024
 _FILE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}")
-_PINNED_IMAGE = re.compile(r"[^\s@]+@sha256:[0-9a-f]{64}")
+# A registry reference pinned by digest, or a local image ID (64 hex digits, as
+# `podman image inspect --format '{{.Id}}'` prints it) for an image built locally.
+_PINNED_IMAGE = re.compile(r"[^\s@]+@sha256:[0-9a-f]{64}|[0-9a-f]{64}")
+MAX_TIMEOUT_SECONDS = 3600
+
+
+def pinned_image(image) -> bool:
+    return type(image) is str and _PINNED_IMAGE.fullmatch(image) is not None
+
+
+@dataclass(frozen=True)
+class JobLimits:
+    """Resources for one job. The defaults suit a small interpreter run."""
+
+    memory_mb: int = 128
+    pids: int = 32
+    scratch_mb: int = 8  # each of the private /work and /tmp
+    cpus: int = 1
+
+    def __post_init__(self):
+        for name, low, high in (
+            ("memory_mb", 16, 8192),
+            ("pids", 8, 1024),
+            ("scratch_mb", 1, 4096),
+            ("cpus", 1, 8),
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or not low <= value <= high:
+                raise ValueError(f"job {name} must be an integer from {low} to {high}")
+
+    def record(self) -> dict[str, int]:
+        return {
+            "memory_mb": self.memory_mb,
+            "pids": self.pids,
+            "scratch_mb": self.scratch_mb,
+            "cpus": self.cpus,
+        }
+
 
 # Host code, passed as an argument; never read from the job's files.
 _RUN = """
@@ -47,6 +84,9 @@ sys.stdout.write(json.dumps(result))
 """
 
 
+DEFAULT_LIMITS = JobLimits()
+
+
 @dataclass(frozen=True)
 class JobResult:
     returncode: int | None
@@ -68,14 +108,15 @@ class JobRunner(Protocol):
         *,
         stdin: bytes = b"",
         timeout_seconds: int = 10,
+        limits: JobLimits = DEFAULT_LIMITS,
     ) -> JobResult: ...
 
 
 def validate_job(
     image: str, argv: Sequence[str], files: Mapping[str, bytes], timeout_seconds: int
 ) -> None:
-    if type(image) is not str or not _PINNED_IMAGE.fullmatch(image):
-        raise ValueError("job image must be pinned by sha256 digest")
+    if not pinned_image(image):
+        raise ValueError("job image must be pinned by sha256 digest or image ID")
     if not argv or not all(type(arg) is str for arg in argv):
         raise ValueError("job argv must be a nonempty list of strings")
     for name, data in files.items():
@@ -83,8 +124,10 @@ def validate_job(
             raise ValueError(f"unsafe job file name: {name!r}")
         if type(data) is not bytes:
             raise TypeError("job files must be bytes")
-    if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 300:
-        raise ValueError("job timeout must be 1 to 300 seconds")
+    if type(timeout_seconds) is not int or not (
+        1 <= timeout_seconds <= MAX_TIMEOUT_SECONDS
+    ):
+        raise ValueError(f"job timeout must be 1 to {MAX_TIMEOUT_SECONDS} seconds")
 
 
 class PodmanJobs:
@@ -103,8 +146,11 @@ class PodmanJobs:
         *,
         stdin: bytes = b"",
         timeout_seconds: int = 10,
+        limits: JobLimits = DEFAULT_LIMITS,
     ) -> JobResult:
         validate_job(image, argv, files, timeout_seconds)
+        if type(limits) is not JobLimits:
+            raise TypeError("job limits must be JobLimits")
         if not self._checked:
             require_runtime()
             self._checked = True
@@ -133,12 +179,13 @@ class PodmanJobs:
                 "--read-only-tmpfs=false",
                 "--cap-drop=ALL",
                 "--security-opt=no-new-privileges",
-                "--pids-limit=32",
-                "--memory=128m",
-                "--memory-swap=128m",
-                "--cpus=1",
-                "--tmpfs=/work:rw,nosuid,nodev,size=8m,mode=1777",
-                "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777",
+                f"--pids-limit={limits.pids}",
+                f"--memory={limits.memory_mb}m",
+                f"--memory-swap={limits.memory_mb}m",
+                f"--cpus={limits.cpus}",
+                f"--tmpfs=/work:rw,nosuid,nodev,size={limits.scratch_mb}m,mode=1777",
+                f"--tmpfs=/tmp:rw,noexec,nosuid,nodev,size={limits.scratch_mb}m,"
+                "mode=1777",
                 "--user=1000:1000",
                 "--workdir=/work",
                 f"--timeout={timeout_seconds + 30}",
@@ -199,12 +246,18 @@ class JobContext:
         *,
         stdin: bytes = b"",
         timeout_seconds: int = 10,
+        limits: JobLimits = DEFAULT_LIMITS,
     ) -> JobResult:
         if self._jobs is None:
             raise RuntimeError("this project has no job runner")
         validate_job(image, argv, files, timeout_seconds)
         result = self._jobs.run(
-            image, argv, files, stdin=stdin, timeout_seconds=timeout_seconds
+            image,
+            argv,
+            files,
+            stdin=stdin,
+            timeout_seconds=timeout_seconds,
+            limits=limits,
         )
         prefix = f"jobs/{len(self.job_log) + 1}"
         self.job_output[f"{prefix}/stdout"] = result.stdout
@@ -215,6 +268,8 @@ class JobContext:
                 "argv": list(argv),
                 "files": {n: _sha256(d) for n, d in sorted(files.items())},
                 "stdin": _sha256(stdin),
+                "timeout_seconds": timeout_seconds,
+                "limits": limits.record(),
                 "returncode": result.returncode,
                 "timed_out": result.timed_out,
                 "truncated": result.truncated,

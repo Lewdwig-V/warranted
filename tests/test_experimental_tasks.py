@@ -223,7 +223,7 @@ class Crashing:
 class Domain:
     name = "scripted"
     version = "1"
-    worker_image = "scripted-image"
+    worker_image = "f" * 64  # a pinned local image ID; never run here
 
     def __init__(self, checker):
         self.checkers = {"transformation": checker}

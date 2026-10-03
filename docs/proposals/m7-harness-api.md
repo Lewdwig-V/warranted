@@ -452,7 +452,7 @@ layer does not yet cover:
 | Model services passed to `Project.start` | `LocalChatCompletions`, `OpenRouterChatCompletions` | Permanent; adapters are host-kit components |
 | Evidence export | `export_evidence` | The CLI gains an export command |
 | Proof checks for the migration fixture | `Proofs`, `proof_status`, `Applicability`, `Claims` | The migration fixture moves onto the task layer |
-| Worker image for a domain | `warranted.sandbox.IMAGE` | Domains supply their own pinned worker images |
+| Worker image for a domain | `warranted.sandbox.IMAGE` | Domains supply their own pinned worker images; `IMAGE` remains the default and the example domains' image |
 
 Private helpers get no public equivalent unless a migrated fixture still needs
 one. The M5 research runners are not migrated; they stay on the host kit as they

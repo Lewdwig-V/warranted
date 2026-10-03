@@ -1,10 +1,11 @@
 """Native checker jobs: contained, unprivileged, offline, and bounded in time."""
 
 import os
+import subprocess
 
 import pytest
 
-from warranted.jobs import PodmanJobs
+from warranted.jobs import JobLimits, PodmanJobs
 from warranted.sandbox import IMAGE
 
 pytestmark = [
@@ -67,3 +68,33 @@ def test_a_job_failure_keeps_its_exit_code_and_output():
         timeout_seconds=20,
     )
     assert (result.returncode, result.stdout) == (3, b"partial\n")
+
+
+ALLOCATE = [
+    "python",
+    "-I",
+    "-c",
+    "data = bytearray(200 * 1024 * 1024); print(len(data))",
+]
+
+
+def test_job_limits_take_effect():
+    small = PodmanJobs().run(IMAGE, ALLOCATE, {}, timeout_seconds=60)
+    large = PodmanJobs().run(
+        IMAGE, ALLOCATE, {}, timeout_seconds=60, limits=JobLimits(memory_mb=512)
+    )
+    assert small.returncode != 0  # 200 MiB does not fit the default 128 MiB
+    assert (large.returncode, large.stdout) == (0, b"209715200\n")
+
+
+def test_a_local_image_id_pins_a_job():
+    image_id = subprocess.run(
+        ["podman", "image", "inspect", "--format", "{{.Id}}", IMAGE],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+    result = PodmanJobs().run(
+        image_id, ["python", "-I", "-c", "print('local')"], {}, timeout_seconds=30
+    )
+    assert (result.returncode, result.stdout) == (0, b"local\n")

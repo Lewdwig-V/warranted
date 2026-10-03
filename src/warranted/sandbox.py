@@ -16,7 +16,7 @@ from pathlib import Path, PurePosixPath
 from time import perf_counter_ns
 
 from warranted.containers import SandboxFailure, _run, require_runtime
-from warranted.jobs import _FILE_NAME
+from warranted.jobs import _FILE_NAME, pinned_image
 from warranted.ledger import Ledger, Outcome, Request, Result, _json_object
 from warranted.worker import (
     REQUEST_MARKER,
@@ -30,7 +30,14 @@ IMAGE = (
     "docker.io/library/python@sha256:"
     "72d3d75f2639ab82b34b29390ad3d6e0827c775befee94edda8e9976818f488d"
 )
-SANDBOX_ID = "podman-rootless-v4/" + IMAGE
+
+
+def sandbox_id(image: str) -> str:
+    """The worker environment identity for one pinned image."""
+    return "podman-rootless-v4/" + image
+
+
+SANDBOX_ID = sandbox_id(IMAGE)
 CANDIDATE_LIMIT = 1024 * 1024
 
 # This code comes from the host, never the worker's workspace or environment.
@@ -217,9 +224,13 @@ def decode_workspace(data: bytes) -> dict[str, str]:
 class Sandbox:
     """Trusted callable for WorkerEnvironment. Use as a context manager."""
 
-    def __init__(self, ledger_root: Path, episode: Episode):
-        if episode.environment != SANDBOX_ID:
+    def __init__(self, ledger_root: Path, episode: Episode, image: str = IMAGE):
+        """`image` must provide /bin/sh and Python 3.9 or later as `python`."""
+        if not pinned_image(image):
+            raise ValueError("worker image must be pinned by digest or image ID")
+        if episode.environment != sandbox_id(image):
             raise ValueError("episode must pin the container environment")
+        self.image = image
         if any(
             not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}", name)
             or name in {"context.json", "result.json", "workspace", "responses"}
@@ -284,7 +295,7 @@ class Sandbox:
                 f"--timeout={timeout}",
                 "--stop-timeout=0",
                 "--log-driver=none",
-                IMAGE,
+                self.image,
                 "sleep",
                 str(timeout + 30),
             ]
