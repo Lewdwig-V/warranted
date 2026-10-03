@@ -1014,6 +1014,15 @@ class Project:
         unknown = required - set(self.domain.checkers)
         if unknown:
             raise ValueError(f"task names unknown checks: {sorted(unknown)}")
+        needs = sorted(
+            n
+            for n in required
+            if getattr(self.domain.checkers[n], "needs_proofs", False)
+        )
+        if needs and self.proofs is None:
+            raise ValueError(
+                f"checks {needs} need a proof verifier; create the project with proofs="
+            )
         if getattr(model, "model", None) != config.model:
             raise ValueError("model boundary differs from the run configuration")
         if run_id is None:

@@ -1,12 +1,13 @@
 """Proofs in the task layer: UNPROVED, the verifier boundary, and LeanProof."""
 
+import base64
 import hashlib
 import json
 import runpy
 from pathlib import Path
 
 import pytest
-from test_experimental_tasks import CONFIG, Model, project
+from test_experimental_tasks import CANDIDATES, CONFIG, ENVIRONMENT, Model, project
 
 from warranted import (
     CheckContext,
@@ -17,7 +18,10 @@ from warranted import (
     VerdictStatus,
     domain_identity,
 )
+from warranted._ledger import Outcome, Result
+from warranted._proof_checks import LeanProof
 from warranted._proofs import ProofStatus, Verification
+from warranted._worker import AttemptResult
 from warranted.host import Ledger
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -146,3 +150,182 @@ def test_checker_sources_are_pinned_in_the_domain_identity(tmp_path):
     challenge.unlink()
     with pytest.raises(ValueError, match="checker source"):
         domain_identity(Domain())
+
+
+PROOF = b"theorem uniqueness_preserved : UniquenessTarget := by simp"
+
+
+def workspace(files):
+    return json.dumps(
+        {n: base64.b64encode(d).decode() for n, d in files.items()}
+    ).encode()
+
+
+def checked(verifier, files, premises=None):
+    ctx = CheckContext({"workspace.json": workspace(files)}, {}, {}, None, verifier)
+    return LeanProof(TARGETS["uniqueness"], premises=premises).check(ctx), ctx
+
+
+@pytest.mark.parametrize(
+    "status, expected",
+    [
+        (ProofStatus.PROVED, VerdictStatus.PASSED),
+        (ProofStatus.REJECTED, VerdictStatus.REJECTED),
+        (ProofStatus.UNPROVED, VerdictStatus.UNPROVED),
+        (ProofStatus.UNSUPPORTED, VerdictStatus.UNSUPPORTED),
+        (ProofStatus.INFRASTRUCTURE_FAILURE, VerdictStatus.INFRASTRUCTURE_FAILURE),
+    ],
+)
+def test_proof_outcomes_map_to_verdicts(status, expected):
+    verdict, _ = checked(FakeVerifier({PROOF: status}), {"Solution.lean": PROOF})
+    assert verdict.status is expected
+    assert verdict.feedback["proof"] == status.value
+
+
+def test_a_proved_theorem_whose_premise_fails_is_unsupported():
+    premises = lambda ctx: {"input_unique": False, "selection": True}  # noqa: E731
+    verifier = FakeVerifier({PROOF: ProofStatus.PROVED})
+    verdict, _ = checked(verifier, {"Solution.lean": PROOF}, premises)
+    assert verdict.status is VerdictStatus.UNSUPPORTED
+    assert verdict.feedback["proof"] == "proved"
+    assert verdict.feedback["premises"] == {"input_unique": False, "selection": True}
+
+
+def test_premises_run_even_when_the_proof_fails():
+    seen = []
+
+    def premises(ctx):
+        seen.append(True)
+        return {"input_unique": True}
+
+    verdict, _ = checked(FakeVerifier(), {"Solution.lean": PROOF}, premises)
+    assert verdict.status is VerdictStatus.REJECTED and seen == [True]
+    assert verdict.feedback["premises"] == {"input_unique": True}
+
+
+@pytest.mark.parametrize(
+    "premises",
+    [lambda ctx: {"x": "yes"}, lambda ctx: 1 / 0],  # non-boolean result; a crash
+)
+def test_a_faulty_premise_is_never_a_pass(premises):
+    with pytest.raises((TypeError, ZeroDivisionError)):
+        checked(
+            FakeVerifier({PROOF: ProofStatus.PROVED}),
+            {"Solution.lean": PROOF},
+            premises,
+        )
+
+
+@pytest.mark.parametrize(
+    "files", [{}, {"Solution.lean": b""}, {"Solution.lean": b"x" * (1024 * 1024 + 1)}]
+)
+def test_a_missing_or_invalid_source_is_rejected_without_verifying(files):
+    verifier = FakeVerifier({PROOF: ProofStatus.PROVED})
+    verdict, ctx = checked(verifier, files)
+    assert verdict.status is VerdictStatus.REJECTED
+    assert verdict.feedback["proof"] in {"missing", "invalid"}
+    assert verifier.calls == [] and ctx.proof_log == []
+
+
+def test_a_forged_verdict_file_in_the_workspace_is_ignored():
+    forged = {"Solution.lean": b"wrong", "verdict.json": b'{"status": "proved"}'}
+    verdict, _ = checked(FakeVerifier({PROOF: ProofStatus.PROVED}), forged)
+    assert verdict.status is VerdictStatus.REJECTED
+
+
+def test_a_lean_proof_pins_its_challenge():
+    proof = LeanProof(TARGETS["uniqueness"])
+    assert proof.sources == (TARGETS["uniqueness"].path,)
+    assert proof.needs_proofs is True and proof.isolated is True
+
+
+def proof_domain():
+    from test_experimental_tasks import CSV
+
+    class Domain(CSV.CsvDomain):
+        checkers = {
+            **CSV.CsvDomain.checkers,
+            "uniqueness": LeanProof(TARGETS["uniqueness"]),
+        }
+
+    return Domain()
+
+
+def test_a_task_needing_a_proof_is_refused_without_a_verifier(tmp_path):
+    from test_experimental_tasks import TASK
+
+    proj, script = project(tmp_path, ["correct"], proof_domain())
+    task = TaskSpec(
+        TASK.id,
+        TASK.objective,
+        TASK.inputs,
+        TASK.private,
+        ("transformation", "uniqueness"),
+        1,
+    )
+    with pytest.raises(ValueError, match="need a proof verifier"):
+        proj.start(task, CONFIG, Model())
+    assert proj.runs() == () and script.calls == 0
+
+
+def test_a_proof_run_records_host_evidence_that_export_withholds(tmp_path):
+    from test_experimental_tasks import TASK
+
+    class Prover:
+        def __init__(self):
+            self.episodes = []
+
+        def __call__(self, ledger_root, episode):
+            self.episodes.append(episode)
+
+            class Environment:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    pass
+
+                def __call__(self, request, payload):
+                    return AttemptResult(
+                        Result(Outcome.SUCCEEDED, 0, {"tool": 1}, 1),
+                        {
+                            "stdout": b"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n",
+                            "stderr": b"",
+                            "candidate/result.json": json.dumps(
+                                CANDIDATES["correct"]
+                            ).encode(),
+                            "candidate/workspace.json": workspace(
+                                {"Solution.lean": PROOF}
+                            ),
+                        },
+                    )
+
+            return Environment()
+
+    proj = Project.create(
+        tmp_path / "project",
+        proof_domain(),
+        {"model": 40, "tool": 40, "check": 40},
+        environment=Prover(),
+        environment_id=ENVIRONMENT,
+        proofs=FakeVerifier({PROOF: ProofStatus.PROVED}),
+    )
+    task = TaskSpec(
+        TASK.id, TASK.objective, TASK.inputs, TASK.private, ("uniqueness",), 1
+    )
+    result = proj.start(task, CONFIG, Model())
+    assert result.submissions[0].verdicts == {"uniqueness": VerdictStatus.PASSED}
+    with Ledger.open(proj.ledger_root) as ledger:
+        channels = {
+            c
+            for op in ledger.operations()
+            if op.request.origin.kind == "check"
+            for c in op.completion.observation.artifacts
+        }
+    assert "proofs.json" in channels
+    assert any(c.startswith("proofs/1/") for c in channels)
+    dest = tmp_path / "export"
+    proj.export(result.run_id, dest)
+    index = json.loads((dest / "index.json").read_text())
+    exported = {c for o in index["observations"] for c in o["artifacts"]}
+    assert not any(c == "proofs.json" or c.startswith("proofs/") for c in exported)
