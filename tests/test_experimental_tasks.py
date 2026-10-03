@@ -279,8 +279,9 @@ def test_task_files_cannot_overlap_or_use_reserved_names():
         TaskSpec("t", "o", {"a.json": b""}, {"a.json": b""}, ("c",), 1)
     with pytest.raises(ValueError, match="reserved"):
         TaskSpec("t", "o", {"feedback-001.json": b""}, {}, ("c",), 1)
-    with pytest.raises(ValueError, match="reserved"):
-        TaskSpec("t", "o", {"result.json": b""}, {}, ("c",), 1)
+    for name in ("result.json", "responses"):
+        with pytest.raises(ValueError, match="reserved"):
+            TaskSpec("t", "o", {name: b""}, {}, ("c",), 1)
 
 
 def test_checks_and_run_configuration_are_validated():
@@ -415,9 +416,11 @@ def test_task_check_budget_stops_further_assessment(tmp_path):
 
 
 def test_budgets_belong_to_their_owner(tmp_path):
-    with pytest.raises(ValueError, match="token units only"):
-        RunConfig("m", 2, {"check": 1})
+    for unit in ("check", "submissions"):
+        with pytest.raises(ValueError, match="belong to tasks"):
+            RunConfig("m", 2, {unit: 1})
     assert RunConfig("m", 2, {"prompt_tokens": 9, "completion_tokens": 3}).budgets
+    assert RunConfig("m", 2, {"probe": 4}).budgets  # a domain operation unit
     task = tmp_path / "task.toml"
     for unit in ("model", "prompt_tokens"):
         task.write_text(

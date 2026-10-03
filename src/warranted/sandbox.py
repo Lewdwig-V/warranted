@@ -11,18 +11,26 @@ import base64
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 from time import perf_counter_ns
 
 from warranted.containers import SandboxFailure, _run, require_runtime
+from warranted.jobs import _FILE_NAME
 from warranted.ledger import Ledger, Outcome, Request, Result, _json_object
-from warranted.worker import AttemptResult, Episode, input_files
+from warranted.worker import (
+    REQUEST_MARKER,
+    SUBMIT_MARKER,
+    AttemptResult,
+    Episode,
+    input_files,
+)
 
 IMAGE = (
     "docker.io/library/python@sha256:"
     "72d3d75f2639ab82b34b29390ad3d6e0827c775befee94edda8e9976818f488d"
 )
-SANDBOX_ID = "podman-rootless-v3/" + IMAGE
+SANDBOX_ID = "podman-rootless-v4/" + IMAGE
 CANDIDATE_LIMIT = 1024 * 1024
 
 # This code comes from the host, never the worker's workspace or environment.
@@ -34,6 +42,8 @@ for name, encoded in payload['inputs'].items():
     with open('/work/' + name, 'xb') as file:
         file.write(base64.b64decode(encoded, validate=True))
     os.chmod('/work/' + name, 0o444)
+# Only the host delivers operation results here; the worker can never create it.
+os.mkdir('/work/responses', 0o555)
 os.setgroups([])
 os.setgid(1000)
 os.setuid(1000)
@@ -44,6 +54,50 @@ for name, encoded in payload['workspace'].items():
     os.makedirs(parent, exist_ok=True)
     with open(path, 'xb') as file:
         file.write(base64.b64decode(encoded, validate=True))
+"""
+# Root-owned and read-only to the worker. The host creates /work/responses at
+# load time, so every component below it is the host's; anything else is refused.
+# Container root has no CAP_DAC_OVERRIDE, so each directory is opened for writing
+# as its owner, then made read-only again. Repeating a delivery is a no-op.
+_DELIVER = """
+import base64, json, os, stat, sys
+payload = json.load(sys.stdin)
+
+def host_directory(path):
+    info = os.lstat(path)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0:
+        sys.exit('not a host-owned directory: ' + path)
+
+path = '/work/responses'
+host_directory(path)
+opened = [path]
+os.chmod(path, 0o755)
+try:
+    for part in payload['path'].split('/')[1:]:
+        path += '/' + part
+        try:
+            host_directory(path)
+            os.chmod(path, 0o755)
+        except FileNotFoundError:
+            os.mkdir(path, 0o755)
+        opened.append(path)
+    for name, encoded in payload['files'].items():
+        data = base64.b64decode(encoded, validate=True)
+        target = path + '/' + name
+        try:
+            info = os.lstat(target)
+        except FileNotFoundError:
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+            with os.fdopen(os.open(target, flags, 0o444), 'wb') as file:
+                file.write(data)
+            continue
+        with open(target, 'rb') as file:
+            same = file.read() == data
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or not same:
+            sys.exit('a different file is already delivered at ' + target)
+finally:
+    for directory in reversed(opened):
+        os.chmod(directory, 0o555)
 """
 _EXECUTE = """
 import subprocess, sys
@@ -168,7 +222,7 @@ class Sandbox:
             raise ValueError("episode must pin the container environment")
         if any(
             not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}", name)
-            or name in {"context.json", "result.json", "workspace"}
+            or name in {"context.json", "result.json", "workspace", "responses"}
             for name in (*episode.inputs, *episode.files)
         ):
             raise ValueError("worker input names must be safe, distinct basenames")
@@ -319,7 +373,9 @@ class Sandbox:
             if (
                 code == 0
                 and lines
-                and lines[0].strip() == b"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+                and lines[0].strip() == SUBMIT_MARKER
+                # Output carrying both markers is neither a submission nor a request.
+                and not any(line.strip() == REQUEST_MARKER for line in lines)
             ):
                 captured = _run(
                     ["exec", "--user=0:0", self.name, "python", "-I", "-c", _CAPTURE],
@@ -345,6 +401,38 @@ class Sandbox:
             }
         return AttemptResult(
             Result(outcome, code, {"tool": 1}, perf_counter_ns() - started), raw
+        )
+
+    def deliver(self, path: str, files: Mapping[str, bytes]) -> None:
+        """Write host-produced files read-only under /work/<path> between commands."""
+        if not re.fullmatch(r"responses/[0-9]{1,6}/[0-9]{1,6}", path) or not all(
+            _FILE_NAME.fullmatch(name) for name in files
+        ):
+            raise ValueError("unsafe delivery path or file name")
+        if _run(["container", "exists", self.name]).returncode == 1:
+            return  # replay without a live container; the next command needs one
+
+        if sum(map(len, files.values())) > CANDIDATE_LIMIT:
+            raise SandboxFailure("delivered files exceed limit")
+        self._checked(
+            [
+                "exec",
+                "--interactive",
+                "--user=0:0",
+                self.name,
+                "python",
+                "-I",
+                "-c",
+                _DELIVER,
+            ],
+            json.dumps(
+                {
+                    "path": path,
+                    "files": {
+                        n: base64.b64encode(d).decode() for n, d in files.items()
+                    },
+                }
+            ).encode(),
         )
 
     def close(self) -> None:

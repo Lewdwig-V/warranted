@@ -5,6 +5,12 @@ exactly what it does by running it, for example:
 
     printf 'hello' | python mystery.py
 
+You can also ask the host to run it, which records the result as evidence that
+the host observed. Each input costs one probe from your budget, repeats are free,
+and several inputs in one call save turns:
+
+    python probe.py 'hello' 'aaab' ''
+
 Then write `result.json` containing a JSON object with two fields:
 
 - `model`: the complete source of a Python program that reads stdin and writes

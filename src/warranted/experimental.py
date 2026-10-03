@@ -13,7 +13,6 @@ import hashlib
 import inspect
 import json
 import re
-import secrets
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -26,7 +25,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from warranted.acceptance import Acceptance, AcceptanceContext, Evidence, Status
-from warranted.jobs import JobResult, JobRunner, PodmanJobs, validate_job
+from warranted.jobs import JobContext, JobRunner, PodmanJobs
 from warranted.ledger import (
     ROOT_SCOPE,
     BudgetExceeded,
@@ -36,6 +35,12 @@ from warranted.ledger import (
     Outcome,
     Request,
     Result,
+)
+from warranted.operations import (
+    Operation,
+    Requests,
+    reconcile_operation,
+    validate_operations,
 )
 from warranted.sandbox import SANDBOX_ID, Sandbox
 from warranted.worker import (
@@ -52,7 +57,7 @@ PRODUCER = "warranted-tasks"
 FEEDBACK_LIMIT = 64 * 1024
 _NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}")
 _ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,100}")
-_RESERVED = {"context.json", "result.json", "workspace"}
+_RESERVED = {"context.json", "result.json", "workspace", "responses"}
 
 
 def _json(value: Any) -> bytes:
@@ -92,7 +97,7 @@ class Verdict:
         _json(self.feedback), _json(self.host_only)  # must be JSON-serialisable
 
 
-class CheckContext:
+class CheckContext(JobContext):
     """What a checker may read and do. Seeds and jobs are kept as host-only evidence.
 
     `candidate`, `inputs`, and `private` are exact bytes. `draw_seed` returns fresh
@@ -101,57 +106,10 @@ class CheckContext:
     """
 
     def __init__(self, candidate, inputs, private, jobs: JobRunner | None = None):
+        super().__init__(jobs)
         self.candidate: Mapping[str, bytes] = MappingProxyType(dict(candidate))
         self.inputs: Mapping[str, bytes] = MappingProxyType(dict(inputs))
         self.private: Mapping[str, bytes] = MappingProxyType(dict(private))
-        self._jobs = jobs
-        self.seeds: list[int] = []
-        self.job_log: list[dict] = []
-        self.job_output: dict[str, bytes] = {}
-
-    def draw_seed(self) -> int:
-        seed = secrets.randbits(64)
-        self.seeds.append(seed)
-        return seed
-
-    def run_job(
-        self,
-        image: str,
-        argv,
-        files: Mapping[str, bytes],
-        *,
-        stdin: bytes = b"",
-        timeout_seconds: int = 10,
-    ) -> JobResult:
-        if self._jobs is None:
-            raise RuntimeError("this project has no job runner")
-        validate_job(image, argv, files, timeout_seconds)
-        result = self._jobs.run(
-            image, argv, files, stdin=stdin, timeout_seconds=timeout_seconds
-        )
-        prefix = f"jobs/{len(self.job_log) + 1}"
-        self.job_output[f"{prefix}/stdout"] = result.stdout
-        self.job_output[f"{prefix}/stderr"] = result.stderr
-        self.job_log.append(
-            {
-                "image": image,
-                "argv": list(argv),
-                "files": {n: _digest(d) for n, d in sorted(files.items())},
-                "stdin": _digest(stdin),
-                "returncode": result.returncode,
-                "timed_out": result.timed_out,
-                "truncated": result.truncated,
-                "stdout": {
-                    "channel": f"{prefix}/stdout",
-                    "digest": _digest(result.stdout),
-                },
-                "stderr": {
-                    "channel": f"{prefix}/stderr",
-                    "digest": _digest(result.stderr),
-                },
-            }
-        )
-        return result
 
 
 class Checker(Protocol):
@@ -181,6 +139,12 @@ class Domain(Protocol):
     # such as code loaded with runpy or importlib, or data files. Imports are not
     # followed automatically, so undeclared code is not pinned.
     # sources: Sequence[Path]
+    # Optional: host-mediated operations the worker may request by name.
+    # operations: Mapping[str, Operation]
+
+
+def _operations(domain: Domain) -> Mapping[str, Operation]:
+    return getattr(domain, "operations", {})
 
 
 def _source_files(domain: Domain) -> list[tuple[str, bytes]]:
@@ -191,7 +155,7 @@ def _source_files(domain: Domain) -> list[tuple[str, bytes]]:
     adding, or removing a file changes it.
     """
     files: list[tuple[str, Path]] = []
-    for item in (domain, *domain.checkers.values()):
+    for item in (domain, *domain.checkers.values(), *_operations(domain).values()):
         path = inspect.getsourcefile(type(item))
         if path is None:
             raise ValueError("domain and checker classes need source files")
@@ -244,6 +208,18 @@ def domain_identity(domain: Domain) -> dict[str, str]:
     for name, checker in sorted(domain.checkers.items()):
         identity[f"checker/{name}"] = checker.version
         identity[f"checker/{name}/isolated"] = str(_isolated(checker)).lower()
+    for name, operation in sorted(_operations(domain).items()):
+        identity[f"operation/{name}"] = json.dumps(
+            {
+                "version": operation.version,
+                "effect": operation.effect,
+                "shared": operation.shared,
+                "reusable": operation.reusable,
+                "inputs": list(operation.inputs),
+                "units": sorted(operation.units),
+            },
+            sort_keys=True,
+        )
     return identity
 
 
@@ -359,12 +335,14 @@ class RunConfig:
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("max_steps must be an integer from 1 to 100")
         budgets = dict(self.budgets)
-        if not budgets.keys() <= {"model", "tool"} | TOKEN_UNITS or any(
-            type(value) is not int or value < 0 for value in budgets.values()
+        if (
+            {"check", "submissions"} & budgets.keys()
+            or not all(type(unit) is str and _NAME.fullmatch(unit) for unit in budgets)
+            or any(type(value) is not int or value < 0 for value in budgets.values())
         ):
             raise ValueError(
-                "run budgets cover model, tool, and token units only, as non-negative "
-                "integers; check budgets belong to tasks"
+                "run budgets cap model, tool, token, and operation units with "
+                "non-negative integers; check and submission budgets belong to tasks"
             )
         object.__setattr__(self, "budgets", MappingProxyType(budgets))
 
@@ -462,7 +440,9 @@ class Project:
                 str(uuid4()),
                 str(uuid4()),
                 identity,
-                {"model": 0, "tool": 0, "check": 0} | dict(allowances),
+                {"model": 0, "tool": 0, "check": 0}
+                | {u: 0 for op in _operations(domain).values() for u in op.units}
+                | dict(allowances),
             ),
             {},
         ):
@@ -476,6 +456,19 @@ class Project:
             raise ValueError(f"task names unknown checks: {sorted(unknown)}")
         run_id = "run-" + uuid4().hex[:12]
         caps = dict(config.budgets)
+        validate_operations(_operations(self.domain), {**task.inputs, **task.private})
+        shared = {
+            unit
+            for operation in _operations(self.domain).values()
+            if operation.shared
+            for unit in operation.units
+        }
+        if shared & caps.keys():
+            # Shared operations reserve in the root scope, which a run cap cannot see.
+            raise ValueError(
+                f"run budgets cannot cap units of shared operations: "
+                f"{sorted(shared & caps.keys())}"
+            )
         with Ledger.open(self.ledger_root) as ledger:
             self._require_token_units(model, ledger.project.manifest.allowances)
         if task.check_budget is not None:
@@ -567,6 +560,8 @@ class Project:
                         episode,
                         model=model,
                         environment=environment,
+                        reconcile=self._reconcile(),
+                        requests=self._requests(run),
                     )
             except UnknownOutcome as error:
                 return RunResult(
@@ -605,6 +600,31 @@ class Project:
             if outcome is not None:
                 return RunResult(run_id, outcome, tuple(submissions))
         return RunResult(run_id, RunOutcome.REJECTED, tuple(submissions))
+
+    def _task_files(self, run: _Run) -> dict[str, Evidence]:
+        return {n: run.evidence(f"input/{n}") for n in run.task.inputs} | {
+            n: run.evidence(f"private/{n}") for n in run.task.private
+        }
+
+    def _requests(self, run: _Run) -> Requests | None:
+        operations = _operations(self.domain)
+        if not operations:
+            return None
+        return Requests(operations, self._task_files(run), self.jobs)
+
+    def _reconcile(self):
+        """Settle unknown operations without executing them again.
+
+        Each operation is settled from the evidence it cited when requested, so a
+        shared operation from another run is never given this run's files.
+        """
+        operations = _operations(self.domain)
+
+        def reconcile(request):
+            with Ledger.open(self.ledger_root) as ledger:
+                return reconcile_operation(ledger, operations, request, self.jobs)
+
+        return reconcile
 
     @staticmethod
     def _require_token_units(model, allowances: Mapping[str, int]) -> None:

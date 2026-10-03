@@ -121,7 +121,7 @@ domain project supplies only domain knowledge. Specifically:
   with its own tools, such as an emulator and the target binary, so the worker
   can investigate with ordinary shell commands. The image adds tools inside the
   container; it does not widen what the container can reach.
-- [ ] **Host-mediated operations: design, then implement.** Some operations
+- [x] **Host-mediated operations: design, then implement.** Some operations
   belong on the host: results that should be authoritative, reusable evidence;
   anything needing credentials, network, paid APIs, or private data; and any
   external side effect. Write and review a design before implementing it. The
@@ -129,8 +129,10 @@ domain project supplies only domain knowledge. Specifically:
   socket to the host, operation identity and deduplication, reservation before
   execution, unknown outcomes after a host death with no blind retry, what the
   worker sees back, and negative cases for forged requests and budget bypass.
-  M8 does not wait for this item. The [design](proposals/m7-host-operations.md) is
-  reviewed and accepted; implementation has not started.
+  M8 does not wait for this item. Implemented from the accepted
+  [design](proposals/m7-host-operations.md) in `warranted.operations` and the
+  prototype task layer, with its negative cases
+  ([reference](reference/worker-and-containment.md#host-mediated-operations)).
 - [ ] **Domain execution jobs.** Domain code can run compile, emulation, or
   native jobs in pinned images through Warranted's container boundary, mounting
   only per-job scratch. Worker-readable mounts never include oracle or ledger

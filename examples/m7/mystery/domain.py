@@ -10,6 +10,8 @@ import json
 import random
 
 from warranted.experimental import CheckContext, Verdict, VerdictStatus
+from warranted.ledger import Outcome
+from warranted.operations import OperationContext, OperationResult
 from warranted.sandbox import IMAGE
 
 MAX_CASES, MAX_CASE_LENGTH, CASE_SECONDS = 16, 256, 2
@@ -130,8 +132,52 @@ def _describe(item) -> str:
     return text if code == 0 else f"exited {code}: {text}"
 
 
+class Probe:
+    """Run the original program on one worker-chosen input, observed by the host."""
+
+    version = "1"
+    effect = "none"  # a contained job; nothing outside the host changes
+    shared = False
+    reusable = True  # the program is deterministic, so equal inputs give equal output
+    inputs = ("mystery.py",)
+    units = frozenset({"probe"})
+
+    def parse(self, arguments):
+        if (
+            type(arguments) is not dict
+            or set(arguments) != {"input"}
+            or type(arguments["input"]) is not str
+            or len(arguments["input"]) > MAX_CASE_LENGTH
+        ):
+            raise ValueError("probe needs one input string of at most 256 characters")
+        return {"input": arguments["input"]}
+
+    def reservation(self, arguments):
+        return {"probe": 1}
+
+    def execute(self, ctx: OperationContext, arguments) -> OperationResult:
+        result = ctx.run_job(
+            IMAGE,
+            ["python", "-I", "prog.py"],
+            {"prog.py": ctx.inputs["mystery.py"]},
+            stdin=arguments["input"].encode(),
+            timeout_seconds=CASE_SECONDS + 5,
+        )
+        if result.timed_out:
+            return OperationResult(
+                Outcome.FAILED, {"probe": 1}, shown={"timed_out": True}
+            )
+        shown = {
+            "exit": result.returncode,
+            "output": result.stdout.decode(errors="replace")[:4096],
+        }
+        outcome = Outcome.SUCCEEDED if result.returncode == 0 else Outcome.FAILED
+        return OperationResult(outcome, {"probe": 1}, shown=shown)
+
+
 class MysteryDomain:
     name = "mystery-replay"
     version = "0.1"
     worker_image = IMAGE
     checkers = {"replay": Replay()}
+    operations = {"probe": Probe()}

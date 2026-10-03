@@ -6,6 +6,7 @@ checks = ["replay"]
 [inputs]
 "mystery.py" = "mystery.py"
 "task.md" = "task.md"
+"probe.py" = "probe.py"
 
 [private]
 "hidden.json" = "hidden.json"
