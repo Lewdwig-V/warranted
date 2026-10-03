@@ -265,6 +265,8 @@ example a re-recorded binary or a new checker version, the fact is reported as
 stale and is no longer presented as verified. ReSchema's manual
 canonicaliser-version check becomes an ordinary dependency.
 
+The [scoped memory design note](m7-scoped-memory.md) refines this sketch.
+
 ## CLI
 
 ```
