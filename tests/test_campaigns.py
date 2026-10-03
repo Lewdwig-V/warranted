@@ -45,16 +45,54 @@ def test_a_campaign_pins_its_runs_and_runs_them_in_order(tmp_path):
 
 def test_rerunning_a_campaign_continues_exactly_the_planned_runs(tmp_path):
     proj, script = project(tmp_path, ["correct"])
-    pinned = proj.plan_campaign(spec(), MODELS)
-    first = pinned["entries"][0]["run"]
-    # Interrupted after the first planned run, before the campaign reached the rest.
-    proj.start(TASK, CONFIG, Model(), run_id=first)
+    started = []
+    original = proj._start
+
+    def interrupted(*args):
+        if started:
+            raise KeyboardInterrupt  # the host stops before the second run
+        started.append(args[3])
+        return original(*args)
+
+    proj._start = interrupted
+    with pytest.raises(KeyboardInterrupt):
+        proj.run_campaign(spec(), MODELS)
+    del proj._start
     assert proj.campaign_report("c1").runs[1].status is None
     report = proj.run_campaign(spec(), MODELS)
-    assert [r.run_id for r in report.runs] == [e["run"] for e in pinned["entries"]]
+    assert report.runs[0].run_id == started[0]
     assert len(script.episodes) == 2  # the finished first run was not repeated
     assert proj.run_campaign(spec(), MODELS) == report
     assert len(script.episodes) == 2
+
+
+def test_a_planned_id_used_outside_the_campaign_is_refused(tmp_path):
+    proj, _ = project(tmp_path, ["correct"])
+    planned = proj.plan_campaign(spec(), MODELS)["entries"][0]["run"]
+    other = replace(TASK, id="something-else")
+    proj.start(other, CONFIG, Model(), run_id=planned)
+    with pytest.raises(ValueError, match="not started by the campaign"):
+        proj.run_campaign(spec(), MODELS)
+    with pytest.raises(ValueError, match="not started by the campaign"):
+        proj.campaign_report("c1")
+
+
+def test_unknown_runs_are_resumed_when_the_campaign_runs_again(tmp_path):
+    from warranted.host import Ledger, Origin, Request
+
+    proj, _ = project(tmp_path, ["correct"])
+    first = proj.run_campaign(spec(repetitions=1), MODELS).runs[0].run_id
+    with Ledger.open(proj.ledger_root) as ledger:
+        session = ledger.start_session()
+        request = Request(Origin("lost/1", "tool", "test", "1", {}), ledger.project)
+        ledger.reserve(session, request, {"tool": 1}, f"run/{first}")
+        assert ledger.begin(session, request)  # dispatched; the response was lost
+    resumed = []
+    original = proj.resume
+    proj.resume = lambda run, *a, **k: resumed.append(run) or original(run, *a, **k)
+    report = proj.run_campaign(spec(repetitions=1), MODELS)
+    assert resumed == [first]
+    assert report.runs[0].status.outcome is RunOutcome.UNKNOWN
 
 
 @pytest.mark.parametrize(
@@ -154,3 +192,29 @@ def test_imported_artifacts_resolve_in_task_files(tmp_path):
             proj.load_task(path)
     finally:
         path.unlink()
+
+
+def test_memory_is_shared_only_within_a_split_across_campaigns(tmp_path):
+    import json
+
+    from test_scoped_memory import Domain as Remembering
+
+    from warranted.host import Ledger
+
+    proj, script = project(tmp_path, ["correct"], Remembering())
+    scoped = replace(TASK, memory=MemorySpec("csv"))
+
+    def shown():
+        ref = script.episodes[-1].files["memory.json"]
+        with Ledger.open(proj.ledger_root) as ledger:
+            return json.loads(ledger.read_artifact(ref.artifact))["entries"]
+
+    training = (CampaignTask(scoped, "training"),)
+    proj.run_campaign(spec("train-1", training, repetitions=1), MODELS)
+    proj.start(scoped, CONFIG, Model())  # outside any campaign
+    assert shown() == []  # training facts never reach other groups
+    held_out = (CampaignTask(scoped, "held-out"),)
+    with pytest.raises(ValueError, match="used by training runs of campaign train-1"):
+        proj.run_campaign(spec("held-1", held_out, repetitions=1), MODELS)
+    proj.run_campaign(spec("train-2", training, repetitions=1), MODELS)
+    assert [e["tier"] for e in shown()] == ["verified"]  # same split: shared

@@ -245,7 +245,9 @@ A scope shares information between tasks. A campaign that mixes training,
 development, and held-out tasks must not give them a common scope, or held-out
 results would draw on training facts
 ([invariant 7](../../AGENTS.md#invariants-to-preserve)). Campaigns enforce
-this rule: `CampaignSpec` refuses a scope shared across splits
+this rule: a plan is refused if a memory scope is shared across splits, within
+the campaign or with any campaign already pinned in the project, and a run's
+snapshot shows only entries from runs of the same split
 ([command line](../reference/cli.md#campaigns)).
 
 ## Implementation outline

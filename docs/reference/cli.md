@@ -179,10 +179,17 @@ ID, task digest, split, configuration, model adapter, and repetition. A later
 `campaign run` with the same campaign ID must describe the same plan, or it is
 refused; a changed plan needs a new campaign ID. It then continues exactly the
 planned runs: it starts any that do not exist yet with their planned IDs,
-resumes open ones, and leaves finished ones alone.
+resumes open and unknown ones, and leaves finished ones alone. Resuming an
+unknown run reconciles what it can and never sends an operation again. Before
+it resumes or reports a run, it checks that the run was started by this
+campaign for its planned task, configuration, split, and model adapter; a run
+started some other way under a planned ID is refused.
 
-A memory scope shared by tasks of different splits is refused when the plan is
-built, so held-out runs never see training or development facts.
+Each run records its campaign and split, and a run's memory snapshot shows only
+entries from runs of the same split. Runs outside any campaign form their own
+group. A plan is also refused if a task's memory scope is shared by tasks of
+another split, in this campaign or in any campaign already pinned in the
+project. Held-out runs therefore never see training or development facts.
 
 `campaign report` lists every planned run with its split, task, configuration,
 repetition, and outcome, including runs that failed or have not started, and
