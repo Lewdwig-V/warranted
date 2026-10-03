@@ -179,6 +179,9 @@ class Checker(Protocol):
     runs: no files, services, or caches outside its inputs. Isolated checks run in
     the run's ledger scope; others run in the root scope, where an unknown outcome
     blocks every run.
+
+    `check` must return a `Verdict`. Anything else, including a subclass or an
+    object with the same attributes, is recorded as an infrastructure failure.
     """
 
     version: str
@@ -2153,6 +2156,17 @@ class Project:
                 verdict = Verdict(
                     VerdictStatus.INFRASTRUCTURE_FAILURE,
                     host_only={"error": repr(error)},
+                )
+            if type(verdict) is not Verdict:
+                # Only a real Verdict was validated at construction; anything else,
+                # however it looks, is a checker fault and never a pass.
+                verdict = Verdict(
+                    VerdictStatus.INFRASTRUCTURE_FAILURE,
+                    host_only={
+                        "error": f"checker returned {type(verdict).__name__}, "
+                        "not a Verdict",
+                        "result": repr(verdict)[:FEEDBACK_LIMIT],
+                    },
                 )
             shown = len(_json(verdict.feedback))
             if shown > FEEDBACK_LIMIT:
