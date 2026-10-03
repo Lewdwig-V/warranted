@@ -355,3 +355,60 @@ def test_runtime_exec_failure_remains_infrastructure_failure(tmp_path, monkeypat
         )
         assert tool.completion.result.outcome is Outcome.INFRASTRUCTURE_FAILURE
         assert tool.completion.result.exit_code is None
+
+
+def test_delivered_operation_files_are_root_owned_and_read_only(tmp_path):
+    from warranted.operations import Delivery
+
+    episode = replace(setup(tmp_path), max_steps=3)
+    commands = iter(
+        [
+            "printf 'WARRANTED_REQUEST\\n{}\\n'",
+            "cat responses/1/1/a.txt; echo;"
+            " (echo x >> responses/1/1/a.txt) 2>/dev/null && echo WROTE;"
+            " mv responses moved 2>/dev/null && echo MOVED;"
+            " rm -rf responses 2>/dev/null && echo REMOVED;"
+            " stat -c '%U %a' responses/1/1/a.txt",
+            "echo '{}' > result.json &&"
+            " printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'",
+        ]
+    )
+
+    def model(*_):
+        return AttemptResult(
+            Result(Outcome.SUCCEEDED, 0, {"model": 1}, 1),
+            {"response": json.dumps({"command": next(commands)}).encode()},
+        )
+
+    def requests(journal, index, completion):
+        return [{"status": "succeeded"}], [
+            Delivery("responses/1/1", {"a.txt": b"hello"})
+        ]
+
+    with Sandbox(tmp_path / "ledger", episode) as sandbox:
+        run_workflow(
+            tmp_path / "ledger",
+            tmp_path / "graph.sqlite3",
+            episode,
+            model=model,
+            environment=sandbox,
+            requests=requests,
+        )
+    with Ledger.open(tmp_path / "ledger") as ledger:
+        [second] = [
+            op
+            for op in ledger.operations()
+            if op.request.origin.operation_id.endswith("/tool/2")
+        ]
+        stdout = ledger.read_artifact(second.completion.observation.artifacts["stdout"])
+    assert stdout.decode().split() == ["hello", "root", "444"]
+
+
+def test_unsafe_delivery_paths_are_refused(tmp_path):
+    with Sandbox(tmp_path / "ledger", setup(tmp_path)) as sandbox:
+        for path, files in (
+            ("../etc", {"a": b""}),
+            ("responses/1/1", {"../a": b""}),
+        ):
+            with pytest.raises(ValueError):
+                sandbox.deliver(path, files)

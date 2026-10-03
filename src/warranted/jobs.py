@@ -10,8 +10,10 @@ job's output as the program's claim, never as host evidence about anything else.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
+import secrets
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
@@ -168,3 +170,66 @@ class PodmanJobs:
             raise SandboxFailure(
                 "invalid job result", completed.stdout, completed.stderr
             ) from error
+
+
+class JobContext:
+    """Host-recorded entropy and contained jobs for trusted host code.
+
+    `draw_seed` returns fresh entropy and records it. `run_job` validates and runs a
+    job, then records the request digests, the result, and the capped output, so
+    the caller can store all of it as raw evidence.
+    """
+
+    def __init__(self, jobs: JobRunner | None = None):
+        self._jobs = jobs
+        self.seeds: list[int] = []
+        self.job_log: list[dict] = []
+        self.job_output: dict[str, bytes] = {}
+
+    def draw_seed(self) -> int:
+        seed = secrets.randbits(64)
+        self.seeds.append(seed)
+        return seed
+
+    def run_job(
+        self,
+        image: str,
+        argv: Sequence[str],
+        files: Mapping[str, bytes],
+        *,
+        stdin: bytes = b"",
+        timeout_seconds: int = 10,
+    ) -> JobResult:
+        if self._jobs is None:
+            raise RuntimeError("this project has no job runner")
+        validate_job(image, argv, files, timeout_seconds)
+        result = self._jobs.run(
+            image, argv, files, stdin=stdin, timeout_seconds=timeout_seconds
+        )
+        prefix = f"jobs/{len(self.job_log) + 1}"
+        self.job_output[f"{prefix}/stdout"] = result.stdout
+        self.job_output[f"{prefix}/stderr"] = result.stderr
+        self.job_log.append(
+            {
+                "image": image,
+                "argv": list(argv),
+                "files": {n: _sha256(d) for n, d in sorted(files.items())},
+                "stdin": _sha256(stdin),
+                "returncode": result.returncode,
+                "timed_out": result.timed_out,
+                "truncated": result.truncated,
+                "stdout": {
+                    "channel": f"{prefix}/stdout",
+                    "digest": _sha256(result.stdout),
+                },
+                "stderr": {
+                    "channel": f"{prefix}/stderr",
+                    "digest": _sha256(result.stderr),
+                },
+            }
+        )
+        return result
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()

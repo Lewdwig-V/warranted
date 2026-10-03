@@ -1,7 +1,10 @@
 # M7 design note: host-mediated operations
 
 Proposed and accepted 2026-10-03, with its review questions decided the same
-day (see [decisions](#decisions)); not yet implemented. This note designs the
+day (see [decisions](#decisions)); implemented the same day in
+`warranted.operations`, the worker, the sandbox, and the experimental task layer.
+The [worker reference](../reference/worker-and-containment.md#host-mediated-operations)
+describes the implemented behaviour. This note designs the
 **host-mediated operations** item of
 [M7](../roadmap.md#m7--stable-harness-api-and-cli), whose implementation the
 roadmap allowed only after a reviewed design.
@@ -350,3 +353,27 @@ Still open:
 4. Do shared operations need per-run caps? That would need the ledger to charge
    one operation against both its run's scope and the root scope. Refusing the cap
    keeps the ledger unchanged until a case needs it.
+
+## Implementation notes
+
+- **Operations declare `units`.** The design's interface had no static list of
+  the units an operation may reserve, but two rules need one: refusing run caps on
+  units of shared operations, and giving each declared unit a zero default
+  allowance so an unfunded operation is refused rather than crashing the run. A
+  reservation naming an undeclared unit is a host error.
+- **Refusals are recorded.** A budget refusal depends on ledger state at the
+  time, so replaying an episode could otherwise turn a refused item into an
+  executed one and change what the worker was shown. Each refusal is recorded
+  under the item's ID and returned unchanged on replay, as results and reuses are.
+- **Inputs cite evidence.** The operation's request cites the command's stdout,
+  the canonical arguments, the reuse key, and each declared task file by their
+  evidence names, so the ledger checks every one against a recorded capture.
+- **Replay does not deliver again.** Files are delivered only when an item is
+  executed or reused in the current call. A replayed episode has no running
+  container until its next new command.
+- **A request marker without operations is answered.** A task whose domain
+  declares no operations returns one error result rather than silently ignoring
+  the request.
+- `examples/m7/mystery/` gains a reusable `probe` operation that runs the original
+  program in a contained job, and `probe.py`, the request command a worker image
+  would provide.

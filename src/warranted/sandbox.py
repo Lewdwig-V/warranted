@@ -11,10 +11,12 @@ import base64
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 from time import perf_counter_ns
 
 from warranted.containers import SandboxFailure, _run, require_runtime
+from warranted.jobs import _FILE_NAME
 from warranted.ledger import Ledger, Outcome, Request, Result, _json_object
 from warranted.worker import AttemptResult, Episode, input_files
 
@@ -44,6 +46,21 @@ for name, encoded in payload['workspace'].items():
     os.makedirs(parent, exist_ok=True)
     with open(path, 'xb') as file:
         file.write(base64.b64decode(encoded, validate=True))
+"""
+# Root-owned and read-only to the worker; /work is sticky, so the worker cannot
+# replace these entries either.
+_DELIVER = """
+import base64, json, os, sys
+payload = json.load(sys.stdin)
+path = '/work'
+for part in payload['path'].split('/'):
+    path += '/' + part
+    if not os.path.isdir(path):
+        os.mkdir(path, 0o555)
+for name, encoded in payload['files'].items():
+    with open(path + '/' + name, 'xb') as file:
+        file.write(base64.b64decode(encoded, validate=True))
+    os.chmod(path + '/' + name, 0o444)
 """
 _EXECUTE = """
 import subprocess, sys
@@ -345,6 +362,35 @@ class Sandbox:
             }
         return AttemptResult(
             Result(outcome, code, {"tool": 1}, perf_counter_ns() - started), raw
+        )
+
+    def deliver(self, path: str, files: Mapping[str, bytes]) -> None:
+        """Write host-produced files read-only under /work/<path> between commands."""
+        if not re.fullmatch(r"responses/[0-9]{1,6}/[0-9]{1,6}", path) or not all(
+            _FILE_NAME.fullmatch(name) for name in files
+        ):
+            raise ValueError("unsafe delivery path or file name")
+        if sum(map(len, files.values())) > CANDIDATE_LIMIT:
+            raise SandboxFailure("delivered files exceed limit")
+        self._checked(
+            [
+                "exec",
+                "--interactive",
+                "--user=0:0",
+                self.name,
+                "python",
+                "-I",
+                "-c",
+                _DELIVER,
+            ],
+            json.dumps(
+                {
+                    "path": path,
+                    "files": {
+                        n: base64.b64encode(d).decode() for n, d in files.items()
+                    },
+                }
+            ).encode(),
         )
 
     def close(self) -> None:

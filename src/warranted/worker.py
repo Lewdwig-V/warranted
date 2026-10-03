@@ -45,6 +45,11 @@ class AttemptResult:
 
 Boundary = Callable[[Request, bytes], AttemptResult]
 
+SUBMIT_MARKER = b"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+# A successful command whose first stdout line is this marker requests host
+# operations; see warranted.operations.
+REQUEST_MARKER = b"WARRANTED_REQUEST"
+
 # Token units are enforced for every model call once a project allows them.
 TOKEN_UNITS = frozenset({"prompt_tokens", "completion_tokens"})
 
@@ -415,10 +420,10 @@ class WorkerModel:
 
 
 class WorkerEnvironment:
-    """Mini Environment protocol. Submission is interpreted after raw capture."""
+    """Mini Environment protocol. Submissions and requests are read after capture."""
 
-    def __init__(self, journal: Journal, boundary: Boundary):
-        self.journal, self.boundary = journal, boundary
+    def __init__(self, journal: Journal, boundary: Boundary, requests=None):
+        self.journal, self.boundary, self.requests = journal, boundary, requests
         self.config = {"environment": journal.episode.environment}
         self.index = 0
 
@@ -435,7 +440,7 @@ class WorkerEnvironment:
         if (
             completion.result.exit_code == 0
             and lines
-            and lines[0].strip() == b"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+            and lines[0].strip() == SUBMIT_MARKER
         ):
             raise Submitted(
                 {
@@ -447,11 +452,30 @@ class WorkerEnvironment:
                     },
                 }
             )
-        return {
+        observation = {
             "output": stdout.decode(errors="replace"),
             "stderr": stderr.decode(errors="replace"),
             "returncode": completion.result.exit_code,
         }
+        if (
+            completion.result.exit_code == 0
+            and lines
+            and lines[0].strip() == REQUEST_MARKER
+        ):
+            # Host-written, separate from anything the command printed.
+            observation["host_results"] = self._requests(completion)
+        return observation
+
+    def _requests(self, completion) -> list[dict]:
+        if self.requests is None:
+            return [{"status": "error", "error": "this task offers no operations"}]
+        results, deliveries = self.requests(self.journal, self.index, completion)
+        deliver = getattr(self.boundary, "deliver", None)
+        for delivery in deliveries:
+            if deliver is None:
+                raise RuntimeError("the environment cannot deliver operation files")
+            deliver(delivery.path, delivery.files)
+        return results
 
     def get_template_vars(self, **kwargs) -> dict:
         return kwargs
@@ -474,6 +498,7 @@ def run_workflow(
     model: Boundary,
     environment: Boundary,
     reconcile: Callable[[Request], AttemptResult | None] | None = None,
+    requests: Callable | None = None,
 ) -> dict:
     """Run or resume one bounded episode. Checkpoint state grants no authority."""
     if checkpoint_path.resolve().is_relative_to(ledger_root.resolve()):
@@ -503,7 +528,7 @@ def run_workflow(
             if journal.receipt() is None:
                 agent = DefaultAgent(
                     WorkerModel(journal, model),
-                    WorkerEnvironment(journal, environment),
+                    WorkerEnvironment(journal, environment, requests),
                     system_template=(
                         "Use shell commands to complete the task. Submit with "
                         "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT "
