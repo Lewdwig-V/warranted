@@ -412,12 +412,16 @@ def test_task_check_budget_stops_further_assessment(tmp_path):
 
 
 def test_budgets_belong_to_their_owner(tmp_path):
-    with pytest.raises(ValueError, match="model and tool"):
+    with pytest.raises(ValueError, match="token units only"):
         RunConfig("m", 2, {"check": 1})
+    assert RunConfig("m", 2, {"prompt_tokens": 9, "completion_tokens": 3}).budgets
     task = tmp_path / "task.toml"
-    task.write_text('id = "t"\nobjective = "o"\nchecks = ["c"]\n[budgets]\nmodel = 3\n')
-    with pytest.raises(ValueError, match="task budget"):
-        TaskSpec.load(task)
+    for unit in ("model", "prompt_tokens"):
+        task.write_text(
+            f'id = "t"\nobjective = "o"\nchecks = ["c"]\n[budgets]\n{unit} = 3\n'
+        )
+        with pytest.raises(ValueError, match="task budget"):
+            TaskSpec.load(task)
 
 
 def test_reconciliation_only_sees_the_episodes_own_scope(tmp_path):

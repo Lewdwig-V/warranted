@@ -110,6 +110,7 @@ class OpenRouterChatCompletions(LocalChatCompletions):
     adapter_name: ClassVar[str] = "openrouter-chat-completions"
     provider_tag: ClassVar[str] = "inference-net/fp4"
     provider_name: ClassVar[str] = "InferenceNet"
+    verified_models: ClassVar[frozenset[str]] = frozenset()
     key_file: Path | None = None
     key_sha256: str | None = None
     ledger_root: Path | None = None
@@ -127,6 +128,13 @@ class OpenRouterChatCompletions(LocalChatCompletions):
             or not re.fullmatch(r"[a-f0-9]{64}", self.key_sha256)
         ):
             raise ValueError("invalid pinned key digest")
+
+    @property
+    def verification_key(self) -> str:
+        return f"{self.model}@{self.provider_tag}"
+
+    def _model_changed(self) -> str | None:
+        return None  # The runtime preflight pins the provider endpoint instead.
 
     def _key(self) -> str:
         key = self.key_file.read_text().strip()
@@ -252,7 +260,7 @@ class OpenRouterChatCompletions(LocalChatCompletions):
                 Result(
                     Outcome.INFRASTRUCTURE_FAILURE,
                     None,
-                    {"model": 0},
+                    self._usage(0),
                     0,
                 ),
                 raw,
@@ -301,7 +309,7 @@ class OpenRouterChatCompletions(LocalChatCompletions):
             return AttemptResult(attempt.result, {**preflight, **attempt.raw})
         except _CredentialChanged as error:
             return AttemptResult(
-                Result(Outcome.INFRASTRUCTURE_FAILURE, None, {"model": 0}, 0),
+                Result(Outcome.INFRASTRUCTURE_FAILURE, None, self._usage(0), 0),
                 {
                     "diagnostic": str(error).encode(),
                     "cost.json": _encode(
@@ -315,7 +323,7 @@ class OpenRouterChatCompletions(LocalChatCompletions):
             attempt = super().__call__(request, payload)
         except _CredentialChanged as error:
             return AttemptResult(
-                Result(Outcome.INFRASTRUCTURE_FAILURE, None, {"model": 0}, 0),
+                Result(Outcome.INFRASTRUCTURE_FAILURE, None, self._usage(0), 0),
                 {
                     "diagnostic": str(error).encode(),
                     "cost.json": _encode(

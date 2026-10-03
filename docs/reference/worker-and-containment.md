@@ -67,7 +67,7 @@ with Sandbox(ledger_root, episode) as shell:
 | `workspace` | Captured `workspace.json` from an earlier episode, restored as writable |
 | `model`, `model_service`, `environment` | Boundary identities. `model_service` becomes the producer of each model request, so the request digest binds the service identity |
 | `max_steps` | mini step limit, 1–100 (default 4) |
-| `model_reservation`, `tool_reservation` | Units reserved for each attempt (default 1) |
+| `model_reservation`, `tool_reservation` | Units reserved for each attempt (default 1). A model service that provides `reservation(payload)` supplies its own reservation instead; see [token budgets](model-adapters.md#token-budgets). |
 | `container_timeout_seconds` | 30–3600 (default 120) |
 | `continues` | A different, already recorded episode that this one continues |
 | `scope` | [Ledger scope](evidence-ledger.md#scopes) for the episode's model and tool attempts (default `ROOT_SCOPE`) |
