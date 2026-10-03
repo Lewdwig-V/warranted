@@ -7,6 +7,8 @@ versioning and deprecation policy. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-03
+
 ### Changed
 
 - Proof targets are owned by domains: `ProofTarget(path, theorem)` replaces
@@ -27,6 +29,7 @@ versioning and deprecation policy. The format follows
   challenge bytes it verifies; the verifier identity includes the timeout.
 - `VerdictStatus.UNPROVED`: fails the gate and is recorded distinctly.
 - `ProofTarget` in `warranted`.
+- The CSV and migration fixtures' proof cases run on the task layer.
 
 ## [0.1.0] - 2026-10-03
 
@@ -77,5 +80,6 @@ provisional until ReSchema runs on them (M8).
 - A project opens only with the Warranted build that created it; every upgrade
   needs a new project.
 
-[Unreleased]: https://github.com/Lewdwig-V/warranted/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Lewdwig-V/warranted/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Lewdwig-V/warranted/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Lewdwig-V/warranted/releases/tag/v0.1.0

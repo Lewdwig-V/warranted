@@ -182,7 +182,7 @@ jobs:
             runs/podman-storage.tar
             runs/m4-tools/bundle.json
           # Bump v1 if the archived storage layout changes.
-          key: proof-store-v1-ubuntu-24.04-podman-${{ steps.podman.outputs.version }}-uid-${{ steps.podman.outputs.uid }}-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/_containers.py', 'src/warranted/_proofs.py', 'src/warranted/proof/**', 'src/warranted/_sandbox.py') }}
+          key: proof-store-v1-ubuntu-24.04-podman-${{ steps.podman.outputs.version }}-uid-${{ steps.podman.outputs.uid }}-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/_containers.py', 'src/warranted/_proofs.py', 'src/warranted/proof/**', 'src/warranted/_sandbox.py', 'examples/proof_targets.py', 'examples/m7/**/*Challenge.lean') }}
       - name: Restore verifier image for cache migration
         id: verifier-cache
         if: steps.podman-cache.outputs.cache-hit != 'true'
@@ -191,7 +191,7 @@ jobs:
           path: |
             runs/m4-tools/bundle.json
             runs/m4-tools/proof-image.oci
-          key: proof-ubuntu-24.04-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/_containers.py', 'src/warranted/_proofs.py', 'src/warranted/proof/**') }}
+          key: proof-ubuntu-24.04-${{ hashFiles('scripts/build_proof_bundle.py', 'src/warranted/_containers.py', 'src/warranted/_proofs.py', 'src/warranted/proof/**', 'examples/proof_targets.py', 'examples/m7/**/*Challenge.lean') }}
       - name: Build the pinned verifier
         if: steps.podman-cache.outputs.cache-hit != 'true' && steps.verifier-cache.outputs.cache-hit != 'true'
         run: |
@@ -224,11 +224,14 @@ jobs:
           m4_pid=$!
           uv run --locked pytest -q -m proof --durations=5 tests/test_m5_treatments.py > /tmp/proofs-m5.log 2>&1 &
           m5_pid=$!
+          uv run --locked pytest -q -m proof --durations=5 tests/test_proof_fixtures.py > /tmp/proofs-fixtures.log 2>&1 &
+          fixtures_pid=$!
           failed=0
           wait "$native_pid" || failed=1
           wait "$m4_pid" || failed=1
           wait "$m5_pid" || failed=1
-          cat /tmp/proofs-native.log /tmp/proofs-m4.log /tmp/proofs-m5.log
+          wait "$fixtures_pid" || failed=1
+          cat /tmp/proofs-native.log /tmp/proofs-m4.log /tmp/proofs-m5.log /tmp/proofs-fixtures.log
           exit "$failed"
       - name: Save native Podman image storage
         if: success() && steps.podman-cache.outputs.cache-hit != 'true'
