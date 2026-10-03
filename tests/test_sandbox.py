@@ -293,7 +293,7 @@ def test_native_capture_crash_keeps_exact_evidence_or_blocks(tmp_path, when):
     assert (tmp_path / "tool-calls.log").read_bytes() == b"called\n"
 
 
-@pytest.mark.parametrize("name", ["context.json", "result.json"])
+@pytest.mark.parametrize("name", ["context.json", "result.json", "responses"])
 def test_reserved_workspace_paths_cannot_be_inputs(tmp_path, name):
     episode = replace(setup(tmp_path), inputs=(name,))
     with pytest.raises(ValueError, match="input names"):

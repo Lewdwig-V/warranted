@@ -222,7 +222,7 @@ class Sandbox:
             raise ValueError("episode must pin the container environment")
         if any(
             not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}", name)
-            or name in {"context.json", "result.json", "workspace"}
+            or name in {"context.json", "result.json", "workspace", "responses"}
             for name in (*episode.inputs, *episode.files)
         ):
             raise ValueError("worker input names must be safe, distinct basenames")

@@ -155,9 +155,10 @@ correction) are distinguished from runtime failures (`infrastructure_failure`).
 **Inputs.** The host copies the selected snapshot bytes and evidence files into
 `/work` as read-only files, together with a `context.json` inventory
 (`{"authoritative": false, "files": [...]}`). The inventory contains no host
-provenance or project metadata. Filenames must be safe basenames other than
-`context.json`, `result.json`, and `workspace`, and the total input is limited to
-1 MiB. The worker receives no ledger, checkpoint database, private reference, or
+provenance or project metadata. The host also creates an empty, root-owned,
+read-only `responses` directory for [operation results](#host-mediated-operations).
+Filenames must be safe basenames other than `context.json`, `result.json`,
+`workspace`, and `responses`, and the total input is limited to 1 MiB. The worker receives no ledger, checkpoint database, private reference, or
 future fixture version. Publishing a fixture as development evidence does not make
 it worker context.
 

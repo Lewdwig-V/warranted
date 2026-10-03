@@ -265,9 +265,10 @@ from pathlib import Path
 import json
 expected = { {name: data.decode() for name, data in expected.items()}!r}
 assert set(p.name for p in Path('.').iterdir()) == set(expected) | {{
-    'context.json', 'workspace'
+    'context.json', 'workspace', 'responses'
 }}
 assert Path('workspace').is_dir() and not list(Path('workspace').iterdir())
+assert Path('responses').is_dir() and not list(Path('responses').iterdir())
 for name, content in expected.items():
     assert Path(name).read_text() == content
 assert not Path({str(tmp_path / "ledger")!r}).exists()

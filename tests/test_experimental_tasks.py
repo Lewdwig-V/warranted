@@ -279,8 +279,9 @@ def test_task_files_cannot_overlap_or_use_reserved_names():
         TaskSpec("t", "o", {"a.json": b""}, {"a.json": b""}, ("c",), 1)
     with pytest.raises(ValueError, match="reserved"):
         TaskSpec("t", "o", {"feedback-001.json": b""}, {}, ("c",), 1)
-    with pytest.raises(ValueError, match="reserved"):
-        TaskSpec("t", "o", {"result.json": b""}, {}, ("c",), 1)
+    for name in ("result.json", "responses"):
+        with pytest.raises(ValueError, match="reserved"):
+            TaskSpec("t", "o", {name: b""}, {}, ("c",), 1)
 
 
 def test_checks_and_run_configuration_are_validated():

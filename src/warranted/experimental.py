@@ -57,7 +57,7 @@ PRODUCER = "warranted-tasks"
 FEEDBACK_LIMIT = 64 * 1024
 _NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}")
 _ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,100}")
-_RESERVED = {"context.json", "result.json", "workspace"}
+_RESERVED = {"context.json", "result.json", "workspace", "responses"}
 
 
 def _json(value: Any) -> bytes:
