@@ -111,8 +111,7 @@ domain project supplies only domain knowledge. Specifically:
   rejected, unproved, unsupported, unknown, and infrastructure failure distinct.
   Everything else becomes private. The CSV and migration fixtures run through it
   ([CSV](fixtures/csv-transformation.md#task-layer),
-  [migration](fixtures/config-migration.md#task-layer)), without their proof
-  cases.
+  [migration](fixtures/config-migration.md#task-layer)).
 - [x] **Checker interface.** A domain checker assesses captured candidate bytes
   in a contained job and returns a typed verdict plus worker-visible feedback.
   The host keeps private inputs and seeds out of the worker, records them as
@@ -189,8 +188,8 @@ budgets. Host-mediated operations are complete when their reviewed design is
 implemented with its negative cases.
 
 Status: the [reverse-engineering-style fixture](fixtures/reverse-engineering.md)
-meets its part through the public API. Both existing fixtures run through the
-public API without their proof cases, and not yet through the CLI.
+meets its part through the public API. Both existing fixtures, including their proof cases, run through the
+public API, but not yet through the CLI.
 
 **Constraint:** the core contains no reverse-engineering concepts. Traces,
 canonicalisation, emulation, and fuzzing stay in ReSchema behind the checker,
