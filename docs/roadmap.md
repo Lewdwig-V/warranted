@@ -16,7 +16,7 @@ deferred until M8 lands.
 | M5 | Second task family and A–E knowledge-workflow comparison | Fixtures complete; comparison deferred |
 | M7 | Stable harness API and CLI | Next |
 | M8 | ReSchema rebuilt on Warranted | Planned, after M7 |
-| M9 | Verified optimisation loop for Minkowski | Proposed |
+| M9 | General-purpose neurosymbolic harness: five use cases | Proposed |
 | M6 | Dream-RSI replay-based scheduling | Deferred |
 | M3a | Optional Jev classifier and judge | Deferred |
 
@@ -231,22 +231,27 @@ full accounting.
 engineering stays in ReSchema. If M8 shows an M7 interface does not fit, revise
 the interface before 1.0 rather than adding a ReSchema-specific path.
 
-## M9 — Verified optimisation loop for Minkowski
+## M9 — General-purpose neurosymbolic harness: five use cases
 
-Proposed; not started. A second, non-reverse-engineering consumer: a loop that
-improves [Minkowski](https://github.com/Lewdwig-V/minkowski)'s performance,
-accepting a change only when Minkowski's own correctness checks pass and a
-deterministic measure improves, then making it the next baseline. The
-[design note](proposals/optimisation-loop.md) maps the use case onto the current
-interfaces and proposes, in order:
+Proposed; not started. Five use cases that differ from the CSV and migration
+fixtures and from each other: Minkowski optimisation, ARC-AGI-1/2, ARC-AGI-3,
+logic and constraint puzzles with an SMT solver, and Lean theorem proving. The
+[design note](proposals/general-purpose-harness.md) audits where Warranted is not
+yet general and proposes, in order, with each interface provisional until a second
+use case confirms it:
 
-- [ ] A strategy that tries several candidates per round, built first on an
-  ARC-AGI-1/2 puzzle fixture.
-- [ ] Patch candidates against a pinned source tree, and checker measurements
-  with a task-declared objective.
-- [ ] Deterministic measures as the only gates, and a pinned build cache.
-- [ ] Chains: accepted rounds promoted into the next baseline with recorded
-  lineage.
+- [ ] A strategy layer that tries several candidates per run, and OpenRouter
+  models in the task layer, on an ARC-AGI-1/2 fixture.
+- [ ] Trust bases on verdicts, and solver-checked `unsat` claims, on an SMT
+  puzzle fixture.
+- [ ] Per-task Lean targets, a pinned Mathlib, a named axiom policy, and pinned
+  prebuilt artifacts, on a small Lean benchmark.
+- [ ] Patch candidates against a pinned tree, and checker measurements with a
+  task objective, on one Minkowski optimisation round.
+- [ ] Chains that promote accepted results with recorded lineage: Minkowski
+  baselines and Lean lemma libraries.
+- [ ] Host sessions for stateful environments, after a reviewed design, on
+  ARC-AGI-3.
 - [ ] Later: improving the agent itself, building on M6.
 
 ## M5 — Generality and the knowledge experiment
