@@ -126,15 +126,20 @@ once.
 
 ### Presentation: one snapshot per run
 
-When a run starts, the host:
+When a run is created, the host:
 
 1. finds every fact and note in the task's scope from earlier runs;
 2. keeps those whose submission was accepted;
 3. assesses each claim against the new task's current versions: its domain
    identity and its files under the same names;
 4. keeps the `current` ones and counts the `stale` and `unknown` ones;
-5. writes `memory.json`, newest first, up to 64 KiB, and records it as run
-   evidence before the first episode.
+5. builds `memory.json`, newest first, up to 64 KiB, and records it in the
+   same ledger record as the run's task and configuration (`run/<id>/spec`).
+
+Because the snapshot is part of the record that creates the run, there is no
+point at which a run exists without its snapshot. A crash before that record
+leaves no run to resume. A crash after it leaves a run whose snapshot is
+already fixed. Resume never recomputes memory.
 
 ```json
 {
@@ -174,8 +179,10 @@ runs no checker.
 - A note is not promoted by a later accepted submission in the same run.
 - A fact whose `depends` file changes bytes under the same name is stale and is
   withheld. An unaffected fact in the same scope stays current.
-- Changing domain code, such as a checker's source, makes every fact recorded
-  under the old identity stale.
+- A fact recorded under one domain identity is stale when assessed against
+  another. This is tested at the claim level; see
+  [domain revisions](#domain-revisions) for why a project never presents such
+  a fact today.
 - A task that lacks a depended-on file name sees the fact as unknown and
   withholds it.
 - A task in another scope, or without `[memory]`, sees nothing.
@@ -208,6 +215,27 @@ runs no checker.
   as a card. Newest-first under a byte limit covers that. A selection hook can
   be added when a second consumer needs one.
 
+## Domain revisions
+
+A project pins its domain identity. `Project` refuses to open a ledger whose
+recorded identity differs from the domain it is given, so a changed checker,
+canonicaliser, or declared source means a new project. A new project starts
+with an empty ledger, and so with empty memory. Facts therefore never outlive
+the domain code that produced them, and a project never needs to report a fact
+as stale because of a domain change.
+
+The `domain` dependency is still recorded with every fact. It costs nothing,
+and it makes the result correct by construction if a later milestone adds a
+path that carries facts across a domain change: a domain-revision record inside
+a project, or an export from one project and import into another. Either path
+would assess each carried fact against the new identity and withhold the stale
+ones. Neither path is part of this design.
+
+For ReSchema this means a canonicaliser change starts a fresh project and an
+empty family cache. That is the conservative choice, and it matches what
+happens to the project's runs. Keeping memory across a domain revision is
+[review question 4](#questions-for-review).
+
 ## Held-out separation
 
 A scope shares information between tasks. A campaign that mixes training,
@@ -224,8 +252,8 @@ refuse a scope shared across splits.
 2. The sandbox captures optional `notes.json`.
 3. The task layer records facts and notes as claims with host-declared
    dependency versions, and `Project.memory(scope)` reads them.
-4. Run start writes and records the `memory.json` snapshot, and episodes
-   deliver it.
+4. Run creation records the `memory.json` snapshot in the run's spec record,
+   and episodes deliver it.
 5. Tests for the negative cases above, plus a two-task example in which the
    second task reuses the first task's verified fact and a revised input makes
    it stale.
@@ -237,3 +265,7 @@ refuse a scope shared across splits.
 2. Should unaccepted notes be withheld entirely, as proposed? ReSchema shows
    them with `promoted: false`.
 3. Should stale facts be withheld, as proposed, or shown with a label?
+4. Should memory survive a domain revision? This proposal says no, because a
+   project pins its domain and a revised domain means a new project. Supporting
+   it needs a domain-revision record or a cross-project import, either of which
+   would assess carried facts against the new identity.
