@@ -9,10 +9,15 @@ import base64
 import json
 import random
 
-from warranted.experimental import CheckContext, Verdict, VerdictStatus
-from warranted.ledger import Outcome
-from warranted.operations import OperationContext, OperationResult
-from warranted.sandbox import IMAGE
+from warranted import (
+    DEFAULT_WORKER_IMAGE,
+    CheckContext,
+    OperationContext,
+    OperationResult,
+    Outcome,
+    Verdict,
+    VerdictStatus,
+)
 
 MAX_CASES, MAX_CASE_LENGTH, CASE_SECONDS = 16, 256, 2
 
@@ -37,7 +42,7 @@ class Replay:
 
     def _run(self, ctx: CheckContext, source: bytes, cases: list[str]):
         result = ctx.run_job(
-            IMAGE,
+            DEFAULT_WORKER_IMAGE,
             ["python", "-I", "harness.py"],
             {
                 "prog.py": source,
@@ -157,7 +162,7 @@ class Probe:
 
     def execute(self, ctx: OperationContext, arguments) -> OperationResult:
         result = ctx.run_job(
-            IMAGE,
+            DEFAULT_WORKER_IMAGE,
             ["python", "-I", "prog.py"],
             {"prog.py": ctx.inputs["mystery.py"]},
             stdin=arguments["input"].encode(),
@@ -178,6 +183,6 @@ class Probe:
 class MysteryDomain:
     name = "mystery-replay"
     version = "0.1"
-    worker_image = IMAGE
+    worker_image = DEFAULT_WORKER_IMAGE
     checkers = {"replay": Replay()}
     operations = {"probe": Probe()}

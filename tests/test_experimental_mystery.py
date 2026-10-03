@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from warranted.containers import SandboxFailure
-from warranted.experimental import Project, RunConfig, RunOutcome, TaskSpec
-from warranted.jobs import JobResult, validate_job
-from warranted.ledger import Ledger, Outcome, Result
-from warranted.worker import AttemptResult
+from warranted._containers import SandboxFailure
+from warranted._jobs import JobResult, validate_job
+from warranted._ledger import Ledger, Outcome, Result
+from warranted._tasks import Project, RunConfig, RunOutcome, TaskSpec
+from warranted._worker import AttemptResult
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples/m7/mystery"
 ENVIRONMENT = "scripted-environment-v1"
@@ -298,10 +298,10 @@ def test_a_job_runner_failure_is_an_infrastructure_failure(tmp_path):
     "image, argv, files, seconds",
     [
         ("python:3.12", ["python"], {}, 5),
-        (MYSTERY.IMAGE, [], {}, 5),
-        (MYSTERY.IMAGE, ["python"], {"../escape": b""}, 5),
-        (MYSTERY.IMAGE, ["python"], {"a.py": "text"}, 5),
-        (MYSTERY.IMAGE, ["python"], {}, 0),
+        (MYSTERY.DEFAULT_WORKER_IMAGE, [], {}, 5),
+        (MYSTERY.DEFAULT_WORKER_IMAGE, ["python"], {"../escape": b""}, 5),
+        (MYSTERY.DEFAULT_WORKER_IMAGE, ["python"], {"a.py": "text"}, 5),
+        (MYSTERY.DEFAULT_WORKER_IMAGE, ["python"], {}, 0),
     ],
 )
 def test_job_requests_are_validated(image, argv, files, seconds):

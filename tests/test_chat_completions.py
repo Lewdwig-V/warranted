@@ -13,9 +13,9 @@ from time import monotonic
 import pytest
 from minisweagent.exceptions import FormatError
 
-from warranted.chat_completions import LocalChatCompletions
-from warranted.ledger import Ledger, Manifest, OperationConflict, Outcome
-from warranted.worker import Episode, Journal, UnknownOutcome, WorkerModel
+from warranted._chat_completions import LocalChatCompletions
+from warranted._ledger import Ledger, Manifest, OperationConflict, Outcome
+from warranted._worker import Episode, Journal, UnknownOutcome, WorkerModel
 
 
 @contextmanager
@@ -388,7 +388,7 @@ def test_probe_rejects_changed_adapter_before_inference(tmp_path, monkeypatch, a
         client = LocalChatCompletions(url, "gemma4:26b")
         root = tmp_path / "adapter-changed"
         probe["initialize"](root, client)
-        changed = Path(probe["chat_completions"].__file__).with_name(adapter + ".py")
+        changed = Path(probe["chat_completions"].__file__).with_name(f"_{adapter}.py")
         read_bytes = Path.read_bytes
 
         def changed_bytes(path):

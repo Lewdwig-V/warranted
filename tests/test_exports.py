@@ -6,9 +6,9 @@ from dataclasses import replace
 
 import pytest
 
-import warranted.exports as exports
-from warranted.exports import export_evidence
-from warranted.ledger import (
+import warranted._exports as exports
+from warranted._exports import export_evidence
+from warranted._ledger import (
     CorruptArtifact,
     Ledger,
     Manifest,

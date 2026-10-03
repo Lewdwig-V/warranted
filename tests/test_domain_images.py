@@ -3,16 +3,16 @@
 import pytest
 from test_experimental_mystery import MYSTERY, LocalJobs
 
-from warranted.experimental import Project
-from warranted.jobs import (
+from warranted._jobs import (
     DEFAULT_LIMITS,
     JobContext,
     JobLimits,
     pinned_image,
     validate_job,
 )
-from warranted.sandbox import IMAGE, SANDBOX_ID, Sandbox, sandbox_id
-from warranted.worker import Episode
+from warranted._sandbox import IMAGE, SANDBOX_ID, Sandbox, sandbox_id
+from warranted._tasks import Project
+from warranted._worker import Episode
 
 LOCAL_ID = "a" * 64
 

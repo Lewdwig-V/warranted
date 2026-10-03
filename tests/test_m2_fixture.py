@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from warranted.ledger import Ledger, Manifest, Origin
+from warranted._ledger import Ledger, Manifest, Origin
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "m2"
 SCRIPT = EXAMPLE / "experiments.py"

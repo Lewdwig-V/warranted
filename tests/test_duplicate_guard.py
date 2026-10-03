@@ -5,9 +5,9 @@ import json
 import pytest
 from test_experimental_tasks import CANDIDATES, CONFIG, CSV, TASK, Model, project
 
-from warranted.experimental import RunOutcome, TaskSpec
-from warranted.guard import DuplicateGuard, default_normalize, edit_mass
-from warranted.ledger import Ledger
+from warranted._guard import DuplicateGuard, default_normalize, edit_mass
+from warranted._ledger import Ledger
+from warranted._tasks import RunOutcome, TaskSpec
 
 GUARD = DuplicateGuard(
     exact_repeats=2, near_repeats=3, near_edit_floor=8, near_edit_percent=0, window=8

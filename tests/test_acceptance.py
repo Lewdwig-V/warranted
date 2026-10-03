@@ -6,8 +6,8 @@ from dataclasses import replace
 
 import pytest
 
-from warranted.acceptance import Acceptance, AcceptanceContext, Evidence
-from warranted.ledger import (
+from warranted._acceptance import Acceptance, AcceptanceContext, Evidence
+from warranted._ledger import (
     BudgetExceeded,
     Ledger,
     Manifest,

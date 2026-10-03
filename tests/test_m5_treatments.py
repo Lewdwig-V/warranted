@@ -11,12 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from warranted import proofs
-from warranted import sandbox as sandbox_module
-from warranted.containers import PODMAN_COMMAND_TIMEOUT_SECONDS
-from warranted.contexts import Condition
-from warranted.ledger import Ledger, Origin, Outcome, Request, Result
-from warranted.worker import AttemptResult, Episode, UnknownOutcome, submitted_files
+from warranted import _proofs as proofs
+from warranted import _sandbox as sandbox_module
+from warranted._containers import PODMAN_COMMAND_TIMEOUT_SECONDS
+from warranted._contexts import Condition
+from warranted._ledger import Ledger, Origin, Outcome, Request, Result
+from warranted._worker import AttemptResult, Episode, UnknownOutcome, submitted_files
 
 SCRIPT = Path(__file__).resolve().parents[1] / "examples/m5/treatments.py"
 
@@ -848,7 +848,9 @@ def test_changed_model_adapter_blocks_resume_before_dispatch(
     changed = (
         Path(demo["LOCAL"]["__file__"])
         if adapter == "local_model"
-        else Path(demo["LOCAL"]["chat_completions"].__file__).with_name(adapter + ".py")
+        else Path(demo["LOCAL"]["chat_completions"].__file__).with_name(
+            f"_{adapter}.py"
+        )
     )
     read_bytes = Path.read_bytes
 

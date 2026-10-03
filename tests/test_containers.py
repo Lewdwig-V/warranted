@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from warranted.containers import SandboxFailure, _run
+from warranted._containers import SandboxFailure, _run
 
 
 def test_closed_output_pipes_still_obey_the_timeout(tmp_path, monkeypatch):

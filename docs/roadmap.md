@@ -133,7 +133,7 @@ domain project supplies only domain knowledge. Specifically:
   execution, unknown outcomes after a host death with no blind retry, what the
   worker sees back, and negative cases for forged requests and budget bypass.
   M8 does not wait for this item. Implemented from the accepted
-  [design](proposals/m7-host-operations.md) in `warranted.operations` and the
+  [design](proposals/m7-host-operations.md) in `warranted` (`Operation`) and the
   prototype task layer, with its negative cases
   ([reference](reference/worker-and-containment.md#host-mediated-operations)).
 - [x] **Domain execution jobs.** Domain code can run compile, emulation, or

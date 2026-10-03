@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from warranted.sandbox import decode_workspace
+from warranted._sandbox import decode_workspace
 
 
 @pytest.mark.parametrize(

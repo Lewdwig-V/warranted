@@ -18,7 +18,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from warranted.containers import SandboxFailure, _run, require_runtime
+from warranted._containers import SandboxFailure, _run, require_runtime
 
 OUTPUT_LIMIT = 256 * 1024
 _FILE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}")

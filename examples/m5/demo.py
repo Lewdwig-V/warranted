@@ -14,17 +14,25 @@ from uuid import uuid4
 
 os.environ["MSWEA_SILENT_STARTUP"] = "1"
 
-from warranted import acceptance, containers, sandbox  # noqa: E402
-from warranted.acceptance import (  # noqa: E402
+from warranted import (
+    _acceptance as acceptance,
+)
+from warranted import (
+    _containers as containers,
+)
+from warranted import (
+    _sandbox as sandbox,
+)
+from warranted._acceptance import (  # noqa: E402
     Acceptance,
     AcceptanceContext,
     Evidence,
     _digest,
     _encode,
 )
-from warranted.containers import SandboxFailure, _run  # noqa: E402
-from warranted.exports import export_evidence  # noqa: E402
-from warranted.ledger import (  # noqa: E402
+from warranted._containers import SandboxFailure, _run  # noqa: E402
+from warranted._exports import export_evidence  # noqa: E402
+from warranted._ledger import (  # noqa: E402
     Ledger,
     Manifest,
     Origin,
@@ -34,8 +42,8 @@ from warranted.ledger import (  # noqa: E402
     Snapshot,
     _json_object,
 )
-from warranted.sandbox import SANDBOX_ID, Sandbox  # noqa: E402
-from warranted.worker import (  # noqa: E402
+from warranted._sandbox import SANDBOX_ID, Sandbox  # noqa: E402
+from warranted._worker import (  # noqa: E402
     AttemptResult,
     Episode,
     UnknownOutcome,

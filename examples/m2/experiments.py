@@ -13,11 +13,12 @@ from pathlib import Path
 from time import perf_counter_ns
 from uuid import uuid4
 
-from warranted import acceptance, claims
-from warranted.acceptance import Acceptance, AcceptanceContext, Evidence
-from warranted.claims import Claims
-from warranted.exports import export_evidence
-from warranted.ledger import (
+from warranted import _acceptance as acceptance
+from warranted import _claims as claims
+from warranted._acceptance import Acceptance, AcceptanceContext, Evidence
+from warranted._claims import Claims
+from warranted._exports import export_evidence
+from warranted._ledger import (
     ArtifactRef,
     Ledger,
     Manifest,

@@ -5,8 +5,8 @@ import subprocess
 
 import pytest
 
-from warranted.jobs import JobLimits, PodmanJobs
-from warranted.sandbox import IMAGE
+from warranted._jobs import JobLimits, PodmanJobs
+from warranted._sandbox import IMAGE
 
 pytestmark = [
     pytest.mark.container,

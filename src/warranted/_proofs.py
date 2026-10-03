@@ -18,7 +18,7 @@ from enum import StrEnum
 from pathlib import Path
 from time import perf_counter_ns
 
-from warranted.containers import SandboxFailure, _run, require_runtime
+from warranted._containers import SandboxFailure, _run, require_runtime
 
 RESOURCES = Path(__file__).with_name("proof")
 SOURCE_LIMIT = 1024 * 1024
@@ -69,13 +69,10 @@ class Verification:
 
 def policy_digest() -> str:
     digest = hashlib.sha256(json.dumps(LIMITS, sort_keys=True).encode())
-    for path in [
-        Path(__file__),
-        Path(__file__).with_name("containers.py"),
-        *sorted(RESOURCES.iterdir()),
-    ]:
-        if path.is_file():
-            digest.update(path.name.encode() + b"\0" + path.read_bytes())
+    sources = [Path(__file__), Path(__file__).with_name("_containers.py")]
+    for path in sources + [p for p in sorted(RESOURCES.iterdir()) if p.is_file()]:
+        # read_bytes fails loudly if a pinned source file is renamed or missing.
+        digest.update(path.name.encode() + b"\0" + path.read_bytes())
     return digest.hexdigest()
 
 

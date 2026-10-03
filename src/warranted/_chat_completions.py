@@ -22,8 +22,8 @@ from time import monotonic_ns
 from typing import ClassVar
 from urllib.parse import urlsplit
 
-from warranted.acceptance import _encode
-from warranted.ledger import (
+from warranted._acceptance import _encode
+from warranted._ledger import (
     ArtifactRef,
     Outcome,
     Request,
@@ -31,7 +31,7 @@ from warranted.ledger import (
     Snapshot,
     _json_object,
 )
-from warranted.worker import AttemptResult
+from warranted._worker import AttemptResult
 
 MAX_BYTES = 2 * 1024 * 1024
 # Prompt-token allowance per message, plus one for the generation prompt, covering

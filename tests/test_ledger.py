@@ -7,8 +7,8 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
-import warranted.ledger as storage
-from warranted.ledger import (
+import warranted._ledger as storage
+from warranted._ledger import (
     ArtifactRef,
     BudgetExceeded,
     CorruptArtifact,

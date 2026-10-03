@@ -10,10 +10,10 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from warranted import proofs
-from warranted.acceptance import Evidence, Status, _digest, _encode
-from warranted.ledger import Ledger, Origin, Outcome, Request, Result, _json_object
-from warranted.worker import record_once, unresolved
+from warranted import _proofs as proofs
+from warranted._acceptance import Evidence, Status, _digest, _encode
+from warranted._ledger import Ledger, Origin, Outcome, Request, Result, _json_object
+from warranted._worker import record_once, unresolved
 
 PRODUCER = ("proof", "warranted-proofs", "1")
 

@@ -26,11 +26,11 @@ from types import MappingProxyType
 from typing import Any, Protocol
 from uuid import uuid4
 
-from warranted.acceptance import Acceptance, AcceptanceContext, Evidence, Status
-from warranted.claims import Applicability, Claims
-from warranted.guard import DuplicateGuard, default_normalize
-from warranted.jobs import JobContext, JobRunner, PodmanJobs, pinned_image
-from warranted.ledger import (
+from warranted._acceptance import Acceptance, AcceptanceContext, Evidence, Status
+from warranted._claims import Applicability, Claims
+from warranted._guard import DuplicateGuard, default_normalize
+from warranted._jobs import JobContext, JobRunner, PodmanJobs, pinned_image
+from warranted._ledger import (
     ROOT_SCOPE,
     BudgetExceeded,
     Ledger,
@@ -40,14 +40,14 @@ from warranted.ledger import (
     Request,
     Result,
 )
-from warranted.operations import (
+from warranted._operations import (
     Operation,
     Requests,
     reconcile_operation,
     validate_operations,
 )
-from warranted.sandbox import Sandbox, sandbox_id
-from warranted.worker import (
+from warranted._sandbox import Sandbox, sandbox_id
+from warranted._worker import (
     TOKEN_UNITS,
     Episode,
     UnknownOutcome,

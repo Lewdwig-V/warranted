@@ -5,10 +5,10 @@ import json
 import pytest
 from test_experimental_mystery import MYSTERY, ORIGINAL, TASK, LocalJobs, Model
 
-from warranted.experimental import Project, RunConfig, RunOutcome, TaskSpec
-from warranted.ledger import ROOT_SCOPE, Ledger, Outcome, Result
-from warranted.operations import OperationResult
-from warranted.worker import AttemptResult
+from warranted._ledger import ROOT_SCOPE, Ledger, Outcome, Result
+from warranted._operations import OperationResult
+from warranted._tasks import Project, RunConfig, RunOutcome, TaskSpec
+from warranted._worker import AttemptResult
 
 ENVIRONMENT = "scripted-environment-v1"
 CONFIG = RunConfig("scripted-model-v1", max_steps=6)

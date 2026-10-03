@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 from time import perf_counter_ns
 
-from warranted.proofs import RESOURCES, policy_digest
+from warranted._proofs import RESOURCES, policy_digest
 
 
 def build(root: Path, image_archive: Path | None = None) -> Path:

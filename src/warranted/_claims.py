@@ -12,8 +12,8 @@ from dataclasses import asdict, dataclass
 from enum import StrEnum
 from types import MappingProxyType
 
-from warranted.acceptance import Evidence, Status, _digest, _encode
-from warranted.ledger import Ledger, Origin, Outcome, Request, _json_object, _text
+from warranted._acceptance import Evidence, Status, _digest, _encode
+from warranted._ledger import Ledger, Origin, Outcome, Request, _json_object, _text
 
 
 class Applicability(StrEnum):
@@ -178,7 +178,7 @@ class Claims:
         if _digest(operation.request) != check["request"]:
             return Status.UNSUPPORTED
         if operation.request.origin.kind == "proof":
-            from warranted.proof_receipts import proof_status
+            from warranted._proof_receipts import proof_status
 
             if check["field"] != "proof":
                 return Status.UNSUPPORTED

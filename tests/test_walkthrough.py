@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from warranted.ledger import Ledger
+from warranted._ledger import Ledger
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "m1"
 WALKTHROUGH = EXAMPLE / "walkthrough.py"

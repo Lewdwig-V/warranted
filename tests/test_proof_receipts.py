@@ -5,11 +5,11 @@ import multiprocessing
 
 import pytest
 
-from warranted.acceptance import Evidence, Status
-from warranted.claims import Claims
-from warranted.ledger import Ledger, Manifest, Snapshot
-from warranted.proof_receipts import Proofs
-from warranted.proofs import RESOURCES, ProofStatus, Verification, policy_digest
+from warranted._acceptance import Evidence, Status
+from warranted._claims import Claims
+from warranted._ledger import Ledger, Manifest, Snapshot
+from warranted._proof_receipts import Proofs
+from warranted._proofs import RESOURCES, ProofStatus, Verification, policy_digest
 
 
 def setup(root):
@@ -42,9 +42,9 @@ def source(ledger, name="solution"):
 def test_receipts_cannot_cross_approved_targets_and_need_no_live_registry(
     tmp_path, monkeypatch
 ):
-    from warranted import proofs as verifier
-    from warranted.ledger import OperationConflict
-    from warranted.proof_receipts import proof_status
+    from warranted import _proofs as verifier
+    from warranted._ledger import OperationConflict
+    from warranted._proof_receipts import proof_status
 
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
@@ -68,7 +68,7 @@ def test_receipts_cannot_cross_approved_targets_and_need_no_live_registry(
 
 
 def boundary(monkeypatch, status=ProofStatus.PROVED, *, forge=False):
-    from warranted import proofs
+    from warranted import _proofs as proofs
 
     def verify(data, bundle, *, target_id, seconds):
         identity, raw = proofs._inputs(data, bundle, seconds, target_id)
@@ -159,8 +159,8 @@ def test_forged_identity_never_completes_or_releases_reservation(tmp_path, monke
 
 
 def test_wrong_target_or_copied_receipt_cannot_establish_proof(tmp_path, monkeypatch):
-    from warranted.ledger import Outcome, Result
-    from warranted.proof_receipts import proof_status
+    from warranted._ledger import Outcome, Result
+    from warranted._proof_receipts import proof_status
 
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
@@ -194,8 +194,8 @@ def test_wrong_target_or_copied_receipt_cannot_establish_proof(tmp_path, monkeyp
     ["solution", "limits", "kernel", "runtime", "bundle", "challenge", "policy"],
 )
 def test_changed_request_cannot_reuse_operation_id(tmp_path, monkeypatch, change):
-    from warranted import proofs as verifier
-    from warranted.ledger import OperationConflict
+    from warranted import _proofs as verifier
+    from warranted._ledger import OperationConflict
 
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
@@ -245,7 +245,7 @@ def test_changed_request_cannot_reuse_operation_id(tmp_path, monkeypatch, change
 def test_changed_project_context_cannot_reuse_receipt(tmp_path, monkeypatch):
     from dataclasses import replace
 
-    from warranted.ledger import OperationConflict
+    from warranted._ledger import OperationConflict
 
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
@@ -261,8 +261,8 @@ def test_changed_project_context_cannot_reuse_receipt(tmp_path, monkeypatch):
 
 
 def test_corrupt_raw_export_blocks_reuse_without_running_again(tmp_path, monkeypatch):
-    from warranted.ledger import CorruptArtifact
-    from warranted.proof_receipts import proof_status
+    from warranted._ledger import CorruptArtifact
+    from warranted._proof_receipts import proof_status
 
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
@@ -284,7 +284,7 @@ def test_corrupt_raw_export_blocks_reuse_without_running_again(tmp_path, monkeyp
 def test_budget_exhaustion_blocks_verifier_but_allows_exact_reuse(
     tmp_path, monkeypatch
 ):
-    from warranted.ledger import BudgetExceeded
+    from warranted._ledger import BudgetExceeded
 
     boundary(monkeypatch, ProofStatus.UNPROVED)
     ledger, bundle = setup(tmp_path / "ledger")
@@ -301,8 +301,8 @@ def test_budget_exhaustion_blocks_verifier_but_allows_exact_reuse(
 def test_unknown_blocks_retry_and_new_attempt_even_with_forged_success(
     tmp_path, monkeypatch
 ):
-    from warranted.proof_receipts import proof_status
-    from warranted.worker import UnknownOutcome
+    from warranted._proof_receipts import proof_status
+    from warranted._worker import UnknownOutcome
 
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
@@ -328,7 +328,7 @@ def test_unknown_blocks_retry_and_new_attempt_even_with_forged_success(
 
 
 def test_bundle_file_changes_cannot_change_captured_verification(tmp_path, monkeypatch):
-    from warranted.proof_receipts import proof_status
+    from warranted._proof_receipts import proof_status
 
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
@@ -340,7 +340,7 @@ def test_bundle_file_changes_cannot_change_captured_verification(tmp_path, monke
 
 
 def _host(root, bundle, point, pipe):
-    from warranted import proofs as verifier
+    from warranted import _proofs as verifier
 
     def pause():
         pipe.send("ready")
@@ -441,7 +441,7 @@ def test_killed_host_reuses_completed_work_and_retains_unknown_budget(tmp_path, 
 def test_historical_claim_needs_no_live_tools_and_keeps_validation_when_stale(
     tmp_path, monkeypatch
 ):
-    from warranted import proofs as verifier
+    from warranted import _proofs as verifier
 
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
@@ -474,9 +474,9 @@ def test_historical_claim_needs_no_live_tools_and_keeps_validation_when_stale(
 def test_runtime_unavailable_is_attributable_and_cleanup_uncertainty_is_not(
     tmp_path, monkeypatch
 ):
-    from warranted import proofs as verifier
-    from warranted.containers import SandboxFailure
-    from warranted.proof_receipts import proof_status
+    from warranted import _proofs as verifier
+    from warranted._containers import SandboxFailure
+    from warranted._proof_receipts import proof_status
 
     ledger, bundle = setup(tmp_path / "ledger")
 

@@ -7,9 +7,9 @@ import shutil
 import pytest
 from test_m5_treatments import SCRIPT, scripted
 
-from warranted import proofs
-from warranted.contexts import Condition
-from warranted.ledger import Ledger, Origin, Outcome, Request, Result, Snapshot
+from warranted import _proofs as proofs
+from warranted._contexts import Condition
+from warranted._ledger import Ledger, Origin, Outcome, Request, Result, Snapshot
 
 TRIALS = runpy.run_path(str(SCRIPT.with_name("trials.py")))
 

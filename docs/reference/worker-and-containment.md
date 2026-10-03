@@ -6,8 +6,8 @@ one-node LangGraph lifecycle, with each external attempt journaled in the
 commands run in a rootless Podman container that has no network, no credentials,
 and no host mounts. When the worker submits, the host stops all worker processes,
 captures selected regular files as immutable evidence, and passes only those
-captured bytes to the independent checker. This page covers `warranted.worker`,
-`warranted.sandbox`, and `warranted.containers`. Model boundaries are described in
+captured bytes to the independent checker. This page covers the worker, sandbox, and
+container parts of `warranted.host`. Model boundaries are described in
 [model adapters](model-adapters.md), and what each episode may see is described in
 [contexts](contexts.md).
 
@@ -35,8 +35,8 @@ a receipt written by the worker cannot grant acceptance. See
 ## Running an episode
 
 ```python
-from warranted.sandbox import SANDBOX_ID, Sandbox
-from warranted.worker import Episode, run_workflow, submitted_candidate
+from warranted.host import SANDBOX_ID, Sandbox
+from warranted.host import Episode, run_workflow, submitted_candidate
 
 episode = Episode(
     "initial",
@@ -200,7 +200,7 @@ submission status. See
 
 ## Checker jobs
 
-`warranted.jobs.PodmanJobs().run(image, argv, files, stdin=b"", timeout_seconds=10,
+`warranted.PodmanJobs().run(image, argv, files, stdin=b"", timeout_seconds=10,
 limits=JobLimits())` runs one program for domain code, such as a compile,
 emulation, or native run, in a fresh container and returns a `JobResult`
 (`returncode`, `stdout`, `stderr`, `timed_out`, `truncated`). The prototype task
@@ -234,7 +234,7 @@ layer exposes it as `run_job` on `CheckContext` and `OperationContext`.
 
 ## Host-mediated operations
 
-`warranted.operations` lets a worker ask the host to run a domain operation,
+Host-mediated operations (`warranted.Operation`) let a worker ask the host to run a domain operation,
 following the accepted [design](../proposals/m7-host-operations.md). The
 prototype task layer wires it in for domains that declare `operations`.
 
@@ -300,7 +300,7 @@ container changes made the sandbox identity `podman-rootless-v4`.
 ## Native tests
 
 ```bash
-MSWEA_SILENT_STARTUP=1 uv run --locked python -c 'from warranted.sandbox import IMAGE; print(IMAGE)'
+MSWEA_SILENT_STARTUP=1 uv run --locked python -c 'from warranted.host import IMAGE; print(IMAGE)'
 # Pull the printed image once with podman pull. Tests never pull images.
 WARRANTED_CONTAINER_TESTS=1 uv run --locked pytest -q -m container tests
 ```

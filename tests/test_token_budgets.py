@@ -7,11 +7,11 @@ import pytest
 from test_chat_completions import response, server
 from test_experimental_tasks import CONFIG, CSV, ENVIRONMENT, TASK, Model, Script
 
-from warranted.acceptance import _encode
-from warranted.chat_completions import MAX_BYTES, MESSAGE_MARGIN, LocalChatCompletions
-from warranted.experimental import Project, RunConfig, RunOutcome
-from warranted.ledger import BudgetExceeded, Ledger, Manifest, Outcome, Result
-from warranted.worker import (
+from warranted._acceptance import _encode
+from warranted._chat_completions import MAX_BYTES, MESSAGE_MARGIN, LocalChatCompletions
+from warranted._ledger import BudgetExceeded, Ledger, Manifest, Outcome, Result
+from warranted._tasks import Project, RunConfig, RunOutcome
+from warranted._worker import (
     AttemptResult,
     Episode,
     Journal,

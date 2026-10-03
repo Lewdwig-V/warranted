@@ -10,11 +10,12 @@ from time import monotonic_ns
 from unittest.mock import patch
 from uuid import uuid4
 
-from warranted import sandbox, worker
-from warranted.acceptance import Evidence, _encode
-from warranted.containers import _run
-from warranted.contexts import Condition
-from warranted.ledger import (
+from warranted import _sandbox as sandbox
+from warranted import _worker as worker
+from warranted._acceptance import Evidence, _encode
+from warranted._containers import _run
+from warranted._contexts import Condition
+from warranted._ledger import (
     Ledger,
     Manifest,
     Origin,
@@ -23,7 +24,7 @@ from warranted.ledger import (
     Result,
     Snapshot,
 )
-from warranted.worker import AttemptResult, Journal, record_once, submitted_candidate
+from warranted._worker import AttemptResult, Journal, record_once, submitted_candidate
 
 HERE = Path(__file__).resolve().parent
 T = runpy.run_path(str(HERE / "treatments.py"))

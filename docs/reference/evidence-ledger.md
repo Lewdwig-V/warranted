@@ -1,9 +1,9 @@
 # Evidence ledger
 
-`warranted.ledger.Ledger` is the host's authoritative store of raw evidence and
+`warranted.host.Ledger` is the host's authoritative store of raw evidence and
 operation receipts for one project. It keeps exact bytes with their origin, binds
 each operation ID to one request, records reservations and dispatch before
-execution, and settles usage exactly once. `warranted.exports.export_evidence`
+execution, and settles usage exactly once. `warranted.host.export_evidence`
 writes a selected, non-authoritative copy for a separate consumer. Both are Python
 interfaces for trusted host code. They are not worker tools and do not isolate a
 worker.
@@ -266,7 +266,7 @@ defaults to empty.
 ```python
 from pathlib import Path
 
-from warranted.exports import export_evidence
+from warranted.host import export_evidence
 
 
 def export_result(ledger, observation):

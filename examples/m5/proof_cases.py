@@ -16,20 +16,20 @@ from uuid import uuid4
 
 os.environ["MSWEA_SILENT_STARTUP"] = "1"
 
-from warranted import proofs  # noqa: E402
-from warranted.acceptance import (
+from warranted import _proofs as proofs
+from warranted._acceptance import (
     Acceptance,
     AcceptanceContext,
     Evidence,
     Status,
     _encode,
 )  # noqa: E402
-from warranted.claims import Applicability  # noqa: E402
-from warranted.exports import export_evidence  # noqa: E402
-from warranted.ledger import Ledger, Manifest, Origin, Outcome, Snapshot  # noqa: E402
-from warranted.proof_receipts import Proofs, proof_status  # noqa: E402
-from warranted.sandbox import SANDBOX_ID  # noqa: E402
-from warranted.worker import Episode, record_once, unresolved  # noqa: E402
+from warranted._claims import Applicability  # noqa: E402
+from warranted._exports import export_evidence  # noqa: E402
+from warranted._ledger import Ledger, Manifest, Origin, Outcome, Snapshot  # noqa: E402
+from warranted._proof_receipts import Proofs, proof_status  # noqa: E402
+from warranted._sandbox import SANDBOX_ID  # noqa: E402
+from warranted._worker import Episode, record_once, unresolved  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 M4 = runpy.run_path(str(HERE.parent / "m4/demo.py"))
