@@ -1,10 +1,10 @@
 # M7 design note: host-mediated operations
 
-Proposed 2026-10-03; its review questions were decided the same day (see
-[decisions](#decisions)); not yet implemented. This note designs the
+Proposed and accepted 2026-10-03, with its review questions decided the same
+day (see [decisions](#decisions)); not yet implemented. This note designs the
 **host-mediated operations** item of
-[M7](../roadmap.md#m7--stable-harness-api-and-cli). The roadmap requires a reviewed
-design before any implementation.
+[M7](../roadmap.md#m7--stable-harness-api-and-cli), whose implementation the
+roadmap allowed only after a reviewed design.
 
 ## Problem
 

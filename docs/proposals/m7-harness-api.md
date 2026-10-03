@@ -292,7 +292,7 @@ campaign continues exactly the runs it planned.
 
 ## Out of scope for M7
 
-- Host-mediated operations, pending review of [their design](m7-host-operations.md).
+- Host-mediated operations, pending implementation of [their design](m7-host-operations.md).
 - Parallel runs and multiple writers.
 - An MCP interface to Warranted.
 

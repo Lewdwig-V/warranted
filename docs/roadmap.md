@@ -129,8 +129,8 @@ domain project supplies only domain knowledge. Specifically:
   socket to the host, operation identity and deduplication, reservation before
   execution, unknown outcomes after a host death with no blind retry, what the
   worker sees back, and negative cases for forged requests and budget bypass.
-  M8 does not wait for this item. A [design](proposals/m7-host-operations.md) is
-  proposed and awaits review.
+  M8 does not wait for this item. The [design](proposals/m7-host-operations.md) is
+  reviewed and accepted; implementation has not started.
 - [ ] **Domain execution jobs.** Domain code can run compile, emulation, or
   native jobs in pinned images through Warranted's container boundary, mounting
   only per-job scratch. Worker-readable mounts never include oracle or ledger
