@@ -300,9 +300,9 @@ above:
   it shows as origin inputs.
 - **No example directory.** The two-task case runs in the tests rather than as
   an example under `examples/m7/`.
-- **The duplicate guard.** The guard (#51) is on a separate branch. When both
-  are merged, the guard must leave `notes.json` out of its comparison, so that
-  changing a note cannot make a repeated candidate look new.
+- **The duplicate guard ignores notes.** The guard compares candidates without
+  `notes.json` or `notes-error.txt`, so changing a note cannot make a repeated
+  candidate look new.
 
 ## Questions for review
 

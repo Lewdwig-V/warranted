@@ -316,3 +316,28 @@ def test_a_non_finite_fact_is_a_checker_fault_not_a_poisoned_memory(setup):
     assert project.memory(task()) == ()
     run(project, worker, task(), [(None, None)])  # later snapshots still build
     assert shown(project, worker)["entries"] == []
+
+
+def test_a_changed_note_does_not_make_a_repeat_look_new(setup):
+    from warranted.guard import DuplicateGuard
+
+    make, worker = setup
+    project = make()
+    guard = DuplicateGuard(
+        exact_repeats=2,
+        near_repeats=3,
+        near_edit_floor=0,
+        near_edit_percent=0,
+        window=8,
+    )
+    plan = [
+        ("wrong-offset", notes("first idea")),
+        ("wrong-offset", notes("second idea")),
+        ("wrong-offset", notes("a third, different idea")),
+    ]
+    result = run(project, worker, task(duplicate_guard=guard), plan)
+    assert [s.decision for s in result.submissions] == [
+        "rejected",
+        "rejected",
+        "duplicate",
+    ]
