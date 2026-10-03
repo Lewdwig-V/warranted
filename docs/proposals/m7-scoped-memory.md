@@ -7,7 +7,7 @@ layer (see [implementation notes](#implementation-notes)). This note designs the
 related tasks, with receipt-backed facts kept separate from worker notes. A note
 is promoted only when its own submission is accepted, and selected facts reach
 later tasks as files. It refines the [memory sketch](m7-harness-api.md#memory)
-in the harness API proposal. Nothing here is implemented yet.
+in the harness API proposal.
 
 ## Problem
 

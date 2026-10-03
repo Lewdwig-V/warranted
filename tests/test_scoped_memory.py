@@ -304,3 +304,15 @@ def test_verdict_facts_must_be_json():
         Verdict(VerdictStatus.PASSED, facts=[object()])
     with pytest.raises(TypeError):
         Verdict(VerdictStatus.PASSED, facts="not a list")
+    with pytest.raises(ValueError):
+        Verdict(VerdictStatus.PASSED, facts=[{"x": float("nan")}])
+
+
+def test_a_non_finite_fact_is_a_checker_fault_not_a_poisoned_memory(setup):
+    make, worker = setup
+    project = make(Domain(facts=[{"ratio": float("inf")}]))
+    result = run(project, worker, task(), [("correct", None)])
+    assert result.outcome is RunOutcome.INFRASTRUCTURE_FAILURE
+    assert project.memory(task()) == ()
+    run(project, worker, task(), [(None, None)])  # later snapshots still build
+    assert shown(project, worker)["entries"] == []

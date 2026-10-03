@@ -108,8 +108,9 @@ class Verdict:
         if not isinstance(self.facts, (tuple, list)):
             raise TypeError("facts must be a sequence of JSON values")
         object.__setattr__(self, "facts", tuple(self.facts))
-        # Must be JSON-serialisable.
-        _json(self.feedback), _json(self.host_only), _json(list(self.facts))
+        _json(self.feedback), _json(self.host_only)  # must be JSON-serialisable
+        # Facts reach later workers and claims; strict JSON only (no NaN or Infinity).
+        json.dumps(list(self.facts), allow_nan=False)
 
 
 class CheckContext(JobContext):
