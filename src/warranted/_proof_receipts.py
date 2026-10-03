@@ -161,15 +161,15 @@ class Proofs:
         session: str,
         bundle: Path,
         *,
-        target_id: str,
+        target: proofs.ProofTarget,
         seconds: int = proofs.LIMITS["seconds"],
     ):
         self.ledger, self.session = ledger, session
         self.bundle = bundle.read_bytes()
         self.seconds = seconds
-        self.target_id = target_id
+        self.proof_target = target
         identity, raw = proofs._inputs(
-            b"policy preparation", self.bundle, seconds, target_id
+            b"policy preparation", self.bundle, seconds, target
         )
         del identity["solution"]
         del raw["Solution.lean"]
@@ -212,7 +212,7 @@ class Proofs:
             return request
         # Exceptions (including uncertain cleanup) preserve UNKNOWN and reservation.
         verification = proofs._verify(
-            data, self.bundle, target_id=self.target_id, seconds=self.seconds
+            data, self.bundle, target=self.proof_target, seconds=self.seconds
         )
         report = asdict(verification)
         del report["raw"]

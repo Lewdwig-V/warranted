@@ -128,6 +128,12 @@ published to PyPI.
 | `CampaignReport` | A campaign's planned runs and their statuses | [campaigns](cli.md#campaigns) |
 | `SPLITS` | The task splits: training, development, and held-out | [campaigns](cli.md#campaigns) |
 
+## Proofs
+
+| Name | What it is | Reference |
+| --- | --- | --- |
+| `ProofTarget` | A domain-owned Lean challenge file and the theorem a proof must establish | [proof verification](proof-verification.md#targets-and-axiom-policy) |
+
 ## Model adapters
 
 | Name | What it is | Reference |

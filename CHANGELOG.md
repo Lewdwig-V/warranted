@@ -7,6 +7,18 @@ versioning and deprecation policy. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Proof targets are owned by domains: `ProofTarget(challenge_path, theorem)` replaces
+  the core `targets.json` registry, and the verifier receives the challenge and
+  theorem from the host. The three fixture challenges moved to `examples/`.
+  `warranted.host.Proofs` takes `target=` instead of `target_id=`. Existing proof
+  bundles are refused; rebuild with `scripts/build_proof_bundle.py`.
+
+### Added
+
+- `ProofTarget` in `warranted`.
+
 ## [0.1.0] - 2026-10-03
 
 The first tagged release, and the first a domain project can pin. The task layer

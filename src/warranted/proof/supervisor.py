@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import signal
 import stat
@@ -68,16 +69,31 @@ def socket_filter():
         lib.seccomp_release(context)
 
 
+THEOREM = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
+
+
 def prepare():
-    source = sys.stdin.buffer.read(1024 * 1024 + 1)
-    if not 0 < len(source) <= 1024 * 1024:
-        raise ValueError("source exceeds limit or is empty")
+    payload = sys.stdin.buffer.read(4 * 1024 * 1024 + 1)
+    if len(payload) > 4 * 1024 * 1024:
+        raise ValueError("verification request exceeds limit")
+    request = json.loads(payload)
+    if (
+        type(request) is not dict
+        or set(request) != {"source", "challenge", "theorem"}
+        or type(request["theorem"]) is not str
+        or not THEOREM.fullmatch(request["theorem"])
+    ):
+        raise ValueError("invalid verification request")
+    source = base64.b64decode(request["source"], validate=True)
+    challenge = base64.b64decode(request["challenge"], validate=True)
+    for data in (source, challenge):
+        if not 0 < len(data) <= 1024 * 1024:
+            raise ValueError("source or challenge exceeds limit or is empty")
     os.mkdir("/tmp/host", 0o700)
-    target = json.loads((ROOT / "targets.json").read_bytes())[sys.argv[2]]
-    shutil.copyfile(ROOT / target["challenge"], WORK / "Challenge.lean")
+    (WORK / "Challenge.lean").write_bytes(challenge)
     shutil.copyfile(ROOT / "lakefile.toml", WORK / "lakefile.toml")
     config = json.loads((ROOT / "config.json").read_bytes())
-    config["theorem_names"] = [target["theorem"]]
+    config["theorem_names"] = [request["theorem"]]
     (WORK / "config.json").write_text(json.dumps(config, sort_keys=True))
     (WORK / "lake-manifest.json").write_text(
         '{"version":"1.2.0","packagesDir":".lake/packages",'

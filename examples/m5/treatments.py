@@ -54,6 +54,9 @@ from warranted._worker import (  # noqa: E402
 )
 
 HERE = Path(__file__).resolve().parent
+TARGETS = runpy.run_path(str(Path(__file__).resolve().parents[1] / "proof_targets.py"))[
+    "TARGETS"
+]
 LOCAL = runpy.run_path(str(HERE / "local_model.py"))
 P = runpy.run_path(str(HERE / "proof_cases.py"))
 R = runpy.run_path(str(HERE / "recovery.py"))
@@ -644,7 +647,7 @@ def optional_proofs(host, phase, bundle, family):
             {"workspace": workspace},
             {"source.lean": base64.b64decode(files[name + ".lean"], validate=True)},
         )
-        verifier = Proofs(host.ledger, host.session, bundle, target_id=name)
+        verifier = Proofs(host.ledger, host.session, bundle, target=TARGETS[name])
         request = verifier.check(
             "treatment/proof/" + phase + "/" + name,
             Evidence.captured(source, "source.lean"),
@@ -726,15 +729,18 @@ def demonstrate(
 ):
     execute = verifier._verify
 
-    def witnessed(data, captured, *, target_id, seconds):
+    def witnessed(data, captured, *, target, seconds):
         with (root / "proof-executions.jsonl").open("ab") as log:
             log.write(
                 _encode(
-                    {"target": target_id, "source": hashlib.sha256(data).hexdigest()}
+                    {
+                        "target": target.theorem,
+                        "source": hashlib.sha256(data).hexdigest(),
+                    }
                 )
                 + b"\n"
             )
-        return execute(data, captured, target_id=target_id, seconds=seconds)
+        return execute(data, captured, target=target, seconds=seconds)
 
     with patch.object(verifier, "_verify", witnessed):
         return run_stage(stage, root, bundle, crash=crash, model_client=model_client)

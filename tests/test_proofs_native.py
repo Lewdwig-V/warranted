@@ -2,6 +2,7 @@
 
 import json
 import os
+import runpy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -14,6 +15,9 @@ from warranted._claims import Claims
 from warranted._ledger import Ledger, Manifest, Snapshot
 from warranted._proof_receipts import Proofs
 from warranted._proofs import ProofStatus
+
+ROOT = Path(__file__).resolve().parents[1]
+TARGETS = runpy.run_path(str(ROOT / "examples/proof_targets.py"))["TARGETS"]
 
 pytestmark = [
     pytest.mark.proof,
@@ -63,7 +67,7 @@ def run(source, *, seconds=120):
         ):
             session = ledger.start_session()
             proofs = Proofs(
-                ledger, session, bundle, seconds=seconds, target_id="uniqueness"
+                ledger, session, bundle, seconds=seconds, target=TARGETS["uniqueness"]
             )
             solution = Evidence(
                 "solution", ledger.project.snapshots["solution"].artifact
@@ -93,7 +97,7 @@ def run(source, *, seconds=120):
         ):
             session = ledger.start_session()
             proofs = Proofs(
-                ledger, session, bundle, seconds=seconds, target_id="uniqueness"
+                ledger, session, bundle, seconds=seconds, target=TARGETS["uniqueness"]
             )
             for _ in range(2):
                 assert proofs.check("verify", solution) == request

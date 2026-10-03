@@ -79,7 +79,7 @@ jobs:
           .venv-wheel/bin/python -c "from warranted.host import Claims, Assessment, Applicability"
           .venv-wheel/bin/python -c "from warranted.host import Episode, run_workflow"
           .venv-wheel/bin/python -c "from warranted.host import Condition, capture_context, capture_history"
-          .venv-wheel/bin/python -c "from warranted._proofs import RESOURCES; assert all((RESOURCES / name).is_file() for name in ('Challenge.lean', 'Migration.lean', 'Timestamp.lean', 'targets.json', 'toolchain.json'))"
+          .venv-wheel/bin/python -c "from warranted._proofs import RESOURCES; assert all((RESOURCES / name).is_file() for name in ('toolchain.json', 'config.json', 'supervisor.py'))"
           .venv-wheel/bin/python -c "from warranted.host import Proofs, proof_status"
   containment:
     runs-on: ubuntu-24.04

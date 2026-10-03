@@ -13,7 +13,7 @@ import platform
 import re
 import shutil
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from time import perf_counter_ns
@@ -34,6 +34,30 @@ LIMITS = {
     "pids": 64,
     "cpus": 1,
 }
+
+_THEOREM = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
+
+
+@dataclass(frozen=True)
+class ProofTarget:
+    """A domain-owned proof target: a Lean challenge file and its required theorem.
+
+    The challenge bytes are read once, here; the host supplies them to the
+    verifier, so a worker can never select or alter the target.
+    """
+
+    path: Path
+    theorem: str
+    challenge: bytes = field(init=False, repr=False)
+
+    def __post_init__(self):
+        object.__setattr__(self, "path", Path(self.path))
+        if type(self.theorem) is not str or not _THEOREM.fullmatch(self.theorem):
+            raise ValueError("theorem must be a qualified Lean name")
+        data = self.path.read_bytes()
+        if not 0 < len(data) <= SOURCE_LIMIT:
+            raise ValueError("challenge must be nonempty bounded bytes")
+        object.__setattr__(self, "challenge", data)
 
 
 class ProofStatus(StrEnum):
@@ -92,18 +116,17 @@ def _validate(source: bytes, seconds: int) -> None:
         raise ValueError("timeout must be an integer from 1 to 120 seconds")
 
 
-def _target(target_id: str) -> dict:
-    targets = json.loads((RESOURCES / "targets.json").read_bytes())
-    if type(target_id) is not str or target_id not in targets:
-        raise ValueError("unknown host-approved proof target")
-    return targets[target_id]
+def _target(target) -> ProofTarget:
+    if not isinstance(target, ProofTarget):
+        raise ValueError("proof target must be a ProofTarget")
+    return target
 
 
 def _inputs(
-    source: bytes, bundle_bytes: bytes, seconds: int, target_id: str
+    source: bytes, bundle_bytes: bytes, seconds: int, target: ProofTarget
 ) -> tuple[dict, dict]:
     _validate(source, seconds)
-    target = _target(target_id)
+    target = _target(target)
     bundle = json.loads(bundle_bytes)
     if (
         bundle.get("policy") != policy_digest()
@@ -112,9 +135,9 @@ def _inputs(
         != json.loads((RESOURCES / "toolchain.json").read_bytes())
     ):
         raise ValueError("bundle does not match the pinned proof policy")
-    challenge = (RESOURCES / target["challenge"]).read_bytes()
+    challenge = target.challenge
     config = json.loads((RESOURCES / "config.json").read_bytes())
-    config["theorem_names"] = [target["theorem"]]
+    config["theorem_names"] = [target.theorem]
     config_bytes = json.dumps(config, sort_keys=True).encode()
     executable = shutil.which("podman")
     runtime_digest = None
@@ -123,7 +146,7 @@ def _inputs(
             runtime_digest = hashlib.file_digest(stream, "sha256").hexdigest()
     identity = {
         "solution": hashlib.sha256(source).hexdigest(),
-        "target_id": target_id,
+        "target_id": target.theorem,
         "challenge": hashlib.sha256(challenge).hexdigest(),
         "config": hashlib.sha256(config_bytes).hexdigest(),
         "bundle": hashlib.sha256(bundle_bytes).hexdigest(),
@@ -147,25 +170,23 @@ def verify(
     source: bytes,
     bundle_path: Path,
     *,
-    target_id: str,
+    target: ProofTarget,
     seconds: int = LIMITS["seconds"],
 ) -> Verification:
-    """Verify captured bytes under a host-selected immutable build manifest.
+    """Verify captured bytes against a host-supplied target under the pinned bundle.
 
     Cleanup failure raises instead of claiming a known, stopped attempt. This
     function does not reserve budgets, persist evidence, or authorize acceptance.
     """
     _validate(source, seconds)
-    _target(target_id)
-    return _verify(
-        source, bundle_path.read_bytes(), target_id=target_id, seconds=seconds
-    )
+    _target(target)
+    return _verify(source, bundle_path.read_bytes(), target=target, seconds=seconds)
 
 
 def _verify(
-    source: bytes, bundle_bytes: bytes, *, target_id: str, seconds: int
+    source: bytes, bundle_bytes: bytes, *, target: ProofTarget, seconds: int
 ) -> Verification:
-    identity, raw = _inputs(source, bundle_bytes, seconds, target_id)
+    identity, raw = _inputs(source, bundle_bytes, seconds, target)
     bundle = json.loads(bundle_bytes)
     name = "warranted-proof-" + uuid.uuid4().hex
     started = perf_counter_ns()
@@ -224,9 +245,14 @@ def _verify(
                 "-I",
                 "/opt/proof/supervisor.py",
                 "prepare",
-                target_id,
             ],
-            source,
+            json.dumps(
+                {
+                    "source": base64.b64encode(source).decode(),
+                    "challenge": base64.b64encode(target.challenge).decode(),
+                    "theorem": target.theorem,
+                }
+            ).encode(),
         )
         executing = True
         result = _run([*entry, "execute"], seconds=seconds)
