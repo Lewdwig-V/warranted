@@ -250,6 +250,8 @@ use case confirms it:
   task objective, on one Minkowski optimisation round.
 - [ ] Chains that promote accepted results with recorded lineage: Minkowski
   baselines and Lean lemma libraries.
+- [ ] Memory usefulness reports, then checked offline consolidation into a slow
+  memory tier, starting with Lean lemmas.
 - [ ] Host sessions for stateful environments, after a reviewed design, on
   ARC-AGI-3.
 - [ ] Later: improving the agent itself, building on M6.

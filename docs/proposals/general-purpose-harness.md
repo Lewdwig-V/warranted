@@ -271,6 +271,72 @@ results are hard to read without one.
 **Change:** carry the run-recorded model pin, which local models already use, to
 the OpenRouter adapter, with its token and cost receipts.
 
+### N11. Memory neither consolidates nor measures its own usefulness
+
+Warranted has a fast memory tier. The ledger records every episode
+immediately, append-only and with its origin. [Scoped memory](m7-scoped-memory.md)
+shows later tasks the checker facts and worker notes from accepted submissions,
+and it withholds them when the file bytes they depended on change. It has no
+slow tier: nothing abstracts what many runs share into knowledge that applies
+beyond one scope. And nothing measures whether a shown entry helped.
+
+**Forced by:**
+
+- ARC: reusable grid primitives, learned across tasks.
+- Lean: general lemmas extracted from many accepted proofs, beyond the single
+  promoted lemma of a chain (N8).
+- Minkowski: lessons about which optimisations hold up under Miri and Loom.
+- Goal (b): consolidation that edits the worker's helpers is agent improvement.
+
+**Influences.** The two tiers follow complementary learning systems theory:
+a fast learner stores separate episodes without overwriting, and a slow learner
+extracts regularities through interleaved replay, which avoids catastrophic
+interference ([McClelland, McNaughton, and O'Reilly, 1995](https://doi.org/10.1037/0033-295X.102.3.419);
+[Kumaran, Hassabis, and McClelland, 2016](https://doi.org/10.1016/j.tics.2016.05.004)).
+[DreamCoder](https://arxiv.org/abs/2006.08381) (Ellis and colleagues, 2021)
+applies a wake-sleep cycle to program synthesis, growing a library of
+abstractions from solved tasks. [Clauderizer](https://github.com/CollinCusce/Clauderizer)
+supplies two engineering methods: offline distillation of an agent's notes into
+proposals that a person triages before they become memory, and telemetry that
+joins the lessons a session was shown with whether that session's phase
+passed. We borrow the tier split, the offline cycle, and the shown-versus-outcome
+join. Our adaptation is that consolidated knowledge is a candidate that must pass
+checks, not only triage, and that it keeps its provenance and goes stale. None of
+this is implemented.
+
+**Change, in three parts:**
+
+1. **Measure usefulness.** The host already records each run's memory snapshot
+   as an artifact, one per contract version, and gives it to the episodes under
+   that version. Reports join each shown entry with the outcome of the run
+   that saw it, and compare that with runs in the same scope that did not see
+   it. That comparison is observational and confounded, and reports label it so.
+   For a causal estimate, a development campaign may withhold entries at random,
+   with the assignment pinned in the campaign plan, never chosen by the worker.
+2. **Consolidate offline, as a candidate.** A consolidation run reads recorded
+   runs from training and development splits only, and calls no live tools.
+   It proposes a slow-tier entry: a rule, a helper, a lemma, or a strategy
+   setting. The proposal cites its source runs and must pass the checks its
+   kind requires. A lemma passes the Lean kernel. A helper passes tests on its
+   source tasks. A rule passes when the tasks it summarises are re-run with it
+   shown. Promotion also requires two things:
+   - **No interference:** no regression on tasks that were already solved.
+     This is the interleaved replay that complementary learning systems call
+     for.
+   - **Transfer:** improvement on development tasks that are not among its
+     sources.
+
+   Human triage may be added, but it never replaces the checks.
+3. **Keep provenance and staleness.** A slow-tier entry cites its source runs
+   and the premises it was checked against. When a premise is superseded, the
+   entry is withheld, as scoped memory already does with facts, and its valid
+   checks stay recorded ([invariant 2](../../AGENTS.md#invariants-to-preserve)).
+
+Consolidation differs from chains (N8). A chain carries one accepted result into
+the next task; consolidation abstracts across many runs. When consolidation
+changes the worker's prompts, helpers, or strategy, it is goal (b) and follows
+the [same rules](#goal-b-later).
+
 ## The use cases
 
 ### Minkowski optimisation
@@ -432,6 +498,15 @@ None of these use cases should add domain vocabulary to Warranted:
   refused.
 - **Session replay is history only.** A host session's replay reveals only
   recorded steps and cannot start a live game.
+- **Consolidation never reads held-out runs.** A consolidation run that cites a
+  held-out run is refused, and so is one that cites a run that was not
+  accepted.
+- **Unchecked consolidation is not memory.** A slow-tier proposal that has not
+  passed its checks is never shown, and never shown as verified.
+- **Interference blocks promotion.** A slow-tier entry that causes a regression
+  on an already-solved task is not promoted, even if it improves others.
+- **Observation is not causation.** A usefulness report labels observational
+  comparisons as such. A causal claim needs a pinned random withholding plan.
 - **Private outputs stay private.** An ARC test output never appears in
   feedback, memory, or worker-visible exports.
 
@@ -469,8 +544,11 @@ second use case before its interface stops being provisional.
    objectives. Confirmed by optimisation puzzles.
 5. **N8, with Minkowski chains and Lean lemma libraries.** This completes goal
    (a).
-6. **N4, with ARC-AGI-3.** Host sessions, after their reviewed design.
-7. **Goal (b)**, on top of M6.
+6. **N11, measuring then consolidating.** Usefulness reports can come early,
+   because they use the existing memory. Consolidation follows chains, starting
+   with Lean lemmas, whose checks are strongest, and is confirmed by ARC helpers.
+7. **N4, with ARC-AGI-3.** Host sessions, after their reviewed design.
+8. **Goal (b)**, on top of M6.
 
 ## Questions for review
 
@@ -487,3 +565,5 @@ second use case before its interface stops being provisional.
    also cover a networked one as an external effect?
 6. Should accepted Minkowski patches reach Minkowski as PRs opened by a human?
    This note proposes yes, at least until goal (b).
+7. Should slow-tier promotion require human triage in addition to its checks,
+   at least until usefulness reports exist?
