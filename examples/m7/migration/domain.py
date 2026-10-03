@@ -114,6 +114,9 @@ class MigrationDomain:
     worker_image = DEFAULT_WORKER_IMAGE
     checkers = {
         "migration": Migration(),
-        "renaming": LeanProof(MIGRATION, correspondence=renaming_correspondence),
+        # The correspondence runs contained jobs over the check's own bytes only.
+        "renaming": LeanProof(
+            MIGRATION, correspondence=renaming_correspondence, isolated=True
+        ),
     }
     sources = (M5_SOURCE,)  # loaded with runpy, so not found by following imports
