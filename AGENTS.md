@@ -37,6 +37,9 @@ uv run --locked ruff format --check .
 uv build --no-sources
 ```
 
+`ruff format` also formats Python code blocks inside Markdown files, so keep
+documentation snippets in ruff's style or the format check fails.
+
 The default suite needs no credentials, network services, or containers. Tests
 marked `container` or `proof` need rootless Podman and the pinned images; CI runs
 them in separate jobs. The CLI is a thin layer over the public API, so test
