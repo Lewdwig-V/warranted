@@ -13,13 +13,15 @@ import tomllib
 from pathlib import Path
 
 from warranted import (
+    CampaignReport,
+    CampaignSpec,
+    CampaignTask,
     LocalChatCompletions,
     Project,
     RunConfig,
     RunOutcome,
     RunResult,
     RunStatus,
-    TaskSpec,
     __version__,
 )
 
@@ -179,7 +181,7 @@ def cmd_init(args) -> int:
 
 def cmd_run(args) -> int:
     project = open_project(args.dir)
-    task = TaskSpec.load(Path(args.task))
+    task = project.load_task(Path(args.task))
     config, model = load_run_config(args.config)
     result = project.start(task, config, model)
     view = result_view(result)
@@ -228,7 +230,7 @@ def cmd_status(args) -> int:
 
 def cmd_memory(args) -> int:
     project = open_project(args.dir)
-    task = TaskSpec.load(Path(args.task))
+    task = project.load_task(Path(args.task))
     entries = [
         {
             "run": e.run_id,
@@ -266,13 +268,118 @@ def cmd_export(args) -> int:
     return 0
 
 
+def cmd_import(args) -> int:
+    project = open_project(args.dir)
+    for name in args.files:
+        reference = project.import_artifact(Path(name).read_bytes())
+        print(f"{reference}  {name}")
+    return 0
+
+
+def load_campaign(project: Project, path: str):
+    """A campaign TOML file, its tasks and configurations loaded, and its models."""
+    path = Path(path)
+    data = tomllib.loads(path.read_text())
+    known = {"id", "repetitions", "configs", "tasks"}
+    if not data.keys() <= known or not {"id", "configs", "tasks"} <= data.keys():
+        raise UsageError(
+            f"campaign needs id, configs, and tasks, and only {sorted(known)}"
+        )
+    if not isinstance(data["configs"], dict) or not isinstance(data["tasks"], list):
+        raise UsageError("campaign configs is a table and tasks a list of tables")
+    configs, models = {}, {}
+    for name, relative in data["configs"].items():
+        configs[name], models[name] = load_run_config(str(path.parent / relative))
+    tasks = []
+    for entry in data["tasks"]:
+        if not isinstance(entry, dict) or set(entry) != {"path", "split"}:
+            raise UsageError("each campaign task needs exactly path and split")
+        task = project.load_task(path.parent / entry["path"])
+        tasks.append(CampaignTask(task, entry["split"]))
+    spec = CampaignSpec(data["id"], tuple(tasks), configs, data.get("repetitions", 1))
+    return spec, models
+
+
+def campaign_view(report: CampaignReport) -> dict:
+    runs = []
+    for run in report.runs:
+        status = None if run.status is None else status_view(run.status)
+        runs.append(
+            {
+                "run": run.run_id,
+                "task": run.task_id,
+                "config": run.config,
+                "split": run.split,
+                "repetition": run.repetition,
+                "started": status is not None,
+                "outcome": status and status["outcome"],
+                "submissions": status["submissions"] if status else [],
+                "accounting": status["accounting"] if status else {},
+            }
+        )
+    summary = {}
+    for run in runs:
+        split = summary.setdefault(run["split"], {"outcomes": {}, "spent": {}})
+        outcome = run["outcome"] or ("open" if run["started"] else "not started")
+        split["outcomes"][outcome] = split["outcomes"].get(outcome, 0) + 1
+        for unit, balance in run["accounting"].items():
+            split["spent"][unit] = split["spent"].get(unit, 0) + balance["spent"]
+    return {
+        "version": JSON_VERSION,
+        "campaign": report.campaign_id,
+        "runs": runs,
+        "splits": summary,
+    }
+
+
+def campaign_text(view: dict) -> str:
+    lines = [f"campaign {view['campaign']}"]
+    for run in view["runs"]:
+        outcome = run["outcome"] or ("open" if run["started"] else "not started")
+        lines.append(
+            f"{run['run']}  {run['split']}  {run['task']}  {run['config']}  "
+            f"#{run['repetition']}  {outcome}"
+        )
+    for split, totals in sorted(view["splits"].items()):
+        outcomes = ", ".join(f"{n} {o}" for o, n in sorted(totals["outcomes"].items()))
+        spent = ", ".join(f"{u} {n}" for u, n in sorted(totals["spent"].items()))
+        lines.append(f"{split}: {outcomes}; spent {spent or 'nothing'}")
+    return "\n".join(lines)
+
+
+def campaign_exit(view: dict) -> int:
+    outcomes = {run["outcome"] for run in view["runs"]}
+    if str(RunOutcome.UNKNOWN) in outcomes:
+        return EXIT[RunOutcome.UNKNOWN]
+    if str(RunOutcome.INFRASTRUCTURE_FAILURE) in outcomes:
+        return EXIT[RunOutcome.INFRASTRUCTURE_FAILURE]
+    return 0
+
+
+def cmd_campaign_run(args) -> int:
+    project = open_project(args.dir)
+    spec, models = load_campaign(project, args.campaign)
+    view = campaign_view(project.run_campaign(spec, models))
+    emit(args, view, campaign_text(view))
+    return campaign_exit(view)
+
+
+def cmd_campaign_report(args) -> int:
+    project = open_project(args.dir)
+    view = campaign_view(project.campaign_report(args.campaign))
+    emit(args, view, campaign_text(view))
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     top = argparse.ArgumentParser(
         prog="warranted",
         description="Durable, checkable knowledge for long-horizon agent work.",
         epilog=(
             "Exit status for run and resume: 0 accepted, 1 rejected or incomplete, "
-            "2 usage error, 3 unknown, 4 unsupported, 5 infrastructure failure."
+            "2 usage error, 3 unknown, 4 unsupported, 5 infrastructure failure. "
+            "campaign run exits 3 if any run is unknown, else 5 if any had an "
+            "infrastructure failure, else 0."
         ),
     )
     top.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -317,6 +424,23 @@ def parser() -> argparse.ArgumentParser:
     sub.add_argument("dir")
     sub.add_argument("run")
     sub.add_argument("dest")
+    sub = command("import", cmd_import, "Pin files in the project; prints refs.")
+    sub.add_argument("dir")
+    sub.add_argument("files", nargs="+", metavar="FILE")
+    campaign = commands.add_parser(
+        "campaign", help="Run or report a pinned campaign of tasks."
+    )
+    actions = campaign.add_subparsers(dest="action", metavar="ACTION", required=True)
+    sub = actions.add_parser("run", help="Pin the plan, then run unfinished runs.")
+    sub.set_defaults(handler=cmd_campaign_run)
+    sub.add_argument("dir")
+    sub.add_argument("campaign", help="campaign TOML file")
+    sub.add_argument("--json", action="store_true")
+    sub = actions.add_parser("report", help="Report every planned run.")
+    sub.set_defaults(handler=cmd_campaign_report)
+    sub.add_argument("dir")
+    sub.add_argument("campaign", help="campaign ID")
+    sub.add_argument("--json", action="store_true")
     return top
 
 

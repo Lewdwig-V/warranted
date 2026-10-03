@@ -11,6 +11,9 @@ warranted resume DIR RUN --config RUN.toml [--json]
 warranted status DIR [RUN] [--json]
 warranted memory DIR TASK.toml [--json]
 warranted export DIR RUN DEST
+warranted import DIR FILE...
+warranted campaign run DIR CAMPAIGN.toml [--json]
+warranted campaign report DIR CAMPAIGN_ID [--json]
 ```
 
 ## Projects
@@ -82,7 +85,10 @@ renaming or removing one increases the version.
 | 4 | unsupported |
 | 5 | infrastructure failure |
 
-`init`, `status`, `memory`, and `export` exit 0 on success and 2 on a usage error.
+`campaign run` exits 3 if any planned run is unknown, otherwise 5 if any ended
+in infrastructure failure, otherwise 0; each run's outcome is in its report.
+`init`, `status`, `memory`, `export`, `import`, and `campaign report` exit 0 on
+success and 2 on a usage error.
 
 ## Status
 
@@ -126,11 +132,74 @@ task files, host-only verdict data, drawn seeds, job logs and outputs, and model
 and tool transcripts. `DEST` must not exist and must be outside the project's
 ledger.
 
+## Import
+
+`import DIR FILE...` records each file's bytes once in the project and prints
+its reference, `sha256:<hex>`. Importing the same bytes again changes nothing.
+A task file can then name the bytes instead of a path, so a task does not depend
+on a file that a domain build may later overwrite:
+
+```toml
+[inputs]
+binary = { artifact = "sha256:<hex>" }
+```
+
+The CLI loads every task through the project, which resolves these references
+and refuses one that was not imported. Domain builds, such as compiling a
+corpus, stay in the domain project; Warranted only pins their outputs.
+
+## Campaigns
+
+A campaign runs tasks under run configurations, repeated, in one project:
+
+```toml
+id = "rot13-dev"
+repetitions = 3
+
+[configs]                     # name = run configuration file
+qwen = "runs/qwen.toml"
+
+[[tasks]]
+path = "tasks/rot13-f1.toml"
+split = "development"         # training, development, or held-out
+
+[[tasks]]
+path = "tasks/rot13-f2.toml"
+split = "development"
+```
+
+Paths are relative to the campaign file. Each repetition runs every task under
+every configuration, in the order given, one run at a time. Runs are created
+only when the campaign reaches them, so a task's
+[memory snapshot](../proposals/m7-scoped-memory.md) includes facts accepted
+earlier in the same campaign.
+
+The first `campaign run` pins the plan: it records every planned run with its
+ID, task digest, split, configuration, model adapter, and repetition. A later
+`campaign run` with the same campaign ID must describe the same plan, or it is
+refused; a changed plan needs a new campaign ID. It then continues exactly the
+planned runs: it starts any that do not exist yet with their planned IDs,
+resumes open and unknown ones, and leaves finished ones alone. Resuming an
+unknown run reconciles what it can and never sends an operation again. Before
+it resumes or reports a run, it checks that the run was started by this
+campaign for its planned task, configuration, split, and model adapter; a run
+started some other way under a planned ID is refused.
+
+Each run records its campaign and split, and a run's memory snapshot shows only
+entries from runs of the same split. Runs outside any campaign form their own
+group. A plan is also refused if a task's memory scope is shared by tasks of
+another split, in this campaign or in any campaign already pinned in the
+project. Held-out runs therefore never see training or development facts.
+
+`campaign report` lists every planned run with its split, task, configuration,
+repetition, and outcome, including runs that failed or have not started, and
+totals outcomes and spent units for each split.
+
 ## Limits
 
 - `run` and `resume` start workers in rootless Podman containers using the
   domain's pinned worker image. The default test suite exercises the commands
   with a scripted environment and a loopback model server.
-- Campaigns and `import` are not implemented yet. `revise` waits until contract
-  revisions are part of the task layer.
+- `revise` waits until contract revisions are part of the task layer.
+- Campaign runs are serial; there is no parallel scheduling.
 - Runs are serial. One process at a time may write a project.

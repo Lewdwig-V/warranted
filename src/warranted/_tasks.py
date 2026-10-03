@@ -65,11 +65,16 @@ DUPLICATE = "duplicate"
 FEEDBACK_LIMIT = 64 * 1024
 _NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}")
 _ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,100}")
+_RUN_ID = re.compile(r"run-[0-9a-f]{12}")
+# Task splits a campaign keeps apart (invariant 7).
+SPLITS = ("training", "development", "held-out")
 # Scoped memory: checker facts, worker notes, and the per-run snapshot.
 NOTES, MEMORY = "notes.json", "memory.json"
 # A real model adapter's configuration, recorded with the run so its requests can
 # cite it; scripted models have none.
 MODEL_PIN = "model-api.json"
+# The campaign and split a run belongs to; memory is shared within a split only.
+CAMPAIGN = "campaign.json"
 FACTS_COUNT, FACTS_LIMIT = 16, 16 * 1024
 NOTES_COUNT, NOTES_LIMIT = 32, 16 * 1024
 MEMORY_LIMIT = 64 * 1024
@@ -309,7 +314,13 @@ class TaskSpec:
     memory: MemorySpec | None = None
 
     @classmethod
-    def load(cls, path: Path) -> TaskSpec:
+    def load(
+        cls, path: Path, resolve: Callable[[str], bytes] | None = None
+    ) -> TaskSpec:
+        """Load a task TOML file. File values are paths relative to the task file,
+        or `{ artifact = "sha256:<hex>" }` for bytes imported into a project;
+        `resolve` maps such a reference to its bytes (see `Project.load_task`).
+        """
         path = Path(path)
         data = tomllib.loads(path.read_text())
         known = {
@@ -330,11 +341,19 @@ class TaskSpec:
                 "unknown task budget; model, tool, and token budgets belong to runs"
             )
 
-        def files(table: Mapping[str, str]) -> dict[str, bytes]:
-            return {
-                name: (path.parent / relative).read_bytes()
-                for name, relative in table.items()
-            }
+        def read(value) -> bytes:
+            if isinstance(value, str):
+                return (path.parent / value).read_bytes()
+            if not isinstance(value, dict) or set(value) != {"artifact"}:
+                raise ValueError("a task file is a path or { artifact = REF }")
+            if resolve is None:
+                raise ValueError(
+                    "task names imported artifacts; load it through a project"
+                )
+            return resolve(value["artifact"])
+
+        def files(table: Mapping[str, Any]) -> dict[str, bytes]:
+            return {name: read(value) for name, value in table.items()}
 
         memory = data.get("memory")
         if memory is not None:
@@ -465,6 +484,78 @@ class RunResult:
 
 
 @dataclass(frozen=True)
+class CampaignTask:
+    """A task in a campaign, and the split it belongs to."""
+
+    task: TaskSpec
+    split: str
+
+    def __post_init__(self):
+        if not isinstance(self.task, TaskSpec):
+            raise ValueError("campaign task must be a TaskSpec")
+        if self.split not in SPLITS:
+            raise ValueError(f"split must be one of {', '.join(SPLITS)}")
+
+
+@dataclass(frozen=True)
+class CampaignSpec:
+    """Tasks times run configurations times repetitions, run serially in order.
+
+    Each repetition runs every task under every configuration, in the order
+    given. A memory scope may not be shared by tasks of different splits, so
+    held-out results never draw on training or development facts.
+    """
+
+    id: str
+    tasks: tuple[CampaignTask, ...]
+    configs: Mapping[str, RunConfig]
+    repetitions: int = 1
+
+    def __post_init__(self):
+        if type(self.id) is not str or not _ID.fullmatch(self.id):
+            raise ValueError("invalid campaign ID")
+        object.__setattr__(self, "tasks", tuple(self.tasks))
+        object.__setattr__(self, "configs", MappingProxyType(dict(self.configs)))
+        if not self.tasks or not all(isinstance(t, CampaignTask) for t in self.tasks):
+            raise ValueError("campaign needs CampaignTask entries")
+        ids = [t.task.id for t in self.tasks]
+        if len(set(ids)) != len(ids):
+            raise ValueError("campaign tasks need distinct IDs")
+        if not self.configs or not all(
+            type(name) is str and _NAME.fullmatch(name) and isinstance(c, RunConfig)
+            for name, c in self.configs.items()
+        ):
+            raise ValueError("campaign needs named run configurations")
+        if type(self.repetitions) is not int or not 1 <= self.repetitions <= 1000:
+            raise ValueError("repetitions must be an integer from 1 to 1000")
+        splits: dict[str, set[str]] = {}
+        for entry in self.tasks:
+            if entry.task.memory is not None:
+                splits.setdefault(entry.task.memory.scope, set()).add(entry.split)
+        shared = sorted(scope for scope, found in splits.items() if len(found) > 1)
+        if shared:
+            raise ValueError(f"memory scopes shared across splits: {', '.join(shared)}")
+
+
+@dataclass(frozen=True)
+class CampaignRun:
+    """One planned run and, once it exists, its status."""
+
+    run_id: str
+    task_id: str
+    config: str
+    split: str
+    repetition: int
+    status: RunStatus | None  # None until the campaign reaches this run
+
+
+@dataclass(frozen=True)
+class CampaignReport:
+    campaign_id: str
+    runs: tuple[CampaignRun, ...]
+
+
+@dataclass(frozen=True)
 class RunStatus:
     """What the ledger records about a run, read without running anything.
 
@@ -500,6 +591,7 @@ class MemoryEntry:
     dependencies: Mapping[str, Applicability]
     sequence: int  # ledger order of the entry record
     evidence: Evidence  # the entry record itself
+    split: str | None = None  # the producing run's campaign split, if any
 
     @property
     def tier(self) -> str | None:
@@ -536,6 +628,11 @@ class _Run:
     task: TaskSpec
     config: RunConfig
     policy: Evidence
+    campaign: Mapping[str, str] | None = None  # {"campaign": id, "split": split}
+
+    @property
+    def split(self) -> str | None:
+        return None if self.campaign is None else self.campaign["split"]
 
     @property
     def scope(self) -> str:
@@ -616,12 +713,28 @@ class Project:
             pass
         return cls(root, domain, **options)
 
-    def start(self, task: TaskSpec, config: RunConfig, model) -> RunResult:
-        """Create a new run with a fresh ID, then run it."""
+    def start(
+        self, task: TaskSpec, config: RunConfig, model, *, run_id: str | None = None
+    ) -> RunResult:
+        """Create a new run, then run it.
+
+        The run gets a fresh ID unless a campaign planned one; a planned ID must
+        not name an existing run.
+        """
+        return self._start(task, config, model, run_id, None)
+
+    def _start(self, task, config, model, run_id, campaign) -> RunResult:
         unknown = set(task.checks) - set(self.domain.checkers)
         if unknown:
             raise ValueError(f"task names unknown checks: {sorted(unknown)}")
-        run_id = "run-" + uuid4().hex[:12]
+        if getattr(model, "model", None) != config.model:
+            raise ValueError("model boundary differs from the run configuration")
+        if run_id is None:
+            run_id = "run-" + uuid4().hex[:12]
+        elif type(run_id) is not str or not _RUN_ID.fullmatch(run_id):
+            raise ValueError(f"invalid run ID: {run_id!r}")
+        if run_id in self.runs():
+            raise ValueError(f"run {run_id} already exists; resume it instead")
         caps = dict(config.budgets)
         validate_operations(_operations(self.domain), {**task.inputs, **task.private})
         shared = {
@@ -650,7 +763,8 @@ class Project:
         with Ledger.open(self.ledger_root) as ledger:
             session = ledger.start_session()
             # Fixed now and recorded with the spec, so resume never recomputes it.
-            snapshot, cited = self._snapshot(ledger, session, task)
+            split = None if campaign is None else campaign["split"]
+            snapshot, cited = self._snapshot(ledger, session, task, split)
             # Caps are recorded before any run record, so a resume cannot change them.
             ledger.open_scope(session, f"run/{run_id}", caps)
             record_once(
@@ -660,6 +774,7 @@ class Project:
                 task.record()
                 | {"config.json": config.record()}
                 | ({MEMORY: snapshot} if snapshot is not None else {})
+                | ({CAMPAIGN: _json(campaign)} if campaign is not None else {})
                 | self._model_record(model),
             )
             policy = {
@@ -862,6 +977,217 @@ class Project:
                 operations=tuple(operations),
             )
 
+    def import_artifact(self, data: bytes) -> str:
+        """Record bytes once in the project, such as a domain-built binary.
+
+        Returns the reference `sha256:<hex>` that task files use. Importing the
+        same bytes again returns the same reference and records nothing new.
+        """
+        if type(data) is not bytes:
+            raise TypeError("import takes bytes")
+        digest = _digest(data)
+        with Ledger.open(self.ledger_root) as ledger:
+            record_once(
+                ledger,
+                ledger.start_session(),
+                Origin(f"import/{digest}", "import", PRODUCER, "1", {}),
+                {"artifact": data},
+            )
+        return f"sha256:{digest}"
+
+    def imported(self, reference: str) -> bytes:
+        """The bytes of an imported artifact; refuses an unknown reference."""
+        if type(reference) is not str or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}", reference
+        ):
+            raise ValueError(f"invalid artifact reference: {reference!r}")
+        operation_id = "import/" + reference.removeprefix("sha256:")
+        with Ledger.open(self.ledger_root) as ledger:
+            for o in ledger.history():
+                if o.origin.operation_id == operation_id and o.origin.kind == "import":
+                    return ledger.read_artifact(o.artifacts["artifact"])
+        raise ValueError(f"artifact not imported into this project: {reference}")
+
+    def load_task(self, path: Path) -> TaskSpec:
+        """Load a task file, resolving `{ artifact = REF }` from this project."""
+        return TaskSpec.load(path, self.imported)
+
+    @staticmethod
+    def _task_digest(task: TaskSpec) -> str:
+        return _digest(
+            _json({name: _digest(data) for name, data in sorted(task.record().items())})
+        )
+
+    @staticmethod
+    def _campaign_plans(ledger: Ledger) -> list[dict]:
+        return [
+            json.loads(ledger.read_artifact(o.artifacts["plan.json"]))
+            for o in ledger.history()
+            if o.origin.kind == "campaign-plan"
+        ]
+
+    def _planned(self, ledger: Ledger, campaign_id: str, entry: dict) -> _Run:
+        """The existing run for a planned entry; refuses one that does not match."""
+        run = self._load(ledger, entry["run"])
+        recorded = (
+            ledger.read_artifact(run.spec.artifacts[MODEL_PIN])
+            if MODEL_PIN in run.spec.artifacts
+            else None
+        )
+        if (
+            run.campaign != {"campaign": campaign_id, "split": entry["split"]}
+            or self._task_digest(run.task) != entry["task_digest"]
+            or json.loads(run.config.record()) != entry["config_record"]
+            or (None if recorded is None else _digest(recorded)) != entry["adapter"]
+        ):
+            raise ValueError(
+                f"run {entry['run']} does not match its entry in campaign "
+                f"{campaign_id}; it was not started by the campaign"
+            )
+        return run
+
+    def _campaign_plan(self, ledger: Ledger, campaign_id: str) -> dict | None:
+        for o in ledger.history():
+            if o.origin.operation_id == f"campaign/{campaign_id}":
+                return json.loads(ledger.read_artifact(o.artifacts["plan.json"]))
+        return None
+
+    def plan_campaign(self, spec: CampaignSpec, models: Mapping[str, Any]) -> dict:
+        """Pin the campaign's plan, assigning every planned run its ID.
+
+        The first call records the plan. Later calls must describe the same
+        tasks, configurations, models, splits, and repetitions, and return the
+        recorded plan with its run IDs; anything else is refused.
+        """
+        if set(models) != set(spec.configs):
+            raise ValueError("campaign needs one model for each run configuration")
+        for name, config in spec.configs.items():
+            if getattr(models[name], "model", None) != config.model:
+                raise ValueError(f"model for {name} differs from its configuration")
+        entries = [
+            {
+                "task": entry.task.id,
+                "task_digest": self._task_digest(entry.task),
+                "split": entry.split,
+                "scope": entry.task.memory and entry.task.memory.scope,
+                "config": name,
+                "config_record": json.loads(config.record()),
+                "adapter": _digest(self._model_record(models[name]).get(MODEL_PIN, b""))
+                if self._model_record(models[name])
+                else None,
+                "repetition": repetition,
+            }
+            for repetition in range(1, spec.repetitions + 1)
+            for entry in spec.tasks
+            for name, config in spec.configs.items()
+        ]
+        with Ledger.open(self.ledger_root) as ledger:
+            for other in self._campaign_plans(ledger):
+                if other["id"] == spec.id:
+                    continue
+                for planned in other["entries"]:
+                    for entry in entries:
+                        if (
+                            entry["scope"] is not None
+                            and entry["scope"] == planned["scope"]
+                            and entry["split"] != planned["split"]
+                        ):
+                            raise ValueError(
+                                f"memory scope {entry['scope']} is used by "
+                                f"{planned['split']} runs of campaign {other['id']}"
+                            )
+            pinned = self._campaign_plan(ledger, spec.id)
+            if pinned is not None:
+                if [
+                    {k: v for k, v in e.items() if k != "run"}
+                    for e in pinned["entries"]
+                ] != entries:
+                    raise ValueError(
+                        f"campaign {spec.id} differs from its pinned plan; "
+                        "use a new campaign ID for a changed plan"
+                    )
+                return pinned
+            plan = {
+                "version": 1,
+                "id": spec.id,
+                "repetitions": spec.repetitions,
+                "entries": [
+                    {"run": "run-" + uuid4().hex[:12], **entry} for entry in entries
+                ],
+            }
+            record_once(
+                ledger,
+                ledger.start_session(),
+                Origin(f"campaign/{spec.id}", "campaign-plan", PRODUCER, "1", {}),
+                {"plan.json": _json(plan)},
+            )
+            return plan
+
+    def run_campaign(
+        self, spec: CampaignSpec, models: Mapping[str, Any]
+    ) -> CampaignReport:
+        """Run every planned run that has not finished, serially and in order.
+
+        A planned run that does not exist yet is started with its planned ID; an
+        open run is resumed; a finished run is left as it is. Rerunning a
+        campaign therefore continues exactly the runs it planned.
+        """
+        plan = self.plan_campaign(spec, models)
+        tasks = {entry.task.id: entry.task for entry in spec.tasks}
+        existing = set(self.runs())
+        for entry in plan["entries"]:
+            task, name = tasks[entry["task"]], entry["config"]
+            if entry["run"] not in existing:
+                campaign = {"campaign": spec.id, "split": entry["split"]}
+                self._start(
+                    task, spec.configs[name], models[name], entry["run"], campaign
+                )
+                continue
+            with Ledger.open(self.ledger_root) as ledger:
+                self._planned(ledger, spec.id, entry)
+            # Unknown runs resume too: resume reconciles what it can and never
+            # redispatches an operation whose outcome is unknown.
+            if self.status(entry["run"]).outcome in (None, RunOutcome.UNKNOWN):
+                self.resume(entry["run"], models[name], task=task)
+        return self.campaign_report(spec.id)
+
+    def campaign_report(self, campaign_id: str) -> CampaignReport:
+        """Every planned run with its status; unstarted runs have none."""
+        with Ledger.open(self.ledger_root) as ledger:
+            plan = self._campaign_plan(ledger, campaign_id)
+            if plan is None:
+                raise ValueError(f"unknown campaign: {campaign_id}")
+            existing = {
+                o.origin.operation_id.split("/")[1]
+                for o in ledger.history()
+                if o.origin.kind == "run-spec"
+            }
+            for entry in plan["entries"]:
+                if entry["run"] in existing:
+                    self._planned(ledger, campaign_id, entry)
+        return CampaignReport(
+            campaign_id,
+            tuple(
+                CampaignRun(
+                    e["run"],
+                    e["task"],
+                    e["config"],
+                    e["split"],
+                    e["repetition"],
+                    self.status(e["run"]) if e["run"] in existing else None,
+                )
+                for e in plan["entries"]
+            ),
+        )
+
+    def campaigns(self) -> tuple[str, ...]:
+        with Ledger.open(self.ledger_root) as ledger:
+            return tuple(
+                o.origin.operation_id.removeprefix("campaign/")
+                for o in ledger.history()
+                if o.origin.kind == "campaign-plan"
+            )
+
     def runs(self) -> tuple[str, ...]:
         with Ledger.open(self.ledger_root) as ledger:
             return tuple(
@@ -1014,17 +1340,27 @@ class Project:
                     assessment.dependencies,
                     capture.sequence,
                     Evidence.captured(capture, "entry.json"),
+                    run.split,
                 )
             )
         return tuple(sorted(entries, key=lambda e: e.sequence, reverse=True))
 
-    def _snapshot(self, ledger: Ledger, session: str, task: TaskSpec):
-        """The memory file a new run shows its worker, and the entries it cites."""
+    def _snapshot(
+        self, ledger: Ledger, session: str, task: TaskSpec, split: str | None = None
+    ):
+        """The memory file a new run shows its worker, and the entries it cites.
+
+        Only entries from runs of the same split are shown; runs outside any
+        campaign form their own group. Held-out runs therefore never see facts
+        from training or development runs, whichever campaign produced them.
+        """
         if task.memory is None:
             return None, {}
         shown, cited, size = [], {}, 0
         withheld = {"stale": 0, "unknown": 0, "over_limit": 0}
         for entry in self._memory(ledger, session, task):
+            if entry.split != split:
+                continue  # another split's memory is never shown, nor counted
             if not entry.accepted:
                 continue  # unaccepted facts and notes are withheld silently
             if entry.applicability is not Applicability.CURRENT:
@@ -1074,7 +1410,8 @@ class Project:
         )
         config = RunConfig(**json.loads(read["config.json"]))
         policy = Evidence.captured(found["run-policy"], "policy.json")
-        return _Run(run_id, spec, task, config, policy)
+        campaign = json.loads(read[CAMPAIGN]) if CAMPAIGN in read else None
+        return _Run(run_id, spec, task, config, policy, campaign)
 
     def resume(self, run_id: str, model, *, task: TaskSpec | None = None) -> RunResult:
         """Continue a run. Completed episodes and checks are reused, never repeated."""

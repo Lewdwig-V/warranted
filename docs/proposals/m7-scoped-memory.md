@@ -244,9 +244,11 @@ happens to the project's runs. Keeping memory across a domain revision is
 A scope shares information between tasks. A campaign that mixes training,
 development, and held-out tasks must not give them a common scope, or held-out
 results would draw on training facts
-([invariant 7](../../AGENTS.md#invariants-to-preserve)). Campaigns are not in
-M7's slices yet, so this note records the rule. A later campaign planner should
-refuse a scope shared across splits.
+([invariant 7](../../AGENTS.md#invariants-to-preserve)). Campaigns enforce
+this rule: a plan is refused if a memory scope is shared across splits, within
+the campaign or with any campaign already pinned in the project, and a run's
+snapshot shows only entries from runs of the same split
+([command line](../reference/cli.md#campaigns)).
 
 ## Implementation outline
 
