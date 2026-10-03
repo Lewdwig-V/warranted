@@ -438,3 +438,71 @@ def test_oversized_or_linked_notes_are_a_capture_error_not_a_failure(tmp_path):
     assert result["exit_status"] == "Submitted"
     assert "candidate/notes.json" not in raw
     assert b"notes" in raw["candidate/notes-error.txt"]
+
+
+def entrypoint_image() -> str:
+    """A local image whose entrypoint would make any wrapped command fail."""
+    import tempfile
+
+    from warranted.sandbox import IMAGE
+
+    with tempfile.TemporaryDirectory() as context:
+        subprocess.run(
+            [
+                "podman",
+                "build",
+                "--pull=never",
+                "--quiet",
+                "--file=-",
+                f"--iidfile={context}/iid",
+                context,
+            ],
+            input=f'FROM {IMAGE}\nENTRYPOINT ["false"]\n',
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        with open(f"{context}/iid") as iid:
+            return iid.read().strip().removeprefix("sha256:")
+
+
+def local_id() -> str:
+    from warranted.sandbox import IMAGE
+
+    return subprocess.run(
+        ["podman", "image", "inspect", "--format", "{{.Id}}", IMAGE],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+
+
+@pytest.mark.parametrize("image", [local_id, entrypoint_image])
+def test_a_worker_runs_in_a_domain_image_pinned_by_local_id(tmp_path, image):
+    from warranted.sandbox import sandbox_id
+
+    image_id = image()
+    episode = replace(setup(tmp_path), environment=sandbox_id(image_id))
+
+    def model(*_):
+        return AttemptResult(
+            Result(Outcome.SUCCEEDED, 0, {"model": 1}, 1),
+            {
+                "response": json.dumps(
+                    {
+                        "command": "echo '{}' > result.json &&"
+                        " printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'"
+                    }
+                ).encode()
+            },
+        )
+
+    with Sandbox(tmp_path / "ledger", episode, image=image_id) as sandbox:
+        result = run_workflow(
+            tmp_path / "ledger",
+            tmp_path / "graph.sqlite3",
+            episode,
+            model=model,
+            environment=sandbox,
+        )
+    assert result["exit_status"] == "Submitted"

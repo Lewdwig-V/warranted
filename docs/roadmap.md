@@ -117,10 +117,13 @@ domain project supplies only domain knowledge. Specifically:
   ReSchema's hidden cases, are drawn and recorded by the host. A submission may
   nominate cases; the checker recomputes their ground truth itself, so anything
   the worker recorded stays a hint, never evidence.
-- [ ] **Domain worker images.** A domain project supplies a pinned worker image
+- [x] **Domain worker images.** A domain project supplies a pinned worker image
   with its own tools, such as an emulator and the target binary, so the worker
   can investigate with ordinary shell commands. The image adds tools inside the
-  container; it does not widen what the container can reach.
+  container; it does not widen what the container can reach. The prototype task
+  layer runs workers in the domain's `worker_image`, pinned by digest or local
+  image ID ([reference](reference/worker-and-containment.md#container-sandbox));
+  only the default Python image is exercised in CI.
 - [x] **Host-mediated operations: design, then implement.** Some operations
   belong on the host: results that should be authoritative, reusable evidence;
   anything needing credentials, network, paid APIs, or private data; and any
@@ -133,10 +136,12 @@ domain project supplies only domain knowledge. Specifically:
   [design](proposals/m7-host-operations.md) in `warranted.operations` and the
   prototype task layer, with its negative cases
   ([reference](reference/worker-and-containment.md#host-mediated-operations)).
-- [ ] **Domain execution jobs.** Domain code can run compile, emulation, or
+- [x] **Domain execution jobs.** Domain code can run compile, emulation, or
   native jobs in pinned images through Warranted's container boundary, mounting
   only per-job scratch. Worker-readable mounts never include oracle or ledger
-  state.
+  state. Checkers and operations call `run_job` with per-job limits and no host
+  mounts ([reference](reference/worker-and-containment.md#checker-jobs)); no
+  compiler toolchain image has been run in CI yet.
 - [x] **Run-scoped budgets and blocking.** Each run has a ledger scope with caps
   under the project total; unknown operations and breaches block only their own
   run, enforced in `Ledger.begin` ([design](proposals/m7-run-scopes.md),

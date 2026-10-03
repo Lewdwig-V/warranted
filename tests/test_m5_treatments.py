@@ -242,7 +242,7 @@ def test_sandbox_uses_the_episode_timeout_for_container_and_process(
     sandbox._prepare(True)
     launch = next(args for args in calls if args[0] == "run")
     assert "--timeout=321" in launch
-    assert launch[-2:] == ["sleep", "351"]
+    assert "--entrypoint=sleep" in launch and launch[-1] == "351"
 
 
 @pytest.mark.parametrize("model_timeout", [1, 10, 300])

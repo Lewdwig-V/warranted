@@ -55,7 +55,7 @@ class LocalJobs:
     def __init__(self, fail=False):
         self.calls, self.fail = 0, fail
 
-    def run(self, image, argv, files, *, stdin=b"", timeout_seconds=10):
+    def run(self, image, argv, files, *, stdin=b"", timeout_seconds=10, limits=None):
         validate_job(image, argv, files, timeout_seconds)
         self.calls += 1
         if self.fail:
