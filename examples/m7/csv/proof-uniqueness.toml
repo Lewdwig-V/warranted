@@ -1,0 +1,19 @@
+# The CSV task with the M4 uniqueness proof: the proof is required beside the
+# transformation check, so it can never replace it.
+id = "csv-proof-uniqueness"
+objective = """Read worker-task.md and the current offset. Write result.json, and \
+Solution.lean proving Warranted.uniqueness_preserved from uniqueness.md, then submit."""
+checks = ["transformation", "uniqueness"]
+
+[inputs]
+"input.csv" = "../../m2/fixture/input.csv"
+"worker-task.md" = "../../m3/worker-task.md"
+"offset-v1" = "offset-v1"
+"definition-v1" = "definition-v1"
+"uniqueness.md" = "UniquenessChallenge.lean"
+
+[private]
+"references.json" = "../../m2/fixture/references.json"
+
+[budgets]
+submissions = 3
