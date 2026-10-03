@@ -116,8 +116,8 @@ plugin registry. The domain's name, version, and source digest are pinned in the
 project manifest, so a changed domain blocks resume the same way a changed fixture
 does today. The digest covers the source files of the domain and checker classes
 and every file under the domain's declared `sources`; imports are not followed,
-so code loaded any other way must be declared. The Warranted version is pinned as
-well.
+so code loaded any other way must be declared. The Warranted version and a digest
+of its package files are pinned as well.
 
 `prepare` writes the task files the worker sees. `PrepareContext` exposes the task
 inputs and the facts in the task's memory scope. Facts are written under
@@ -407,8 +407,9 @@ relative path, not its absolute path, so moving a checkout keeps the identity, a
 editing, adding, or removing a file changes it. A declared path that does not
 exist is refused. Undeclared code is not pinned; that is the domain author's
 responsibility, and the reason the declaration exists. The installed Warranted
-version is also part of the identity, since the host's own checking and acceptance
-code shapes every verdict. Third-party packages are left to the domain's lockfile.
+build is also part of the identity, since the host's own checking and acceptance
+code shapes every verdict: its version, and a digest of the package's files,
+because an editable install keeps its version string while its code changes. Third-party packages are left to the domain's lockfile.
 `examples/m7/csv/` declares the M2 evaluator.
 
 **Feedback size (question 4).** The host enforces a 64 KiB limit on a verdict's

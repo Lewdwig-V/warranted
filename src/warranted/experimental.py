@@ -211,8 +211,25 @@ def _source_files(domain: Domain) -> list[tuple[str, bytes]]:
     return sorted({(name, path.read_bytes()) for name, path in files})
 
 
+# The installed Warranted package. An editable install keeps its version string
+# while its code changes, so the identity pins the package's files, not only the
+# version.
+PACKAGE_ROOT = Path(__file__).resolve().parent
+
+
+def _tree_digest(root: Path) -> str:
+    files = sorted(
+        p for p in root.rglob("*") if p.is_file() and "__pycache__" not in p.parts
+    )
+    return _digest(
+        _json(
+            [[p.relative_to(root).as_posix(), _digest(p.read_bytes())] for p in files]
+        )
+    )
+
+
 def domain_identity(domain: Domain) -> dict[str, str]:
-    """Name, version, image, Warranted version, and a digest of the domain's source."""
+    """Name, version, image, Warranted build, and a digest of the domain's source."""
     sources = _source_files(domain)
     identity = {
         "domain": domain.name,
@@ -222,6 +239,7 @@ def domain_identity(domain: Domain) -> dict[str, str]:
             _json([[name, _digest(data)] for name, data in sources])
         ),
         "warranted": package_version("warranted"),
+        "warranted_source": _tree_digest(PACKAGE_ROOT),
     }
     for name, checker in sorted(domain.checkers.items()):
         identity[f"checker/{name}"] = checker.version

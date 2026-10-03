@@ -598,3 +598,23 @@ def test_feedback_at_the_limit_is_shown(tmp_path):
     # The recorded JSON adds two quotes and a trailing newline.
     proj, _ = project(tmp_path, ["correct"], talkative_domain(FEEDBACK_LIMIT - 3))
     assert proj.start(TASK, CONFIG, Model()).outcome is RunOutcome.ACCEPTED
+
+
+def test_changed_warranted_code_blocks_reopening_even_at_the_same_version(
+    tmp_path, monkeypatch
+):
+    import shutil
+
+    import warranted.experimental as experimental
+
+    package = tmp_path / "warranted"
+    shutil.copytree(experimental.PACKAGE_ROOT, package)
+    monkeypatch.setattr(experimental, "PACKAGE_ROOT", package)
+    root = tmp_path / "project"
+    options = {"environment": Script([]), "environment_id": ENVIRONMENT}
+    Project.create(root, CSV.CsvDomain(), {"model": 1}, **options)
+    Project(root, CSV.CsvDomain(), **options)
+    acceptance = package / "acceptance.py"
+    acceptance.write_bytes(acceptance.read_bytes() + b"\n# changed\n")
+    with pytest.raises(ValueError, match="domain or environment differs"):
+        Project(root, CSV.CsvDomain(), **options)
