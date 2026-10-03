@@ -327,7 +327,7 @@ executions after either resume. Reports also retain measured operation time and
 the bundle's recorded build time. One local native test completed the kill and
 both resumes in 61 seconds (a development measurement). `reports/` and
 `exports/` contain private development references and must not become worker
-context. The receipt format is version 2 and the proof API requires `target_id`;
+context. The receipt format is version 2 and the proof API takes `target=` (a `ProofTarget`);
 there is no reader for the older format, so use a new run directory and rebuilt
 bundle.
 

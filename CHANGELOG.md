@@ -9,7 +9,7 @@ versioning and deprecation policy. The format follows
 
 ### Changed
 
-- Proof targets are owned by domains: `ProofTarget(challenge_path, theorem)` replaces
+- Proof targets are owned by domains: `ProofTarget(path, theorem)` replaces
   the core `targets.json` registry, and the verifier receives the challenge and
   theorem from the host. The three fixture challenges moved to `examples/`.
   `warranted.host.Proofs` takes `target=` instead of `target_id=`. Existing proof
