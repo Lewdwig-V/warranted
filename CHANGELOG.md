@@ -17,6 +17,15 @@ versioning and deprecation policy. The format follows
 
 ### Added
 
+- Proofs in the task layer: the `LeanProof` checker, `ProofVerifier` and
+  `LeanVerifier` (passed as `Project(..., proofs=...)` and bound into the project
+  identity), `ProofResult`, `ProofStatus`, and `CheckContext.verify`. Checkers may
+  declare `sources`, which are pinned like domain sources. `LeanProof` takes
+  `premises` (applicability; a failure is unsupported) and `correspondence` (the
+  candidate matches the theorem's model; a failure is rejected), and is
+  isolated only when constructed with `isolated=True`. Its version pins the
+  challenge bytes it verifies; the verifier identity includes the timeout.
+- `VerdictStatus.UNPROVED`: fails the gate and is recorded distinctly.
 - `ProofTarget` in `warranted`.
 
 ## [0.1.0] - 2026-10-03

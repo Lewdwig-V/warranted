@@ -12,6 +12,8 @@ of an application. Those need independent checks (see
 The verifier is exercised with fixed, reviewed proof proposals. There is no
 model-driven proof worker or proof-search evaluation.
 
+In the task layer, a domain lists a `LeanProof` checker and the project is created with `proofs=LeanVerifier(bundle)`; see [proofs in the task layer](../proposals/m7-proofs.md).
+
 ## Targets and axiom policy
 
 A domain supplies each target as a `ProofTarget(path, theorem)`: a Lean challenge

@@ -96,6 +96,7 @@ def _digest(data: bytes) -> str:
 class VerdictStatus(StrEnum):
     PASSED = "passed"
     REJECTED = "rejected"
+    UNPROVED = "unproved"  # could not be established within limits; fails the gate
     UNSUPPORTED = "unsupported"
     INFRASTRUCTURE_FAILURE = "infrastructure_failure"
 
@@ -130,18 +131,45 @@ class Verdict:
 
 
 class CheckContext(JobContext):
-    """What a checker may read and do. Seeds and jobs are kept as host-only evidence.
+    """What a checker may read and do. Seeds, jobs, and proofs are host-only evidence.
 
     `candidate`, `inputs`, and `private` are exact bytes. `draw_seed` returns fresh
     entropy and records it; `run_job` runs untrusted code in a contained job and
-    records the job and its result. Both records stay out of worker feedback.
+    records the job and its result; `verify` checks a proof source against a
+    domain-owned target with the project's verifier and records the result. None
+    of these records reach worker feedback.
     """
 
-    def __init__(self, candidate, inputs, private, jobs: JobRunner | None = None):
+    def __init__(
+        self, candidate, inputs, private, jobs: JobRunner | None = None, proofs=None
+    ):
         super().__init__(jobs)
         self.candidate: Mapping[str, bytes] = MappingProxyType(dict(candidate))
         self.inputs: Mapping[str, bytes] = MappingProxyType(dict(inputs))
         self.private: Mapping[str, bytes] = MappingProxyType(dict(private))
+        self._proofs = proofs
+        self.proof_log: list[dict] = []
+        self.proof_output: dict[str, bytes] = {}
+
+    def verify(self, target, source: bytes):
+        if self._proofs is None:
+            raise RuntimeError("this project has no proof verifier")
+        result = self._proofs.verify(source, target)
+        prefix = f"proofs/{len(self.proof_log) + 1}"
+        for name, data in sorted(result.raw.items()):
+            self.proof_output[f"{prefix}/{name}"] = data
+        self.proof_log.append(
+            {
+                "target": target.theorem,
+                "challenge": hashlib.sha256(target.challenge).hexdigest(),
+                "source": hashlib.sha256(source).hexdigest(),
+                "status": result.status.value,
+                "diagnostic": result.diagnostic,
+                "axioms": list(result.axioms),
+                "identity": result.identity,
+            }
+        )
+        return result
 
 
 class Checker(Protocol):
@@ -169,7 +197,8 @@ class Domain(Protocol):
     checkers: Mapping[str, Checker]
     # Optional: further files or directories whose contents the checkers depend on,
     # such as code loaded with runpy or importlib, or data files. Imports are not
-    # followed automatically, so undeclared code is not pinned.
+    # followed automatically, so undeclared code is not pinned. Checkers may
+    # declare `sources` too; both are pinned.
     # sources: Sequence[Path]
     # Optional: host-mediated operations the worker may request by name.
     # operations: Mapping[str, Operation]
@@ -192,6 +221,12 @@ def _source_files(domain: Domain) -> list[tuple[str, bytes]]:
         if path is None:
             raise ValueError("domain and checker classes need source files")
         files.append(("class/" + Path(path).name, Path(path)))
+    for name, checker in sorted(domain.checkers.items()):
+        for index, declared in enumerate(getattr(checker, "sources", ())):
+            path = Path(declared)
+            if not path.is_file():
+                raise ValueError(f"declared checker source does not exist: {declared}")
+            files.append((f"checker/{name}/{index}/{path.name}", path))
     for index, declared in enumerate(getattr(domain, "sources", ())):
         path = Path(declared)
         if path.is_file():
@@ -255,17 +290,25 @@ def domain_identity(domain: Domain) -> dict[str, str]:
     return identity
 
 
-def _project_identity(domain: Domain, environment_id: str, jobs) -> dict[str, str]:
-    """A project binds its domain, worker environment, and checker job runner."""
+def _project_identity(
+    domain: Domain, environment_id: str, jobs, proofs=None
+) -> dict[str, str]:
+    """A project binds its domain, worker environment, job runner, and verifier."""
     if not pinned_image(domain.worker_image):
         raise ValueError("domain worker image must be pinned by digest or image ID")
     runner = getattr(jobs, "identity", None)
     if type(runner) is not str or not runner:
         raise ValueError("job runner needs a stable identity string")
-    return domain_identity(domain) | {
+    identity = domain_identity(domain) | {
         "worker_environment": environment_id,
         "job_runner": runner,
     }
+    if proofs is not None:
+        verifier = getattr(proofs, "identity", None)
+        if type(verifier) is not str or not verifier:
+            raise ValueError("proof verifier needs a stable identity string")
+        identity["proof_verifier"] = verifier
+    return identity
 
 
 def _guard(table) -> DuplicateGuard | None:
@@ -892,12 +935,14 @@ class Project:
         environment: Callable | None = None,
         environment_id: str | None = None,
         jobs: JobRunner | None = None,
+        proofs=None,
     ):
         """By default, workers run in containers from the domain's worker image."""
         self.root, self.domain = Path(root), domain
         self.environment = environment or partial(Sandbox, image=domain.worker_image)
         self.environment_id = environment_id or sandbox_id(domain.worker_image)
         self.jobs = jobs if jobs is not None else PodmanJobs()
+        self.proofs = proofs
         if set(domain.checkers) and not all(
             _NAME.fullmatch(name) for name in domain.checkers
         ):
@@ -911,7 +956,9 @@ class Project:
         return self.root / "ledger"
 
     def _identity(self) -> dict[str, str]:
-        return _project_identity(self.domain, self.environment_id, self.jobs)
+        return _project_identity(
+            self.domain, self.environment_id, self.jobs, self.proofs
+        )
 
     @classmethod
     def create(
@@ -926,6 +973,7 @@ class Project:
             domain,
             options.get("environment_id") or sandbox_id(domain.worker_image),
             options.get("jobs") or PodmanJobs(),
+            options.get("proofs"),
         )
         root.mkdir(parents=True)
         with Ledger.create(
@@ -966,6 +1014,15 @@ class Project:
         unknown = required - set(self.domain.checkers)
         if unknown:
             raise ValueError(f"task names unknown checks: {sorted(unknown)}")
+        needs = sorted(
+            n
+            for n in required
+            if getattr(self.domain.checkers[n], "needs_proofs", False)
+        )
+        if needs and self.proofs is None:
+            raise ValueError(
+                f"checks {needs} need a proof verifier; create the project with proofs="
+            )
         if getattr(model, "model", None) != config.model:
             raise ValueError("model boundary differs from the run configuration")
         if run_id is None:
@@ -2087,6 +2144,7 @@ class Project:
                 run.task.contract(index).inputs,
                 run.task.contract(index).private,
                 self.jobs,
+                self.proofs,
             )
             started = perf_counter_ns()
             try:
@@ -2126,6 +2184,7 @@ class Project:
             outcome, code = {
                 VerdictStatus.PASSED: (Outcome.SUCCEEDED, 0),
                 VerdictStatus.REJECTED: (Outcome.SUCCEEDED, 0),
+                VerdictStatus.UNPROVED: (Outcome.SUCCEEDED, 0),
                 VerdictStatus.UNSUPPORTED: (Outcome.FAILED, 1),
                 VerdictStatus.INFRASTRUCTURE_FAILURE: (
                     Outcome.INFRASTRUCTURE_FAILURE,
@@ -2148,7 +2207,13 @@ class Project:
                     "jobs.json": _json(context.job_log),
                 }
                 | ({"facts.json": _json(list(verdict.facts))} if verdict.facts else {})
-                | context.job_output,
+                | context.job_output
+                | (
+                    {"proofs.json": _json(context.proof_log)}
+                    if context.proof_log
+                    else {}
+                )
+                | context.proof_output,
             )
         return request.origin.operation_id
 
