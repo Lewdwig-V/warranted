@@ -188,3 +188,31 @@ def test_uniqueness_premises_fail_closed_on_malformed_rows():
     # M4's semantics: an empty selection is an identity selection; the transformation
     # check rejects it (unlike timestamp_premises, which needs a row to show an offset).
     assert identity_selection({"rows": []}) is True
+
+
+from test_experimental_mystery import LocalJobs  # noqa: E402
+from test_migration_fixture import CANDIDATES as MIGRATIONS  # noqa: E402
+from test_migration_fixture import MIGRATION  # noqa: E402
+
+MIGRATION_TASK = TaskSpec.load(ROOT / "examples/m7/migration/proof.toml")
+
+
+@pytest.mark.parametrize(
+    "candidate, decision", [("complete", "accepted"), ("drop-label", "rejected")]
+)
+def test_the_renaming_proof_omits_the_label_and_the_obligation_decides(
+    tmp_path, candidate, decision
+):
+    worker = Worker([({"migrate.py": MIGRATIONS[candidate]}, MIGRATION_PROOF)])
+    proj = Project.create(
+        tmp_path / "project",
+        MIGRATION.MigrationDomain(),
+        {"model": 40, "tool": 40, "check": 40},
+        environment=worker,
+        environment_id=ENVIRONMENT,
+        jobs=LocalJobs(),
+        proofs=FakeVerifier(),
+    )
+    result = proj.start(replace(MIGRATION_TASK, submissions=1), CONFIG, Model())
+    assert result.submissions[0].verdicts["renaming"] is VerdictStatus.PASSED
+    assert [s.decision for s in result.submissions] == [decision]
