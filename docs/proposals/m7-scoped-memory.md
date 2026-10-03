@@ -1,7 +1,8 @@
 # M7 design note: scoped memory
 
 Proposed 2026-10-03, with review questions 1 to 3 decided the same day (see
-[decisions](#decisions)). This note designs the **scoped memory** item of
+[decisions](#decisions)), and implemented the same day in the prototype task
+layer (see [implementation notes](#implementation-notes)). This note designs the **scoped memory** item of
 [M7](../roadmap.md#m7--stable-harness-api-and-cli): claims scoped to a family of
 related tasks, with receipt-backed facts kept separate from worker notes. A note
 is promoted only when its own submission is accepted, and selected facts reach
@@ -166,8 +167,9 @@ adds no model-facing tool.
 
 ### Reading memory on the host
 
-`Project.memory(scope)` returns every record in the scope with its source,
-tier, applicability, and per-dependency reasons. Stale and withheld entries are
+`Project.memory(task)` returns every record in the task's scope with its
+source, tier, applicability, and per-dependency reasons, assessed against that
+task. Stale and withheld entries are
 included. The status command and the public API use this. It is read-only and
 runs no checker.
 
@@ -252,7 +254,7 @@ refuse a scope shared across splits.
    `facts`, and `notes.json` and `memory.json` are reserved.
 2. The sandbox captures optional `notes.json`.
 3. The task layer records facts and notes as claims with host-declared
-   dependency versions, and `Project.memory(scope)` reads them.
+   dependency versions, and `Project.memory(task)` reads them.
 4. Run creation records the `memory.json` snapshot in the run's spec record,
    and episodes deliver it.
 5. Tests for the negative cases above, plus a two-task example in which the
@@ -266,10 +268,41 @@ Decided by the project owner on 2026-10-03:
 1. Memory stays within one project. A scope is not shared across projects.
 2. Notes from a submission that was not accepted are withheld entirely.
 3. Stale facts are hidden from the worker. The host still reports them through
-   `Project.memory(scope)`.
+   `Project.memory(task)`.
 
 Question 4 was not separately decided. The proposal's default stands: a
 revised domain means a new project with empty memory.
+
+## Implementation notes
+
+Implemented in `warranted.experimental` and the sandbox capture, with tests in
+`tests/test_scoped_memory.py` and container tests for notes capture in
+`tests/test_sandbox.py`. Where the implementation differs from the proposal
+above:
+
+- **Entries are derived, not written at check time.** Checker facts are stored
+  in the check's completion as `facts.json`, and notes stay in the submission
+  capture. Memory entries, their claims, and dependency versions are derived
+  from those records when a run is created and when `Project.memory(task)` is
+  called. The derivation is idempotent. Nothing is recorded only at acceptance,
+  so a crash at any point loses no memory.
+- **One entry per source.** An entry holds all of one check's facts, or all of
+  one submission's notes, and has one claim. The snapshot lists each fact or
+  note separately.
+- **No checker-level `depends` yet.** Every entry depends on the domain
+  identity and on the task's `depends` files. A checker cannot add further
+  dependencies.
+- **Malformed notes are ignored.** A notes file that is not a JSON list of at
+  most 32 strings, within 16 KiB, adds no entry. Its raw bytes stay in the
+  submission capture. The sandbox records file-level problems, such as a link or
+  an oversized file, as `notes-error.txt`.
+- **The snapshot cites its entries.** The run's spec record lists the entries
+  it shows as origin inputs.
+- **No example directory.** The two-task case runs in the tests rather than as
+  an example under `examples/m7/`.
+- **The duplicate guard.** The guard (#51) is on a separate branch. When both
+  are merged, the guard must leave `notes.json` out of its comparison, so that
+  changing a note cannot make a repeated candidate look new.
 
 ## Questions for review
 

@@ -158,7 +158,7 @@ correction) are distinguished from runtime failures (`infrastructure_failure`).
 provenance or project metadata. The host also creates an empty, root-owned,
 read-only `responses` directory for [operation results](#host-mediated-operations).
 Filenames must be safe basenames other than `context.json`, `result.json`,
-`workspace`, and `responses`, and the total input is limited to 1 MiB. The worker receives no ledger, checkpoint database, private reference, or
+`workspace`, `responses`, and `notes.json`, and the total input is limited to 1 MiB. The worker receives no ledger, checkpoint database, private reference, or
 future fixture version. Publishing a fixture as development evidence does not make
 it worker context.
 
@@ -167,10 +167,14 @@ until none remain alive. It then:
 
 1. Opens `result.json` without following links. It accepts only a regular file
    with one link and at most 1 MiB.
-2. Captures `/work/workspace/` as `workspace.json`. The capture holds at most 128
+2. If `/work/notes.json` exists, captures it under the same rules with a 16 KiB
+   limit. These are the worker's notes for [scoped memory](../proposals/m7-scoped-memory.md).
+   A notes file that breaks the rules is recorded as `notes-error.txt` and does
+   not fail the capture. Checkers never receive either file.
+3. Captures `/work/workspace/` as `workspace.json`. The capture holds at most 128
    regular files, 16 path components, and 1 MiB of content. Directory links, file
    links, special files, and hard-linked files fail the capture.
-3. Removes the container. The bytes are recorded in the tool receipt only after
+4. Removes the container. The bytes are recorded in the tool receipt only after
    removal.
 
 The checker must use that captured artifact, never a mutable workspace path.

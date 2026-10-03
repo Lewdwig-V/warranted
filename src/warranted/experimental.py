@@ -4,7 +4,8 @@ This module tests the shape proposed in docs/proposals/m7-harness-api.md against
 existing ledger, worker, and acceptance boundaries. Names and behavior may change
 or disappear without notice. It covers one slice: TOML tasks, a domain's checkers,
 explicit run IDs, one episode per submission, worker-visible feedback, and the six
-run outcomes. Memory, revisions, the duplicate guard, and campaigns are absent.
+run outcomes, plus scoped memory. Revisions, the duplicate guard, and campaigns
+are absent.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from warranted.acceptance import Acceptance, AcceptanceContext, Evidence, Status
+from warranted.claims import Applicability, Claims
 from warranted.jobs import JobContext, JobRunner, PodmanJobs
 from warranted.ledger import (
     ROOT_SCOPE,
@@ -57,7 +59,14 @@ PRODUCER = "warranted-tasks"
 FEEDBACK_LIMIT = 64 * 1024
 _NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}")
 _ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,100}")
-_RESERVED = {"context.json", "result.json", "workspace", "responses"}
+# Scoped memory: checker facts, worker notes, and the per-run snapshot.
+NOTES, MEMORY = "notes.json", "memory.json"
+FACTS_COUNT, FACTS_LIMIT = 16, 16 * 1024
+NOTES_COUNT, NOTES_LIMIT = 32, 16 * 1024
+MEMORY_LIMIT = 64 * 1024
+_RESERVED = {"context.json", "result.json", "workspace", "responses", NOTES, MEMORY}
+# Captured beside the candidate but never shown to a checker.
+_WORKER_NOTES = {NOTES, "notes-error.txt"}
 
 
 def _json(value: Any) -> bytes:
@@ -86,15 +95,21 @@ class RunOutcome(StrEnum):
 
 @dataclass(frozen=True)
 class Verdict:
-    """A checker's result. Only `feedback` is ever shown to the worker."""
+    """A checker's result. `feedback` is shown to this run's worker; `facts` reach
+    later tasks in the same memory scope if the submission is accepted."""
 
     status: VerdictStatus
     feedback: Any = None
     host_only: Any = None
+    facts: tuple = ()
 
     def __post_init__(self):
         object.__setattr__(self, "status", VerdictStatus(self.status))
-        _json(self.feedback), _json(self.host_only)  # must be JSON-serialisable
+        if not isinstance(self.facts, (tuple, list)):
+            raise TypeError("facts must be a sequence of JSON values")
+        object.__setattr__(self, "facts", tuple(self.facts))
+        # Must be JSON-serialisable.
+        _json(self.feedback), _json(self.host_only), _json(list(self.facts))
 
 
 class CheckContext(JobContext):
@@ -235,6 +250,28 @@ def _project_identity(domain: Domain, environment_id: str, jobs) -> dict[str, st
 
 
 @dataclass(frozen=True)
+class MemorySpec:
+    """A task's memory scope, and the task files whose bytes define the family."""
+
+    scope: str
+    depends: tuple[str, ...] = ()
+
+    def __post_init__(self):
+        if type(self.scope) is not str or not _ID.fullmatch(self.scope):
+            raise ValueError("invalid memory scope")
+        if not isinstance(self.depends, (tuple, list)):
+            raise ValueError("memory depends must list task file names")
+        object.__setattr__(self, "depends", tuple(self.depends))
+        if not all(type(name) is str for name in self.depends) or len(
+            set(self.depends)
+        ) != len(self.depends):
+            raise ValueError("memory depends must name distinct task files")
+
+    def record(self) -> dict:
+        return {"scope": self.scope, "depends": list(self.depends)}
+
+
+@dataclass(frozen=True)
 class TaskSpec:
     """What to solve. Loaded from TOML; inputs and private files are pinned bytes."""
 
@@ -245,12 +282,13 @@ class TaskSpec:
     checks: tuple[str, ...]
     submissions: int
     check_budget: int | None = None
+    memory: MemorySpec | None = None
 
     @classmethod
     def load(cls, path: Path) -> TaskSpec:
         path = Path(path)
         data = tomllib.loads(path.read_text())
-        known = {"id", "objective", "inputs", "private", "checks", "budgets"}
+        known = {"id", "objective", "inputs", "private", "checks", "budgets", "memory"}
         if not data.keys() <= known or not {"id", "objective", "checks"} <= set(data):
             raise ValueError("task needs id, objective, and checks, and nothing else")
         budgets = data.get("budgets", {})
@@ -265,6 +303,14 @@ class TaskSpec:
                 for name, relative in table.items()
             }
 
+        memory = data.get("memory")
+        if memory is not None:
+            if not isinstance(memory, dict) or not {"scope"} <= memory.keys() <= {
+                "scope",
+                "depends",
+            }:
+                raise ValueError("memory needs a scope and optional depends")
+            memory = MemorySpec(memory["scope"], memory.get("depends", ()))
         return cls(
             data["id"],
             data["objective"],
@@ -273,6 +319,7 @@ class TaskSpec:
             tuple(data["checks"]),
             budgets.get("submissions", 1),
             budgets.get("checks"),
+            memory,
         )
 
     def __post_init__(self):
@@ -301,6 +348,11 @@ class TaskSpec:
             type(self.check_budget) is not int or self.check_budget < 0
         ):
             raise ValueError("check budget must be a non-negative integer")
+        if self.memory is not None:
+            if not isinstance(self.memory, MemorySpec):
+                raise ValueError("memory must be a MemorySpec")
+            if not set(self.memory.depends) <= self.inputs.keys() | self.private.keys():
+                raise ValueError("memory depends names a file the task does not have")
 
     def record(self) -> dict[str, bytes]:
         raw = {
@@ -313,6 +365,7 @@ class TaskSpec:
                     "checks": list(self.checks),
                     "submissions": self.submissions,
                     "check_budget": self.check_budget,
+                    "memory": self.memory and self.memory.record(),
                 }
             )
         }
@@ -369,6 +422,52 @@ class RunResult:
     outcome: RunOutcome
     submissions: tuple[Submission, ...]
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class MemoryEntry:
+    """Facts from one check, or notes from one submission, assessed for a task.
+
+    The tier is derived from the recorded acceptance decision, never stored.
+    """
+
+    run_id: str
+    task_id: str
+    submission: int
+    source: str  # "check/<name>" or "notes"
+    items: tuple
+    accepted: bool
+    applicability: Applicability
+    dependencies: Mapping[str, Applicability]
+    sequence: int  # ledger order of the entry record
+    evidence: Evidence  # the entry record itself
+
+    @property
+    def tier(self) -> str | None:
+        if not self.accepted:
+            return None
+        return "promoted" if self.source == "notes" else "verified"
+
+    @property
+    def shown(self) -> bool:
+        return self.accepted and self.applicability is Applicability.CURRENT
+
+
+def _notes(data: bytes) -> tuple[str, ...] | None:
+    """Worker notes, or None when the file is malformed or too large."""
+    if len(data) > NOTES_LIMIT:
+        return None
+    try:
+        notes = json.loads(data)
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if (
+        type(notes) is not list
+        or len(notes) > NOTES_COUNT
+        or not all(type(note) is str for note in notes)
+    ):
+        return None
+    return tuple(notes)
 
 
 @dataclass
@@ -482,13 +581,17 @@ class Project:
             caps["check"] = task.check_budget
         with Ledger.open(self.ledger_root) as ledger:
             session = ledger.start_session()
+            # Fixed now and recorded with the spec, so resume never recomputes it.
+            snapshot, cited = self._snapshot(ledger, session, task)
             # Caps are recorded before any run record, so a resume cannot change them.
             ledger.open_scope(session, f"run/{run_id}", caps)
             record_once(
                 ledger,
                 session,
-                Origin(f"run/{run_id}/spec", "run-spec", PRODUCER, "1", {}),
-                task.record() | {"config.json": config.record()},
+                Origin(f"run/{run_id}/spec", "run-spec", PRODUCER, "1", cited),
+                task.record()
+                | {"config.json": config.record()}
+                | ({MEMORY: snapshot} if snapshot is not None else {}),
             )
             policy = {
                 "version": 1,
@@ -515,6 +618,186 @@ class Project:
                 if o.origin.kind == "run-spec"
             )
 
+    def memory(self, task: TaskSpec) -> tuple[MemoryEntry, ...]:
+        """Every entry in the task's memory scope, newest first, assessed against the
+        task's files and this project's domain. Withheld entries are included.
+
+        Records only derived bookkeeping (entries, their claims, and version
+        records), all idempotent; it runs no checker and changes no decision.
+        """
+        if task.memory is None:
+            return ()
+        with Ledger.open(self.ledger_root) as ledger:
+            return self._memory(ledger, ledger.start_session(), task)
+
+    def _version(self, ledger: Ledger, session: str, name: str, data: bytes):
+        """One record per (name, bytes), so equal bytes compare equal across runs."""
+        capture = record_once(
+            ledger,
+            session,
+            Origin(
+                f"memory-version/{name}/{_digest(data)}",
+                "memory-version",
+                PRODUCER,
+                "1",
+                {},
+            ),
+            {"version": data},
+        )
+        return Evidence.captured(capture, "version")
+
+    def _versions(self, ledger, session, files: Mapping[str, bytes], names):
+        domain = _json(dict(ledger.project.manifest.environment))
+        versions = {"domain": self._version(ledger, session, "domain", domain)}
+        for name in names:
+            if name in files:
+                versions[f"file/{name}"] = self._version(
+                    ledger, session, f"file/{name}", files[name]
+                )
+        return versions
+
+    @staticmethod
+    def _recorded_target(ledger: Ledger, run: _Run, index: int) -> Evidence | None:
+        for o in ledger.history():
+            if o.origin.operation_id == f"run/{run.run_id}/submission/{index}":
+                return Evidence.captured(o, "submission.json")
+        return None
+
+    @staticmethod
+    def _accepted(ledger: Ledger, target: Evidence) -> bool:
+        for operation in ledger.operations():
+            origin = operation.request.origin
+            if (
+                origin.kind == "decision"
+                and origin.inputs.get(target.name) == target.artifact
+                and operation.completion is not None
+            ):
+                ref = operation.completion.observation.artifacts["decision.json"]
+                if json.loads(ledger.read_artifact(ref))["status"] == Status.ACCEPTED:
+                    return True
+        return False
+
+    def _sources(self, ledger: Ledger, run: _Run, index: int, target: Evidence):
+        """Checker facts and worker notes recorded for one assessed submission."""
+        for name in run.task.checks:
+            operation = ledger.lookup(
+                self._check_request(ledger, run, index, name, target)
+            )
+            completion = operation and operation.completion
+            if (
+                completion is not None
+                and "facts.json" in completion.observation.artifacts
+            ):
+                ref = Evidence.captured(completion.observation, "facts.json")
+                items = json.loads(ledger.read_artifact(ref.artifact))
+                yield f"check/{name}", ref, tuple(items)
+        note = submitted_files(ledger, self._episode_id(run, index)).get(NOTES)
+        if note is not None:
+            items = _notes(ledger.read_artifact(note.artifact))
+            if items:
+                yield "notes", note, items
+
+    def _memory(self, ledger: Ledger, session: str, task: TaskSpec):
+        """Record any missing entries and claims, then assess them for `task`.
+
+        Entries derive only from recorded checks and captures, so a crash before
+        this runs loses nothing: the next call records them.
+        """
+        claims, found = Claims(ledger, session), []
+        runs = [o for o in ledger.history() if o.origin.kind == "run-spec"]
+        for spec in runs:
+            run = self._load(ledger, spec.origin.operation_id.split("/")[1])
+            memory = run.task.memory
+            if memory is None or memory.scope != task.memory.scope:
+                continue
+            files = {**run.task.inputs, **run.task.private}
+            for index in range(1, run.task.submissions + 1):
+                target = self._recorded_target(ledger, run, index)
+                if target is None:
+                    continue
+                for source, ref, items in self._sources(ledger, run, index, target):
+                    body = {
+                        "version": 1,
+                        "scope": memory.scope,
+                        "run": run.run_id,
+                        "task": run.task.id,
+                        "submission": index,
+                        "source": source,
+                        "items": list(items),
+                    }
+                    capture = record_once(
+                        ledger,
+                        session,
+                        Origin(
+                            f"run/{run.run_id}/submission/{index}/memory/{source}",
+                            "memory-entry",
+                            PRODUCER,
+                            "1",
+                            {target.name: target.artifact, ref.name: ref.artifact},
+                        ),
+                        {"entry.json": _json(body)},
+                    )
+                    entry = Evidence.captured(capture, "entry.json")
+                    claim = claims.record(
+                        f"memory entry {source} in scope {memory.scope}",
+                        entry,
+                        self._versions(ledger, session, files, memory.depends),
+                        complete=True,
+                    )
+                    found.append((run, index, source, items, target, claim, capture))
+        files = {**task.inputs, **task.private}
+        current = self._versions(ledger, session, files, files)
+        entries = []
+        for run, index, source, items, target, claim, capture in found:
+            assessment = claims.assess(claim, current)
+            entries.append(
+                MemoryEntry(
+                    run.run_id,
+                    run.task.id,
+                    index,
+                    source,
+                    items,
+                    self._accepted(ledger, target),
+                    assessment.applicability,
+                    assessment.dependencies,
+                    capture.sequence,
+                    Evidence.captured(capture, "entry.json"),
+                )
+            )
+        return tuple(sorted(entries, key=lambda e: e.sequence, reverse=True))
+
+    def _snapshot(self, ledger: Ledger, session: str, task: TaskSpec):
+        """The memory file a new run shows its worker, and the entries it cites."""
+        if task.memory is None:
+            return None, {}
+        shown, cited, size = [], {}, 0
+        withheld = {"stale": 0, "unknown": 0, "over_limit": 0}
+        for entry in self._memory(ledger, session, task):
+            if not entry.accepted:
+                continue  # unaccepted facts and notes are withheld silently
+            if entry.applicability is not Applicability.CURRENT:
+                withheld[str(entry.applicability)] += 1
+                continue
+            for item in entry.items:
+                record = {
+                    "tier": entry.tier,
+                    "task": entry.task_id,
+                    "run": entry.run_id,
+                    "submission": entry.submission,
+                    "source": entry.source,
+                    "body": item,
+                }
+                if size + len(_json(record)) > MEMORY_LIMIT:
+                    withheld["over_limit"] += 1
+                    continue
+                size += len(_json(record))
+                shown.append(record)
+                cited[entry.evidence.name] = entry.evidence.artifact
+        raw = _json(
+            {"scope": task.memory.scope, "entries": shown, "withheld": withheld}
+        )
+        return raw, cited
+
     def _load(self, ledger: Ledger, run_id: str) -> _Run:
         found = {
             o.origin.kind: o
@@ -534,6 +817,7 @@ class Project:
             tuple(meta["checks"]),
             meta["submissions"],
             meta["check_budget"],
+            meta.get("memory") and MemorySpec(**meta["memory"]),
         )
         config = RunConfig(**json.loads(read["config.json"]))
         policy = Evidence.captured(found["run-policy"], "policy.json")
@@ -671,6 +955,8 @@ class Project:
 
     def _episode(self, run: _Run, index: int) -> Episode:
         files = {name: run.evidence(f"input/{name}") for name in run.task.inputs}
+        if MEMORY in run.spec.artifacts:
+            files[MEMORY] = run.evidence(MEMORY)
         workspace = None
         objective = run.task.objective
         if index > 1:
@@ -783,7 +1069,11 @@ class Project:
                 raise UnknownOutcome(f"unknown outcome: {request.origin.operation_id}")
             files = submitted_files(ledger, self._episode_id(run, index))
             context = CheckContext(
-                {n: ledger.read_artifact(ref.artifact) for n, ref in files.items()},
+                {
+                    n: ledger.read_artifact(ref.artifact)
+                    for n, ref in files.items()
+                    if n not in _WORKER_NOTES
+                },
                 run.task.inputs,
                 run.task.private,
                 self.jobs,
@@ -807,6 +1097,20 @@ class Project:
                         "status": verdict.status,
                         "feedback": verdict.feedback,
                         "host_only": verdict.host_only,
+                    },
+                )
+            facts = len(_json(list(verdict.facts)))
+            if len(verdict.facts) > FACTS_COUNT or facts > FACTS_LIMIT:
+                # Facts reach later workers; too many is a checker fault, kept whole.
+                verdict = Verdict(
+                    VerdictStatus.INFRASTRUCTURE_FAILURE,
+                    host_only={
+                        "error": f"{len(verdict.facts)} facts in {facts} bytes; "
+                        f"limit {FACTS_COUNT} facts in {FACTS_LIMIT} bytes",
+                        "status": verdict.status,
+                        "feedback": verdict.feedback,
+                        "host_only": verdict.host_only,
+                        "facts": list(verdict.facts),
                     },
                 )
             outcome, code = {
@@ -833,6 +1137,7 @@ class Project:
                     "seeds.json": _json(context.seeds),
                     "jobs.json": _json(context.job_log),
                 }
+                | ({"facts.json": _json(list(verdict.facts))} if verdict.facts else {})
                 | context.job_output,
             )
         return request.origin.operation_id

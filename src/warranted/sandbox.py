@@ -151,6 +151,22 @@ except (OSError, ValueError) as error:
     detail = str(error).encode('utf-8', 'backslashreplace')
     captured['result-error.txt'] = base64.b64encode(detail).decode()
 try:
+    # Optional worker notes for scoped memory; never part of the candidate's check.
+    if os.path.lexists('/work/notes.json'):
+        fd = os.open('notes.json', flags, dir_fd=directory)
+        with os.fdopen(fd, 'rb') as file:
+            info = os.fstat(file.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_size > 16384):
+                raise ValueError('notes require a bounded regular file, one link')
+            data = file.read(16385)
+            if len(data) > 16384:
+                raise ValueError('notes exceed limit')
+        captured['notes.json'] = base64.b64encode(data).decode()
+except (OSError, ValueError) as error:
+    detail = str(error).encode('utf-8', 'backslashreplace')
+    captured['notes-error.txt'] = base64.b64encode(detail).decode()
+try:
     workspace, size = {}, 0
     workspace_dir = os.open('workspace', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
                             dir_fd=directory)
@@ -222,7 +238,8 @@ class Sandbox:
             raise ValueError("episode must pin the container environment")
         if any(
             not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}", name)
-            or name in {"context.json", "result.json", "workspace", "responses"}
+            or name
+            in {"context.json", "result.json", "workspace", "responses", "notes.json"}
             for name in (*episode.inputs, *episode.files)
         ):
             raise ValueError("worker input names must be safe, distinct basenames")

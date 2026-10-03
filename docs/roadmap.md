@@ -150,10 +150,12 @@ domain project supplies only domain knowledge. Specifically:
 - [ ] **Submission policy.** Budgets for probes and submissions, and a
   repeated-candidate guard using a domain-supplied normalisation, enforced by
   the host rather than the worker.
-- [ ] **Scoped memory.** Claims scoped to a family of related tasks, with
+- [x] **Scoped memory.** Claims scoped to a family of related tasks, with
   receipt-backed facts kept separate from worker notes. A note is promoted only
   when its own submission is accepted. Selected facts reach later tasks as
-  context files.
+  context files ([design](proposals/m7-scoped-memory.md)). Implemented in the
+  prototype task layer; the RE-style fixture across restart is still part of
+  M7's completion evidence.
 - [ ] **CLI.** Commands to initialise a project, run and resume a task, report
   status and accounting, export evidence, and run a pinned campaign of tasks. The
   CLI uses only the public API.
