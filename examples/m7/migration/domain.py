@@ -54,7 +54,7 @@ MIGRATION = ProofTarget(
 )
 
 
-def renaming_premises(ctx: CheckContext) -> dict[str, bool]:
+def renaming_correspondence(ctx: CheckContext) -> dict[str, bool]:
     """M5's migration application: the candidate renames host and timeout exactly.
 
     The theorem covers both label variants, so the label is not a premise; the
@@ -114,6 +114,6 @@ class MigrationDomain:
     worker_image = DEFAULT_WORKER_IMAGE
     checkers = {
         "migration": Migration(),
-        "renaming": LeanProof(MIGRATION, premises=renaming_premises),
+        "renaming": LeanProof(MIGRATION, correspondence=renaming_correspondence),
     }
     sources = (M5_SOURCE,)  # loaded with runpy, so not found by following imports

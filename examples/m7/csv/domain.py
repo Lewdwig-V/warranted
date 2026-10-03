@@ -81,21 +81,24 @@ def _candidate_rows(ctx: CheckContext) -> list | None:
 
 
 def uniqueness_premises(ctx: CheckContext) -> dict[str, bool]:
-    """M4's application checks: unique input IDs, and an identity selection of them."""
+    """M4's applicability premise: the input IDs are unique."""
+    source = [row[0] for row in M2["read_rows"](ctx.inputs["input.csv"])]
+    return {"input_unique": len(source) == len(set(source))}
+
+
+def uniqueness_correspondence(ctx: CheckContext) -> dict[str, bool]:
+    """M4's model correspondence: the candidate is an identity selection of the IDs."""
     source = [row[0] for row in M2["read_rows"](ctx.inputs["input.csv"])]
     rows = _candidate_rows(ctx)
     well_formed = rows is not None and all(
         type(r) is list and len(r) == 3 and type(r[0]) is str for r in rows
     )
     remaining = iter(source)
-    return {
-        "input_unique": len(source) == len(set(source)),
-        # In order, each candidate ID is a source ID: the mapping is the identity.
-        "identity_selection": well_formed and all(r[0] in remaining for r in rows),
-    }
+    # In order, each candidate ID is a source ID: the mapping is the identity.
+    return {"identity_selection": well_formed and all(r[0] in remaining for r in rows)}
 
 
-def timestamp_premises(ctx: CheckContext) -> dict[str, bool]:
+def timestamp_correspondence(ctx: CheckContext) -> dict[str, bool]:
     """M5's timestamp application: one fixed offset, in whole seconds, for every row."""
     from datetime import datetime
 
@@ -116,7 +119,11 @@ class CsvDomain:
     worker_image = DEFAULT_WORKER_IMAGE
     checkers = {
         "transformation": Transformation(),
-        "uniqueness": LeanProof(UNIQUENESS, premises=uniqueness_premises),
-        "timestamp": LeanProof(TIMESTAMP, premises=timestamp_premises),
+        "uniqueness": LeanProof(
+            UNIQUENESS,
+            premises=uniqueness_premises,
+            correspondence=uniqueness_correspondence,
+        ),
+        "timestamp": LeanProof(TIMESTAMP, correspondence=timestamp_correspondence),
     }
     sources = (M2_SOURCE,)  # loaded with runpy, so not found by following imports
