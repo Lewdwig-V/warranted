@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -93,6 +94,8 @@ class LocalChatCompletions:
     max_tokens: int = 256
     timeout_seconds: int = 120
     seed: int = 0
+    # The installed model's digest; required before a local model can be verified.
+    model_digest: str | None = None
 
     def __post_init__(self):
         url = urlsplit(self.base_url)
@@ -121,6 +124,11 @@ class LocalChatCompletions:
             raise ValueError("request timeout must be between 1 and 300 seconds")
         if type(self.seed) is not int or not 0 <= self.seed < 2**31:
             raise ValueError("seed must be a nonnegative 32-bit signed integer")
+        if self.model_digest is not None and (
+            type(self.model_digest) is not str
+            or not re.fullmatch(r"[0-9a-f]{64}", self.model_digest)
+        ):
+            raise ValueError("model digest must be a lowercase SHA-256 digest")
 
     @property
     def parameters(self) -> dict:
@@ -135,12 +143,34 @@ class LocalChatCompletions:
         }
 
     @property
-    def verification_key(self) -> str:
-        return self.model
+    def verification_key(self) -> str | None:
+        """A tag can be repointed, so only a pinned installed digest is verifiable."""
+        if self.model_digest is None:
+            return None
+        return f"{self.model}@{self.model_digest}"
 
     @property
     def token_bounded(self) -> bool:
-        return self.verification_key in self.verified_models
+        key = self.verification_key
+        return key is not None and key in self.verified_models
+
+    def _model_changed(self) -> str | None:
+        """Why the served model is not the verified one, or None if it is."""
+        try:
+            with http_response(
+                self.base_url.removesuffix("/v1") + "/api/tags", None, 10
+            ) as response:
+                body = response.read(MAX_BYTES + 1)
+                status = response.status
+            if status != 200 or len(body) > MAX_BYTES:
+                return f"model metadata HTTP status {status}"
+            models = json.loads(body, object_pairs_hook=_json_object)["models"]
+            digests = [m.get("digest") for m in models if m.get("name") == self.model]
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            return f"model metadata unavailable: {error}"
+        if digests != [self.model_digest]:
+            return "installed model digest differs from the verified model"
+        return None
 
     @property
     def reserved_units(self) -> frozenset[str]:
@@ -212,6 +242,7 @@ class LocalChatCompletions:
                     "max_bytes": MAX_BYTES,
                     "parameters": self.parameters,
                     "token_bound": {
+                        "model_digest": self.model_digest,
                         "verified": self.token_bounded,
                         "message_margin": MESSAGE_MARGIN,
                     },
@@ -259,6 +290,14 @@ class LocalChatCompletions:
                 Result(Outcome.FAILED, 1, self._usage(0), 0),
                 {"diagnostic": b"model request exceeds byte limit"},
             )
+        if self.token_bounded:
+            # The bound was measured for one installed model; never send to another.
+            changed = self._model_changed()
+            if changed is not None:
+                return AttemptResult(
+                    Result(Outcome.INFRASTRUCTURE_FAILURE, None, self._usage(0), 0),
+                    {"diagnostic": changed.encode()},
+                )
         started = monotonic_ns()
         # Transport/read exceptions deliberately leave the journal reservation open.
         status, body = self._post(wire)

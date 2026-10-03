@@ -62,14 +62,16 @@ its own reservation and usage contract.
 
 ## Local OpenAI-compatible endpoint
 
-`LocalChatCompletions(base_url, model, max_tokens=256, timeout_seconds=120, seed=0)`
+`LocalChatCompletions(base_url, model, max_tokens=256, timeout_seconds=120, seed=0, model_digest=None)`
 sends one text request to `/v1/chat/completions`, following
 [Ollama's compatibility API](https://docs.ollama.com/api/openai-compatibility).
 It uses only Python's standard library.
 
 - **Configuration.** `base_url` must be `http://127.0.0.1:<port>/v1`.
   `max_tokens` is 1–8192, `timeout_seconds` is 1–300, and `seed` is a nonnegative
-  32-bit integer. The fixed parameters are `temperature: 0`, `stream: false`,
+  32-bit integer. `model_digest`, when given, is the installed model's SHA-256
+  digest; only a model with a pinned digest can be
+  [verified for token budgets](#token-budgets). The fixed parameters are `temperature: 0`, `stream: false`,
   `reasoning_effort: "none"`, and a JSON-object response format.
   `examples/m5/treatments.py` replaces the response format with a strict
   `{"command": string}` JSON schema.
@@ -101,9 +103,15 @@ rejects it.
 
 The ledger units `prompt_tokens` and `completion_tokens` bound what model calls
 may spend ([design](../proposals/m7-token-budgets.md)). An adapter reserves them
-only when its model is in the class's `verified_models`, keyed by the model name
-for `LocalChatCompletions` and by `model@provider_tag` for
-`OpenRouterChatCompletions`. **Both lists are empty.** A model is added only after
+only when its model is in the class's `verified_models`, keyed by
+`model@model_digest` for `LocalChatCompletions` and by `model@provider_tag` for
+`OpenRouterChatCompletions`. An Ollama tag can be repointed or re-pulled, so a
+local model without a pinned `model_digest` is never verified, and before each
+inference for a verified model the adapter reads `/api/tags` and settles an
+`infrastructure_failure` with zero usage, without sending, unless the tag still
+names exactly the pinned digest. A re-pull between that check and inference is
+not detected. OpenRouter relies on its existing runtime preflight, which pins the
+provider endpoint. **Both lists are empty.** A model is added only after
 a recorded measurement under `docs/experiments/` shows its reported prompt tokens
 within the bound, including for short prompts.
 

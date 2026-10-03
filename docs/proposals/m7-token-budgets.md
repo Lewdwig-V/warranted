@@ -221,6 +221,12 @@ prompt tokens. Include requests with a single short message.
   carries valid counts but fails a later check, such as an unexpected choice, the
   reported counts are settled; only a response whose counts were never read is
   charged at the bound.
+- **A local model is verified by its installed digest.** Review found that an
+  Ollama tag alone can be repointed after verification. `LocalChatCompletions`
+  takes an optional `model_digest`, verification is keyed by `model@digest`, and
+  a verified adapter checks the installed digest before each inference, failing
+  with zero usage if it differs. A re-pull between the check and the request is
+  still possible and would surface only as a breach.
 - The per-message margin is 16 tokens, applied once per message and once for the
   generation prompt. It is a starting value for the first measurement to confirm
   or raise.

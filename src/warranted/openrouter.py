@@ -133,6 +133,9 @@ class OpenRouterChatCompletions(LocalChatCompletions):
     def verification_key(self) -> str:
         return f"{self.model}@{self.provider_tag}"
 
+    def _model_changed(self) -> str | None:
+        return None  # The runtime preflight pins the provider endpoint instead.
+
     def _key(self) -> str:
         key = self.key_file.read_text().strip()
         if not re.fullmatch(r"sk-or-v1-[a-f0-9]{64}", key):
