@@ -53,6 +53,8 @@ provisional until ReSchema runs on them (M8).
 - The CSV and migration fixtures' proof cases still run only on the host kit,
   and no fixture runs through the CLI yet.
 - The CLI supports only local OpenAI-compatible model endpoints.
+- A project opens only with the Warranted build that created it; every upgrade
+  needs a new project.
 
 [Unreleased]: https://github.com/Lewdwig-V/warranted/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/Lewdwig-V/warranted/releases/tag/v0.1.0

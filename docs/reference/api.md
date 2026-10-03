@@ -15,7 +15,8 @@ private and may change without notice.
 
 Warranted uses [semantic versioning](https://semver.org/spec/v2.0.0.html) for
 `warranted`, its CLI (commands, options, exit statuses, and `--json` output
-versions), and its task, revision, run, and campaign file formats.
+versions), and the task, revision, run, and campaign files a user writes. It does
+not cover project directories: see *Projects and upgrades* below.
 
 - **Before 1.0**, a minor release (0.x to 0.x+1) may change or remove public
   names; a patch release does not. Every change is in the changelog.
@@ -25,10 +26,13 @@ versions), and its task, revision, run, and campaign file formats.
   is removed. A deprecated name keeps working, raises `DeprecationWarning` when
   used, names its replacement, and is listed under *Deprecated* in the changelog
   entry that deprecates it.
-- **Recorded state.** A release that changes the meaning of recorded ledger
-  state refuses to open older projects rather than reinterpreting them; the
-  project identity pins the Warranted version and package digest. Such a change
-  is listed under *Changed* with what a user must do.
+- **Projects and upgrades.** A project is bound to the exact Warranted build
+  that created it: its identity pins the package version and a digest of the
+  package's files. Every upgrade, including a patch release, refuses to open a
+  project created by another build, so recorded state is never reinterpreted.
+  Finish or export a project's runs before upgrading, then create a new project.
+  Opening older projects is not supported in any release so far; a release that
+  adds it will say so here and in the changelog.
 
 Domain projects such as ReSchema pin a tagged release
 (`warranted @ git+https://github.com/Lewdwig-V/warranted@vX.Y.Z`) until 1.0 is
