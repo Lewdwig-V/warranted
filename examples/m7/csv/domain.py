@@ -8,7 +8,8 @@ from warranted.experimental import CheckContext, Verdict, VerdictStatus
 from warranted.sandbox import IMAGE
 
 HERE = Path(__file__).resolve().parent
-M2 = runpy.run_path(str(HERE.parent.parent / "m2/experiments.py"))
+M2_SOURCE = HERE.parent.parent / "m2/experiments.py"
+M2 = runpy.run_path(str(M2_SOURCE))
 
 
 class Transformation:
@@ -51,3 +52,4 @@ class CsvDomain:
     version = "0.1"
     worker_image = IMAGE
     checkers = {"transformation": Transformation()}
+    sources = (M2_SOURCE,)  # loaded with runpy, so not found by following imports
