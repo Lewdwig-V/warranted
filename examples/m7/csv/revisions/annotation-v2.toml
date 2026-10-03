@@ -1,0 +1,8 @@
+# M2's annotation edit: documentation only; no calculation changes.
+id = "annotation-v2"
+owner = "fixture-owner"
+reason = "The annotation now says where the records come from."
+remove = ["annotation-v1"]
+
+[inputs]
+"annotation-v2" = "../annotation-v2"

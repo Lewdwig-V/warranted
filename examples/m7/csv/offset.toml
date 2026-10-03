@@ -1,5 +1,5 @@
-# First-slice prototype task: the M1–M3 CSV transformation under the first offset.
-id = "csv-offset-v1"
+# The CSV task with M2's offset revision scheduled after the first submission.
+id = "csv-offset-revision"
 objective = "Read worker-task.md and the current offset. Write result.json, then submit."
 checks = ["transformation"]
 
@@ -14,3 +14,7 @@ checks = ["transformation"]
 
 [budgets]
 submissions = 3
+
+[[revisions]]
+after_submission = 1
+file = "revisions/offset-v2.toml"

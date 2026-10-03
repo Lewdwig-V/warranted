@@ -132,6 +132,7 @@ def test_rejection_feedback_reaches_the_next_episode_without_private_data(tmp_pa
         "input.csv",
         "worker-task.md",
         "offset-v1",
+        "definition-v1",
         "feedback-001.json",
     }
     assert second.workspace is not None and second.continues is not None
