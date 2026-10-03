@@ -310,6 +310,9 @@ domain-independent; reverse-engineering behavior remains in ReSchema.
 | [Jev / TypeSafe](https://docs.typesafe.ai/introduction) | Candidate for the optional, not-yet-started classifier and judge | [Classification and judgment](#jev-system-1-classification-and-judgment) |
 | [Hindsight](https://hindsight.vectorize.io/) | Later memory integration candidate | [Scope and provisional choices](#scope-and-provisional-choices) |
 | [AutoSaddler](https://github.com/microsoft/AutoSaddler) | Later harness-optimisation candidate | [Scope and provisional choices](#scope-and-provisional-choices) |
+| Complementary learning systems ([McClelland, McNaughton, and O'Reilly, 1995](https://doi.org/10.1037/0033-295X.102.3.419); [Kumaran, Hassabis, and McClelland, 2016](https://doi.org/10.1016/j.tics.2016.05.004)) | Proposed fast and slow memory tiers, and interleaved checks against interference | [N11](proposals/general-purpose-harness.md#n11-memory-neither-consolidates-nor-measures-its-own-usefulness) |
+| [DreamCoder](https://arxiv.org/abs/2006.08381) (Ellis and colleagues, 2021) | Wake-sleep library learning, as a model for proposed consolidation | [N11](proposals/general-purpose-harness.md#n11-memory-neither-consolidates-nor-measures-its-own-usefulness) |
+| [Clauderizer](https://github.com/CollinCusce/Clauderizer/blob/3b792597d2cfc05a72bcad82227eae007bbf41ca) (Collin Cusce and contributors, Apache-2.0, 2.0.3) | Methods only, with no code or integration: dream-note triage and shown-versus-outcome telemetry | [N11](proposals/general-purpose-harness.md#n11-memory-neither-consolidates-nor-measures-its-own-usefulness) |
 
 Credit the source where its idea is introduced, explain our adaptation, and retain
 the citation when refactoring the design. Research inspiration does not imply an

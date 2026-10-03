@@ -295,11 +295,16 @@ interference ([McClelland, McNaughton, and O'Reilly, 1995](https://doi.org/10.10
 [Kumaran, Hassabis, and McClelland, 2016](https://doi.org/10.1016/j.tics.2016.05.004)).
 [DreamCoder](https://arxiv.org/abs/2006.08381) (Ellis and colleagues, 2021)
 applies a wake-sleep cycle to program synthesis, growing a library of
-abstractions from solved tasks. [Clauderizer](https://github.com/CollinCusce/Clauderizer)
-supplies two engineering methods: offline distillation of an agent's notes into
-proposals that a person triages before they become memory, and telemetry that
-joins the lessons a session was shown with whether that session's phase
-passed. We borrow the tier split, the offline cycle, and the shown-versus-outcome
+abstractions from solved tasks. [Clauderizer](https://github.com/CollinCusce/Clauderizer),
+by Collin Cusce and the Clauderizer contributors (Apache-2.0; read at version
+2.0.3, commit `3b79259`), supplies two engineering methods:
+
+- **Dream notes and triage.** An agent's short notes are distilled offline into
+  proposals, which a person triages before they become memory
+  ([`dreams.py`](https://github.com/CollinCusce/Clauderizer/blob/3b792597d2cfc05a72bcad82227eae007bbf41ca/src/clauderizer/dreams.py)).
+- **Shown-versus-outcome telemetry.** It joins the lessons a session was shown
+  with whether that session's phase passed
+  ([`telemetry.py`](https://github.com/CollinCusce/Clauderizer/blob/3b792597d2cfc05a72bcad82227eae007bbf41ca/src/clauderizer/telemetry.py)). We borrow the tier split, the offline cycle, and the shown-versus-outcome
 join. Our adaptation is that consolidated knowledge is a candidate that must pass
 checks, not only triage, and that it keeps its provenance and goes stale. None of
 this is implemented.
