@@ -179,14 +179,18 @@ which checker passed, but not what kind of warrant the pass is.
 
 **Change:** each checker declares its *trust basis*, from a small closed set:
 
-- `example`: tested on given cases;
+- `example`: consistent with given cases, which sample a larger claim;
+- `exhaustive`: a complete direct check of a finite claim, such as evaluating
+  every constraint on a submitted assignment;
 - `measurement`;
 - `solver`: trusted solver output, with the solver's version;
 - `certificate`: solver output with an independently checked certificate;
 - `kernel`: a kernel-checked proof under a named axiom policy.
 
-Reports and exports group results by trust basis. A task may require a minimum
-basis for a check. This makes [invariant 8](../../AGENTS.md#invariants-to-preserve)
+Reports and exports group results by trust basis. The bases are not ordered:
+`kernel`, `certificate`, and `measurement` warrant different claims, not stronger
+versions of one claim. A task therefore names, for a check, the exact bases it
+accepts; it never states a minimum. This makes [invariant 8](../../AGENTS.md#invariants-to-preserve)
 visible in every result instead of in prose. An unknown basis is refused, not
 treated as the weakest.
 
@@ -243,11 +247,17 @@ Jobs share no host mounts, by design, so each check rebuilds from scratch.
 - Minkowski: a full Rust build for each gate.
 - Lean with Mathlib: rebuilding Mathlib's `.olean` files takes hours.
 
-**Change:** *pinned prebuilt artifacts*: a build directory (`target/`, or
-`.lake/build`) for the pinned inputs. It is imported as an artifact by digest and
-copied into the job's scratch space. The boundary stays intact, because the
-cache is pinned evidence, not a shared mount. `JobLimits` may need larger scratch
-space.
+**Change:** *receipted build caches*: a build directory (`target/`, or
+`.lake/build`) produced by a host-run build job, never imported from a worker or
+an outside source. The host records a build receipt that binds the cache's
+digest to the exact source tree, toolchain image, flags, and dependencies it was
+built from. A checker job may use a cache only when its receipt matches the
+job's own pinned inputs; otherwise the cache is refused and the job builds from
+scratch or fails as unsupported. A cache digest alone identifies only its bytes,
+not what produced them, so pinning is not enough. The cache is copied into the
+job's scratch space, not mounted, so the boundary stays intact. For a patched
+tree, the build tool rebuilds what the patch changed. `JobLimits` may need larger
+scratch space.
 
 ### N10. The task layer runs only local models
 
@@ -301,8 +311,14 @@ One round is one run:
 5. **Accept.** The patch is accepted on a sufficient improvement with no
    regression beyond tolerance.
 6. **Promote.** The accepted patch becomes the next baseline (N8).
-7. **Hold out.** At set points, measure separate benchmarks that rounds never
-   optimise against. A regression there stops promotion.
+7. **Validate.** At set points, measure separate *development* benchmarks that
+   rounds never optimise against directly. A regression there stops promotion.
+   Because that decision feeds back into later rounds, these benchmarks are
+   development data, not held out.
+8. **Hold out.** A frozen chain is measured once on held-out benchmarks. Their
+   results never steer promotion. Optimising further after a held-out
+   measurement retires that held-out set, and later claims need a fresh one
+   ([invariant 7](../../AGENTS.md#invariants-to-preserve)).
 
 Warranted never pushes to Minkowski. Merging stays a human decision, through an
 ordinarily reviewed PR.
@@ -344,8 +360,8 @@ directly. The worker may encode a puzzle in SMT-LIB with a solver from its image
 or reason without one. The interesting question for the harness is not the
 solver but the claim the worker makes:
 
-- **"This is a solution."** The checker evaluates the constraints directly, with
-  basis `example`, or effectively a complete check.
+- **"This is a solution."** The checker evaluates every constraint on the
+  assignment: basis `exhaustive`.
 - **"There is no solution."** A pinned solver checks this in a checker job
   (basis `solver`), optionally with a certificate (N7).
 - **"This is the only solution."** A solution plus an `unsat` check.
@@ -393,8 +409,14 @@ None of these use cases should add domain vocabulary to Warranted:
   regression beyond tolerance on another in-sample measure, is rejected.
 - **Chains advance only on acceptance.** A chain never advances from a run that
   was not accepted. A restarted chain resumes from the last accepted run.
-- **Held-out regressions stop promotion.** This applies even when every
+- **Validation regressions stop promotion.** This applies even when every
   in-sample measure improves.
+- **Held-out results never steer.** No promotion or later round reads a held-out
+  result. A chain that continues after a held-out measurement marks that set as
+  exposed, and reports refuse to call it held out.
+- **Caches match their receipts.** A build cache whose receipt names a different
+  source tree, toolchain, flags, or dependencies is refused, as is a cache with
+  no host build receipt.
 - **Bad patches are rejections.** A patch that does not apply cleanly is a
   rejection, not an infrastructure failure.
 - **Theorems come from the contract.** A Lean candidate cannot supply its own
@@ -405,8 +427,9 @@ None of these use cases should add domain vocabulary to Warranted:
   named policy that allows it.
 - **No solver, no `unsat` acceptance.** An `unsat` claim without a checker-side
   solver run is not accepted. A solver timeout is `UNPROVED`, not `REJECTED`.
-- **Unknown trust bases are refused.** A check that requires `certificate` is
-  not satisfied by `solver`, and an unknown basis is refused.
+- **Only the named trust bases count.** A check that accepts only `certificate`
+  is not satisfied by `solver`, nor by `kernel`, and an unknown basis is
+  refused.
 - **Session replay is history only.** A host session's replay reveals only
   recorded steps and cannot start a live game.
 - **Private outputs stay private.** An ARC test output never appears in
@@ -420,9 +443,10 @@ Improving the agent adds a second level. These rules keep it honest:
   worker-image helpers, and strategies. It may never change checkers, objectives,
   trust bases, benchmarks, baselines, budgets, or held-out sets.
 - **Each agent version is evaluated as a campaign.** It runs over the same tasks
-  and budget, with the version pinned by digest. A version is promoted only on
-  held-out tasks that no earlier version was tuned on. Generated puzzles make
-  these cheap.
+  and budget, with the version pinned by digest. Promotion decisions use
+  development tasks. Held-out tasks, which no version was tuned or selected on,
+  measure a frozen version once and are then retired. Generated puzzles make
+  fresh held-out sets cheap.
 - **Costs are part of the result.** A version is never ranked by improvement
   alone.
 - **It builds on M6.** [M6](../roadmap.md#m6--dream-rsi-adaptation-for-search-improvement)
@@ -439,7 +463,7 @@ second use case before its interface stops being provisional.
 2. **N6 and N7, with SMT puzzles.** Trust bases, and the solver-checked `unsat`
    pattern. Confirmed by Lean, which already has a kernel basis.
 3. **N5 and N9, with Lean on a small Mathlib benchmark.** Per-task targets, a
-   pinned library, a named axiom policy, and prebuilt artifacts. Confirmed by
+   pinned library, a named axiom policy, and receipted build caches. Confirmed by
    Minkowski's build cache.
 4. **N1 and N2, with one Minkowski round.** Patch candidates and measured
    objectives. Confirmed by optimisation puzzles.
@@ -450,8 +474,8 @@ second use case before its interface stops being provisional.
 
 ## Questions for review
 
-1. Is the trust-basis set (N6) right, and should a task be able to require a
-   minimum basis, or only report it?
+1. Is the trust-basis set (N6) right, and should a task name the bases it
+   accepts for every check, or only for checks that opt in?
 2. Should instruction counts be the only gated Minkowski measure, with
    wall-clock recorded but never gated? This note proposes yes.
 3. Which Minkowski benchmarks are in-sample and which are held out, and which

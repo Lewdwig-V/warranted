@@ -244,8 +244,8 @@ use case confirms it:
   models in the task layer, on an ARC-AGI-1/2 fixture.
 - [ ] Trust bases on verdicts, and solver-checked `unsat` claims, on an SMT
   puzzle fixture.
-- [ ] Per-task Lean targets, a pinned Mathlib, a named axiom policy, and pinned
-  prebuilt artifacts, on a small Lean benchmark.
+- [ ] Per-task Lean targets, a pinned Mathlib, a named axiom policy, and
+  receipted build caches, on a small Lean benchmark.
 - [ ] Patch candidates against a pinned tree, and checker measurements with a
   task objective, on one Minkowski optimisation round.
 - [ ] Chains that promote accepted results with recorded lineage: Minkowski
