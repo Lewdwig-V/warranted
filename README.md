@@ -312,6 +312,7 @@ Keep the authoritative project outside any untrusted worker's writable workspace
 
 | Path | Purpose |
 | --- | --- |
+| [LICENSE](LICENSE) | Apache License 2.0 |
 | [AGENTS.md](AGENTS.md) | Guidance for coding agents and contributors |
 | [docs/design.md](docs/design.md) | Invariants, boundaries, and the reasoning behind them |
 | [docs/roadmap.md](docs/roadmap.md) | Milestone status, remaining work, and open decisions |
@@ -323,3 +324,7 @@ Keep the authoritative project outside any untrusted worker's writable workspace
 | [tests](tests) | Fast tests plus `container` and `proof` native groups |
 | [scripts](scripts) | Builder for the pinned Lean verifier bundle |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | Fast, containment, and proof CI jobs |
+
+## License
+
+Warranted is licensed under the [Apache License, Version 2.0](LICENSE).

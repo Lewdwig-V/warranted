@@ -27,6 +27,8 @@ versioning and deprecation policy. The format follows
   challenge bytes it verifies; the verifier identity includes the timeout.
 - `VerdictStatus.UNPROVED`: fails the gate and is recorded distinctly.
 - `ProofTarget` in `warranted`.
+- An Apache License 2.0 `LICENSE` file; the package metadata declares
+  `Apache-2.0`.
 
 ## [0.1.0] - 2026-10-03
 
