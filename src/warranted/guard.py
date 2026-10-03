@@ -68,7 +68,8 @@ class DuplicateGuard:
         if exact >= self.exact_repeats:
             return {"band": "exact", "matches": exact + len(near), "edit": 0}
         if exact + len(near) >= self.near_repeats:
-            return {"band": "near", "matches": exact + len(near), "edit": min(near)}
+            edit = min(near, default=0)  # all matches exact, below exact_repeats
+            return {"band": "near", "matches": exact + len(near), "edit": edit}
         return None
 
 
@@ -83,7 +84,8 @@ def edit_mass(a: bytes, b: bytes) -> int:
 
 
 def default_normalize(candidate) -> bytes:
-    """Every captured file, in name order, unchanged."""
+    """Every captured file, in name order, unchanged and length-prefixed."""
     return b"".join(
-        name.encode() + b"\0" + data + b"\0" for name, data in sorted(candidate.items())
+        b"%d:%s%d:%s" % (len(key), key, len(data), data)
+        for key, data in sorted((n.encode(), d) for n, d in candidate.items())
     )

@@ -234,13 +234,15 @@ window = 8             # compare with this many recent rejected candidates
 
 These are ReSchema's values. After a submission is captured and before any
 check, the host normalises it with the domain's optional `normalize(candidate) ->
-bytes` (by default, every captured file in name order) and compares it, by bytes
+bytes` (by default, every captured file in name order, each name and body
+length-prefixed so file boundaries stay unambiguous) and compares it, by bytes
 changed, with the normalised candidates of the run's earlier submissions that a
 check rejected. Exact repeats carry no new information and are refused sooner;
 small edits may be the right minimal fix and get more attempts. A refused
 submission gets the decision `duplicate`: it is never checked, still uses a
-submission, and its feedback file tells the worker why. The decision is recorded,
-so a resumed run makes the same one. Fingerprints are recomputed from captured
+submission, and its feedback file tells the worker why. The decision is recorded
+with the captures it compared as its inputs, so a resumed run makes the same one
+and the ledger shows which submissions justified it. Fingerprints are recomputed from captured
 candidates, so they survive restarts without separate state.
 
 ## Contract revisions

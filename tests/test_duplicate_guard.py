@@ -6,7 +6,7 @@ import pytest
 from test_experimental_tasks import CANDIDATES, CONFIG, CSV, TASK, Model, project
 
 from warranted.experimental import RunOutcome, TaskSpec
-from warranted.guard import DuplicateGuard, edit_mass
+from warranted.guard import DuplicateGuard, default_normalize, edit_mass
 from warranted.ledger import Ledger
 
 GUARD = DuplicateGuard(
@@ -153,3 +153,36 @@ def test_edit_mass_counts_changed_bytes():
     assert edit_mass(b"abcdef", b"abcdef") == 0
     assert edit_mass(b"abcdef", b"abXdef") == 1
     assert edit_mass(b"abc", b"abcdef") == 3
+
+
+def test_file_boundaries_are_unambiguous_after_default_normalisation():
+    assert default_normalize({"a": b"x\0b\0y"}) != default_normalize(
+        {"a": b"x", "b": b"y"}
+    )
+
+
+def test_a_near_threshold_below_the_exact_one_still_decides():
+    guard = DuplicateGuard(
+        exact_repeats=3,
+        near_repeats=2,
+        near_edit_floor=0,
+        near_edit_percent=0,
+        window=8,
+    )
+    assert guard.verdict([b"same", b"same"], b"same") == {
+        "band": "near",
+        "matches": 2,
+        "edit": 0,
+    }
+
+
+def test_the_decision_cites_the_candidates_it_compared(tmp_path):
+    plan = ["wrong-offset", "wrong-offset", "wrong-offset", "correct"]
+    proj, _ = project(tmp_path, plan)
+    proj.start(task(), CONFIG, Model())
+    with Ledger.open(proj.ledger_root) as ledger:
+        decisions = [o for o in ledger.history() if o.origin.kind == "duplicate-guard"]
+        refused = decisions[-1]
+    assert decisions[0].origin.inputs  # even the first decision cites its candidate
+    # The refused candidate and the two rejections it repeats, by their captures.
+    assert len({name.split("/")[1] for name in refused.origin.inputs}) == 3

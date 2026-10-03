@@ -912,19 +912,30 @@ class Project:
             if record is None:
 
                 def files(i):
+                    return submitted_files(ledger, self._episode_id(run, i))
+
+                def read(refs):
                     return {
                         name: ledger.read_artifact(ref.artifact)
-                        for name, ref in submitted_files(
-                            ledger, self._episode_id(run, i)
-                        ).items()
+                        for name, ref in refs.items()
                     }
 
-                rejected = [
-                    normalize(files(s.index))
+                compared = [
+                    files(s.index)
                     for s in earlier
                     if s.decision == str(Status.REJECTED)
-                ]
-                verdict = guard.verdict(rejected, normalize(files(index)))
+                ][-guard.window :]
+                candidate = files(index)
+                verdict = guard.verdict(
+                    [normalize(read(refs)) for refs in compared],
+                    normalize(read(candidate)),
+                )
+                # Cite the exact captures the decision was derived from.
+                cited = {
+                    ref.name: ref.artifact
+                    for refs in (*compared, candidate)
+                    for ref in refs.values()
+                }
                 reason = verdict and {
                     **verdict,
                     "message": (
@@ -936,7 +947,7 @@ class Project:
                 record = record_once(
                     ledger,
                     ledger.start_session(),
-                    Origin(operation_id, "duplicate-guard", PRODUCER, "1", {}),
+                    Origin(operation_id, "duplicate-guard", PRODUCER, "1", cited),
                     {
                         "guard.json": _json(
                             {"refused": verdict is not None, "reason": reason}
