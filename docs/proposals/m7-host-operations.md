@@ -1,6 +1,7 @@
 # M7 design note: host-mediated operations
 
-Proposed 2026-10-03; not yet reviewed or implemented. This note designs the
+Proposed 2026-10-03; its review questions were decided the same day (see
+[decisions](#decisions)); not yet implemented. This note designs the
 **host-mediated operations** item of
 [M7](../roadmap.md#m7--stable-harness-api-and-cli). The roadmap requires a reviewed
 design before any implementation.
@@ -58,10 +59,13 @@ convention.
 
 A request uses the same channel with a different marker. A command that exits 0
 with `WARRANTED_REQUEST` as its first stdout line, and one JSON object as the
-rest, is a request:
+rest, is a request. The object holds a batch of one or more items:
 
 ```json
-{"operation": "experiment", "arguments": {"input": "..."}}
+{"requests": [
+  {"operation": "experiment", "arguments": {"input": "..."}},
+  {"operation": "experiment", "arguments": {"input": "..."}}
+]}
 ```
 
 - No new channel crosses the container boundary. The request is ordinary command
@@ -74,7 +78,12 @@ rest, is a request:
 - A request carries its data inline. File contents are base64 inside the JSON,
   and the encoded request may be at most 1 MiB, within the existing 2 MiB stdout
   cap.
-- One command makes at most one request. A command that prints both markers is
+- A batch holds at most 32 items. Batching is optional but encouraged: the whole
+  batch costs one `tool` unit and one worker turn, while each item is still its
+  own operation with its own reservation. A domain's command should accept
+  several inputs, for example `experiment a.bin b.bin c.bin`, and its task
+  presentation should say that batching saves turns.
+- One command makes at most one batch. A command that prints both markers is
   neither a request nor a submission. It gets an error observation.
 
 Because the request is untrusted text, accidental or forged markers are harmless.
@@ -91,6 +100,8 @@ class Operation(Protocol):
     version: str
     effect: Literal["none", "external"]
     shared: bool  # touches state shared beyond one run
+    reusable: bool  # deterministic and effect-free: equal requests give equal results
+    inputs: tuple[str, ...]  # the task files the operation may read
 
     def parse(self, arguments: JSON) -> JSON: ...  # canonical arguments, or raise
     def reservation(self, arguments: JSON) -> Mapping[str, int]: ...
@@ -110,10 +121,13 @@ class OperationResult:
     files: Mapping[str, bytes] = {}  # delivered read-only to the worker
 ```
 
-`Domain.operations: Mapping[str, Operation]` names them. Their versions join the
+`Domain.operations: Mapping[str, Operation]` names them. `reusable` may be true
+only when `effect` is `"none"`, and only if the operation is deterministic: an
+effect-free probe that draws a seed or measures time is not reusable. Their versions join the
 [domain identity](m7-harness-api.md#open-questions), so a changed
-operation blocks resume. `OperationContext` gives the operation the run's private
-task files, `draw_seed`, and `run_job`, as `CheckContext` does for checkers.
+operation blocks resume. `OperationContext` gives the operation the task files it names in `inputs`
+(worker-visible or private), `draw_seed`, and `run_job`, as `CheckContext` does
+for checkers. Reading any other task file raises.
 Credentials stay in the domain's own host-side configuration, never in task
 files.
 
@@ -127,23 +141,31 @@ still binds those units.
 
 ### Lifecycle of one request
 
-1. **Record.** The tool operation that printed the request completes as usual and
+Each item of a batch follows these steps, in order:
+
+1. **Record.** The tool operation that printed the batch completes as usual and
    is charged one `tool` unit. Its stdout holds the request bytes.
-2. **Validate.** The host checks that the request is well formed, names a
+2. **Validate.** The host checks that the item is well formed, names a
    declared operation, and passes the operation's `parse`. If any check fails,
-   the worker sees an error observation. No operation is recorded or charged
+   the item gets an error result. No operation is recorded or charged
    beyond the tool unit.
-3. **Identify.** The operation ID is `<episode>/request/<tool index>`, so one
-   command maps to one operation, and resuming finds the same ID. The request's
+3. **Identify.** The operation ID is `<episode>/request/<tool index>/<item>`, so
+   each batch item maps to one operation, and resuming finds the same IDs. The request's
    origin binds the tool operation's stdout artifact, the operation name and
    version, and the digest of the canonical arguments.
 4. **Deduplicate.** If the operation ID is already completed, its recorded result
-   is reused without executing anything. An operation with `effect = "none"` is
-   also deduplicated by content. If the same operation, version, canonical
-   arguments, and pinned task inputs were already completed in this run, the host
-   records a reuse that cites the earlier operation and charges zero units. An
-   operation with an external effect is never deduplicated by content: asking
-   twice means acting twice, and each request is charged.
+   is reused without executing anything. A `reusable` operation is also
+   deduplicated by content, across every run in the project. The key is the
+   operation name and version, the canonical arguments, and the digests of the
+   task files named in `inputs`. Only a completed `succeeded` or `failed` result
+   is reused; an infrastructure failure, an unmeasured settlement, or an unknown
+   operation never is. The host records a reuse in the requesting run that cites
+   the earlier operation and its run, and charges zero units. The worker sees the
+   same result a fresh execution would give, so reuse reveals nothing new; the
+   citation keeps cross-run reuse visible to lineage and evaluation reports. An
+   operation that is not reusable, including every operation with an external
+   effect, is never deduplicated by content: asking twice means acting twice, and
+   each request is charged.
 5. **Reserve.** The host reserves `reservation(arguments)` in the run's scope. An
    operation with `shared = True` uses the root scope instead, following the
    [run scopes rule](m7-run-scopes.md#shared-external-state) for operations that
@@ -157,10 +179,23 @@ still binds those units.
    other unit.
 8. **Deliver.** The worker's next observation carries `shown` in a field the
    host writes, separate from the command's stdout. If the result has `files`, the
-   host writes them into `/work/responses/<tool index>/` before the next command.
+   host writes them into `/work/responses/<tool index>/<item>/` before the next
+   command.
    The files are owned by root and read-only to the worker, which runs as UID
    1000 without `CAP_DAC_OVERRIDE`. They are convenience copies; the ledger
    record is the result.
+
+Within a batch, items run one at a time, in the order given:
+
+- An item that fails validation is refused on its own; later items still run.
+- Once one item's reservation is refused for budget, every later item is refused
+  too without being reserved, since remaining budget only shrinks.
+- If an item's outcome becomes unknown, no later item runs, and the episode stops
+  as for any unknown outcome.
+- The observation lists every item's result in order. Each item's `shown` keeps
+  its own 64 KiB limit, and the batch's observation is limited to 256 KiB. Once
+  that is reached, each later item's `shown` is delivered only as a file in its
+  response directory, and the observation names the file.
 
 Execution happens between two worker commands, while the container stays up. Any
 background processes the worker left running continue, but they cannot reach the
@@ -209,7 +244,8 @@ worker.
 A completed operation is host evidence: its producer is the operation, not the
 worker. A checker or claim can cite it by operation ID, and the host verifies that
 the operation exists, completed, belongs to the same run, and matches the current
-operation version. The evidence states what the host observed for those
+operation version. A reuse record counts as belonging to the run that requested
+it; the host follows its citation to the source operation's evidence. The evidence states what the host observed for those
 arguments. The arguments themselves remain worker-authored, so a result says
 nothing about why the worker chose them.
 
@@ -233,8 +269,18 @@ result is unsupported; replay never executes an operation.
   operation and charges only the tool unit.
 - A request over a run's cap for the operation's unit is refused before
   execution; the cap holds across restarts.
-- Repeating an effect-free request with the same arguments reuses the result at
-  zero cost. Repeating an external-effect request charges and executes again.
+- Repeating a reusable request with the same arguments and inputs reuses the
+  result at zero cost, within a run and from another run in the same project.
+  The reuse cites the source operation and run. Changing an input file named in
+  `inputs`, or the operation version, gives a new key and executes again.
+- An infrastructure failure, an unmeasured settlement, or an unknown operation is
+  never reused.
+- An effect-free operation that is not declared reusable, and every
+  external-effect operation, executes and is charged again on every request.
+- An operation reading a task file outside its declared `inputs` raises.
+- A batch over 32 items, or over 1 MiB, is refused as a whole. Within a batch, a
+  budget refusal refuses every later item without reserving it, and an unknown
+  outcome stops the remaining items.
 - A host killed during `execute` leaves the operation unknown and the run blocked.
   Reconciling an effect-free operation charges its full reservation without
   executing it again, so the run's spent total never undercounts the lost attempt.
@@ -284,18 +330,23 @@ These are the expected changes, recorded so the review can judge the cost:
   program on a worker-chosen input in a contained job. Its tests cover the
   negative cases above.
 
-## Open questions for review
+## Decisions
 
-1. Should a reused effect-free result cost zero, or a small unit so that repeated
-   probes stay visible in accounting? The proposal records each reuse, so it
-   stays visible either way.
-2. Should content deduplication extend across runs in one project, for example
-   for a campaign probing the same binary? That would need the results' scope to
-   be the project, and it interacts with
+The review questions were decided on 2026-10-03:
+
+1. **A reused result costs nothing.** Each reuse is still recorded and cites its
+   source, so repeated probes remain visible in accounting and reports.
+2. **Results are reused across runs in a project**, for reusable operations,
+   keyed by operation, version, canonical arguments, and the digests of the
+   operation's declared input files. Reuse is an exact replay of a recorded
+   observation, not memory: it carries no claim beyond what the source operation
+   observed, and it stays separate from
    [scoped memory](../roadmap.md#m7--stable-harness-api-and-cli).
-3. Is one request per command enough, or will workers need batches, for example
-   many probes in one call? Batching would be one operation with list arguments,
-   charged per item.
+3. **Batches are supported and encouraged, not required.** One command carries up
+   to 32 items, each its own operation, for one `tool` unit and one worker turn.
+
+Still open:
+
 4. Do shared operations need per-run caps? That would need the ledger to charge
    one operation against both its run's scope and the root scope. Refusing the cap
    keeps the ledger unchanged until a case needs it.
