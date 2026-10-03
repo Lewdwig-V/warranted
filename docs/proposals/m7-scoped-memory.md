@@ -1,6 +1,7 @@
 # M7 design note: scoped memory
 
-Proposed 2026-10-03 for review. This note designs the **scoped memory** item of
+Proposed 2026-10-03, with review questions 1 to 3 decided the same day (see
+[decisions](#decisions)). This note designs the **scoped memory** item of
 [M7](../roadmap.md#m7--stable-harness-api-and-cli): claims scoped to a family of
 related tasks, with receipt-backed facts kept separate from worker notes. A note
 is promoted only when its own submission is accepted, and selected facts reach
@@ -257,6 +258,18 @@ refuse a scope shared across splits.
 5. Tests for the negative cases above, plus a two-task example in which the
    second task reuses the first task's verified fact and a revised input makes
    it stale.
+
+## Decisions
+
+Decided by the project owner on 2026-10-03:
+
+1. Memory stays within one project. A scope is not shared across projects.
+2. Notes from a submission that was not accepted are withheld entirely.
+3. Stale facts are hidden from the worker. The host still reports them through
+   `Project.memory(scope)`.
+
+Question 4 was not separately decided. The proposal's default stands: a
+revised domain means a new project with empty memory.
 
 ## Questions for review
 
