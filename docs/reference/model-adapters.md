@@ -113,7 +113,21 @@ names exactly the pinned digest. A re-pull between that check and inference is
 not detected. OpenRouter relies on its existing runtime preflight, which pins the
 provider endpoint. **Both lists are empty.** A model is added only after
 a recorded measurement under `docs/experiments/` shows its reported prompt tokens
-within the bound, including for short prompts.
+within the bound, including for short prompts. For a local model,
+`examples/m7/token_bound.py` takes that measurement:
+
+```bash
+uv run --locked python examples/m7/token_bound.py measure runs/token-bound \
+  --model <installed-tag> --base-url http://127.0.0.1:11434/v1
+```
+
+It reads the tag's installed digest and sends ten fixed cases with `max_tokens`
+16. The cases cover empty, one-character, digit-dense, symbol-dense, whitespace,
+non-ASCII, many tiny messages, and longer prose. It writes `report.json` and every
+raw request and response. It exits 0 and prints the `model@digest` key only when
+every case reported prompt tokens within the bound; a missing count fails the
+measurement. The script only measures; adding the key is a separate reviewed
+change.
 
 For a verified model, `reservation(payload)` returns, before dispatch:
 
