@@ -84,12 +84,14 @@ def uniqueness_premises(ctx: CheckContext) -> dict[str, bool]:
     """M4's application checks: unique input IDs, and an identity selection of them."""
     source = [row[0] for row in M2["read_rows"](ctx.inputs["input.csv"])]
     rows = _candidate_rows(ctx)
-    ids = [] if rows is None else [r[0] for r in rows if type(r) is list and r]
+    well_formed = rows is not None and all(
+        type(r) is list and len(r) == 3 and type(r[0]) is str for r in rows
+    )
     remaining = iter(source)
     return {
         "input_unique": len(source) == len(set(source)),
         # In order, each candidate ID is a source ID: the mapping is the identity.
-        "identity_selection": rows is not None and all(i in remaining for i in ids),
+        "identity_selection": well_formed and all(r[0] in remaining for r in rows),
     }
 
 
@@ -102,12 +104,10 @@ def timestamp_premises(ctx: CheckContext) -> dict[str, bool]:
     for row in _candidate_rows(ctx) or []:
         try:
             utc = datetime.strptime(row[1], "%Y-%m-%dT%H:%M:%SZ")
-            offsets.add(
-                int((datetime.fromisoformat(local[row[0]]) - utc).total_seconds())
-            )
+            offsets.add((datetime.fromisoformat(local[row[0]]) - utc).total_seconds())
         except (KeyError, TypeError, ValueError, IndexError):
             return {"single_offset": False}
-    return {"single_offset": len(offsets) == 1}
+    return {"single_offset": len(offsets) == 1 and all(o == int(o) for o in offsets)}
 
 
 class CsvDomain:
