@@ -26,6 +26,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from warranted.acceptance import Acceptance, AcceptanceContext, Evidence, Status
+from warranted.guard import DuplicateGuard, default_normalize
 from warranted.jobs import JobContext, JobRunner, PodmanJobs, pinned_image
 from warranted.ledger import (
     ROOT_SCOPE,
@@ -54,6 +55,8 @@ from warranted.worker import (
 )
 
 PRODUCER = "warranted-tasks"
+# A submission refused by the duplicate guard: never checked, still counted.
+DUPLICATE = "duplicate"
 # Feedback reaches the worker's context; a checker that writes more is faulty.
 FEEDBACK_LIMIT = 64 * 1024
 _NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}")
@@ -237,6 +240,17 @@ def _project_identity(domain: Domain, environment_id: str, jobs) -> dict[str, st
     }
 
 
+def _guard(table) -> DuplicateGuard | None:
+    if table is None:
+        return None
+    if type(table) is not dict:
+        raise ValueError("duplicate_guard must be a table")
+    fields = set(DuplicateGuard.__dataclass_fields__)
+    if set(table) != fields:
+        raise ValueError(f"duplicate_guard needs exactly {sorted(fields)}")
+    return DuplicateGuard(**table)
+
+
 @dataclass(frozen=True)
 class TaskSpec:
     """What to solve. Loaded from TOML; inputs and private files are pinned bytes."""
@@ -248,12 +262,21 @@ class TaskSpec:
     checks: tuple[str, ...]
     submissions: int
     check_budget: int | None = None
+    duplicate_guard: DuplicateGuard | None = None
 
     @classmethod
     def load(cls, path: Path) -> TaskSpec:
         path = Path(path)
         data = tomllib.loads(path.read_text())
-        known = {"id", "objective", "inputs", "private", "checks", "budgets"}
+        known = {
+            "id",
+            "objective",
+            "inputs",
+            "private",
+            "checks",
+            "budgets",
+            "duplicate_guard",
+        }
         if not data.keys() <= known or not {"id", "objective", "checks"} <= set(data):
             raise ValueError("task needs id, objective, and checks, and nothing else")
         budgets = data.get("budgets", {})
@@ -276,6 +299,7 @@ class TaskSpec:
             tuple(data["checks"]),
             budgets.get("submissions", 1),
             budgets.get("checks"),
+            _guard(data.get("duplicate_guard")),
         )
 
     def __post_init__(self):
@@ -304,6 +328,10 @@ class TaskSpec:
             type(self.check_budget) is not int or self.check_budget < 0
         ):
             raise ValueError("check budget must be a non-negative integer")
+        if self.duplicate_guard is not None and not isinstance(
+            self.duplicate_guard, DuplicateGuard
+        ):
+            raise ValueError("duplicate_guard must be a DuplicateGuard")
 
     def record(self) -> dict[str, bytes]:
         raw = {
@@ -316,6 +344,8 @@ class TaskSpec:
                     "checks": list(self.checks),
                     "submissions": self.submissions,
                     "check_budget": self.check_budget,
+                    "duplicate_guard": self.duplicate_guard
+                    and self.duplicate_guard.record(),
                 }
             )
         }
@@ -539,6 +569,7 @@ class Project:
             tuple(meta["checks"]),
             meta["submissions"],
             meta["check_budget"],
+            _guard(meta["duplicate_guard"]),
         )
         config = RunConfig(**json.loads(read["config.json"]))
         policy = Evidence.captured(found["run-policy"], "policy.json")
@@ -591,6 +622,11 @@ class Project:
                 return RunResult(
                     run_id, outcome, tuple(submissions), str(result.get("exit_status"))
                 )
+            refused = self._guard(run, index, submissions)
+            if refused is not None:
+                # Refused before any check; it still uses a submission.
+                submissions.append(refused)
+                continue
             try:
                 submission = self._assess(run, index, episode.episode_id)
             except BudgetExceeded as error:
@@ -709,6 +745,28 @@ class Project:
 
     def _feedback(self, ledger: Ledger, run: _Run, index: int) -> Evidence:
         """Worker-visible feedback for one assessed submission; no host-only data."""
+        guard = _record(ledger, f"run/{run.run_id}/submission/{index}/guard")
+        refused = guard and json.loads(
+            ledger.read_artifact(guard.artifacts["guard.json"])
+        )
+        if refused and refused["refused"]:
+            capture = record_once(
+                ledger,
+                ledger.start_session(),
+                Origin(
+                    f"run/{run.run_id}/submission/{index}/feedback",
+                    "feedback",
+                    PRODUCER,
+                    "1",
+                    {},
+                ),
+                {
+                    "feedback.json": _json(
+                        {"submission": index, "duplicate": refused["reason"]}
+                    )
+                },
+            )
+            return Evidence.captured(capture, "feedback.json")
         checks = {}
         for name in run.task.checks:
             operation = self._check_operation(ledger, run, index, name)
@@ -842,6 +900,68 @@ class Project:
             )
         return request.origin.operation_id
 
+    def _guard(
+        self, run: _Run, index: int, earlier: list[Submission]
+    ) -> Submission | None:
+        """Refuse a near-repeat of earlier rejected candidates, before any check.
+
+        The decision is recorded, so a resumed run makes the same one.
+        """
+        guard = run.task.duplicate_guard
+        if guard is None:
+            return None
+        normalize = getattr(self.domain, "normalize", default_normalize)
+        with Ledger.open(self.ledger_root) as ledger:
+            operation_id = f"run/{run.run_id}/submission/{index}/guard"
+            record = _record(ledger, operation_id)
+            if record is None:
+
+                def files(i):
+                    return submitted_files(ledger, self._episode_id(run, i))
+
+                def read(refs):
+                    return {
+                        name: ledger.read_artifact(ref.artifact)
+                        for name, ref in refs.items()
+                    }
+
+                compared = [
+                    files(s.index)
+                    for s in earlier
+                    if s.decision == str(Status.REJECTED)
+                ][-guard.window :]
+                candidate = files(index)
+                verdict = guard.verdict(
+                    [normalize(read(refs)) for refs in compared],
+                    normalize(read(candidate)),
+                )
+                # Cite the exact captures the decision was derived from.
+                cited = {
+                    ref.name: ref.artifact
+                    for refs in (*compared, candidate)
+                    for ref in refs.values()
+                }
+                reason = verdict and {
+                    **verdict,
+                    "message": (
+                        f"{verdict['band']} repeat of {verdict['matches']} earlier "
+                        f"rejected submission(s) ({verdict['edit']} bytes changed "
+                        "after normalisation); change approach"
+                    ),
+                }
+                record = record_once(
+                    ledger,
+                    ledger.start_session(),
+                    Origin(operation_id, "duplicate-guard", PRODUCER, "1", cited),
+                    {
+                        "guard.json": _json(
+                            {"refused": verdict is not None, "reason": reason}
+                        )
+                    },
+                )
+            decision = json.loads(ledger.read_artifact(record.artifacts["guard.json"]))
+        return Submission(index, {}, DUPLICATE) if decision["refused"] else None
+
     def _assess(self, run: _Run, index: int, episode_id: str) -> Submission:
         with Ledger.open(self.ledger_root) as ledger:
             session = ledger.start_session()
@@ -880,3 +1000,8 @@ class Project:
                     )["status"]
                 )
             return Submission(index, verdicts, str(decision.status))
+
+
+def _record(ledger: Ledger, operation_id: str):
+    matches = [o for o in ledger.history() if o.origin.operation_id == operation_id]
+    return matches[0] if matches else None

@@ -152,9 +152,12 @@ domain project supplies only domain knowledge. Specifically:
   [reference](reference/model-adapters.md#token-budgets)). Enforcement is
   implemented. The item completes when a first model is verified by a recorded
   measurement; until then no adapter reserves tokens.
-- [ ] **Submission policy.** Budgets for probes and submissions, and a
+- [x] **Submission policy.** Budgets for probes and submissions, and a
   repeated-candidate guard using a domain-supplied normalisation, enforced by
-  the host rather than the worker.
+  the host rather than the worker. Probes are budgeted as
+  [operation units](reference/worker-and-containment.md#host-mediated-operations),
+  submissions by the task, and repeats by the task's
+  [duplicate guard](proposals/m7-harness-api.md#budgets-and-the-duplicate-guard).
 - [ ] **Scoped memory.** Claims scoped to a family of related tasks, with
   receipt-backed facts kept separate from worker notes. A note is promoted only
   when its own submission is accepted. Selected facts reach later tasks as

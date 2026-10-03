@@ -216,11 +216,34 @@ and are reported.
 ## Budgets and the duplicate guard
 
 Task budgets cover submissions and checks; run budgets cover model calls, shell
-commands, and tokens. The host enforces them all; a budget is never a worker
-instruction. The duplicate guard normalises each candidate with the domain's
-`normalize` and refuses a submission whose fingerprint repeats too often, using
-configurable thresholds for exact repeats and small edits (ReSchema's current
-values are 3 and 4). A refused submission still counts against the budget.
+commands, tokens, and operation units such as probes. The host enforces them all;
+a budget is never a worker instruction.
+
+The duplicate guard is implemented in the prototype (`warranted.guard`), adapted
+from ReSchema's near-duplicate resubmission guard. A task enables it with a
+`[duplicate_guard]` table, and the core has no default thresholds:
+
+```toml
+[duplicate_guard]
+exact_repeats = 2      # refuse once this many earlier rejections match exactly
+near_repeats = 3       # refuse once this many match exactly or nearly
+near_edit_floor = 24   # near: at most this many bytes changed ...
+near_edit_percent = 6  # ... or this percentage of the candidate's length
+window = 8             # compare with this many recent rejected candidates
+```
+
+These are ReSchema's values. After a submission is captured and before any
+check, the host normalises it with the domain's optional `normalize(candidate) ->
+bytes` (by default, every captured file in name order, each name and body
+length-prefixed so file boundaries stay unambiguous) and compares it, by bytes
+changed, with the normalised candidates of the run's earlier submissions that a
+check rejected. Exact repeats carry no new information and are refused sooner;
+small edits may be the right minimal fix and get more attempts. A refused
+submission gets the decision `duplicate`: it is never checked, still uses a
+submission, and its feedback file tells the worker why. The decision is recorded
+with the captures it compared as its inputs, so a resumed run makes the same one
+and the ledger shows which submissions justified it. Fingerprints are recomputed from captured
+candidates, so they survive restarts without separate state.
 
 ## Contract revisions
 
@@ -264,6 +287,8 @@ Facts are built on the existing claims API. When a dependency changes, for
 example a re-recorded binary or a new checker version, the fact is reported as
 stale and is no longer presented as verified. ReSchema's manual
 canonicaliser-version check becomes an ordinary dependency.
+
+The [scoped memory design note](m7-scoped-memory.md) refines this sketch.
 
 ## CLI
 
