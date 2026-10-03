@@ -135,7 +135,7 @@ constructs every runtime argument without forwarding its environment.
 
 | Setting | Value |
 | --- | --- |
-| Image | `warranted.sandbox.IMAGE`, a Python image pinned by digest; `--pull=never` |
+| Image | `Sandbox(root, episode, image=IMAGE)`: any image pinned by `name@sha256:<digest>` or by a 64-hex local image ID, `--pull=never`. The default `IMAGE` is a Python image pinned by digest. The image must provide `/bin/sh`, `sleep`, and Python 3.9 or later as `python`. Its own entrypoint is overridden, so it adds tools inside the container and changes none of these settings. The episode's environment must be `sandbox_id(image)`. |
 | Network | `--network=none`; Podman proxy forwarding disabled |
 | Namespaces | Private pid, ipc, uts, cgroup |
 | Filesystem | Read-only root; `/work` and `/tmp` are 8 MiB `noexec,nosuid,nodev` tmpfs; no host directory or runtime socket mounted |
@@ -196,25 +196,34 @@ submission status. See
 
 ## Checker jobs
 
-`warranted.jobs.PodmanJobs().run(image, argv, files, stdin=b"", timeout_seconds=10)`
-runs one program for a checker in a fresh container and returns a `JobResult`
+`warranted.jobs.PodmanJobs().run(image, argv, files, stdin=b"", timeout_seconds=10,
+limits=JobLimits())` runs one program for domain code, such as a compile,
+emulation, or native run, in a fresh container and returns a `JobResult`
 (`returncode`, `stdout`, `stderr`, `timed_out`, `truncated`). The prototype task
-layer exposes it to checkers as `CheckContext.run_job`.
+layer exposes it as `run_job` on `CheckContext` and `OperationContext`.
 
-- The image must be pinned by `sha256` digest. File names must be safe basenames;
-  argv must be a nonempty list of strings; the timeout is 1 to 300 seconds.
-- The container has no network, no host mounts, a read-only root, a private 8 MiB
-  `/work` holding only the given files, and runs as UID 1000 with no capabilities,
-  `no-new-privileges`, and the same process, memory, and CPU limits as the worker
-  sandbox. Output is capped at 256 KiB per stream.
+- The image must be pinned by `name@sha256:<digest>` or by a 64-hex local image ID
+  (`podman image inspect --format '{{.Id}}'`), so a locally built toolchain image
+  can be used. File names must be safe basenames; argv must be a nonempty list of
+  strings; the timeout is 1 to 3600 seconds. The image must provide Python as
+  `python`, which runs the job wrapper; its own entrypoint is overridden.
+- `JobLimits(memory_mb=128, pids=32, scratch_mb=8, cpus=1)` sets the job's
+  resources, bounded to 16–8192 MiB, 8–1024 processes, 1–4096 MiB for each of
+  `/work` and `/tmp`, and 1–8 CPUs. The defaults suit a small interpreter run;
+  a compile or emulation job raises them.
+- The container has no network, no host mounts, a read-only root, private
+  `/work` and `/tmp` holding only the given files, and runs as UID 1000 with no
+  capabilities and `no-new-privileges`. No setting mounts a host path, so no job
+  can see oracle or ledger state. Output is capped at 256 KiB per stream.
 - A host-side runtime error raises `SandboxFailure`; a program that fails, times
   out, or overruns its output is a normal result.
 - Each runner has an `identity` string (`podman-jobs-v1`). The prototype task
   layer binds it into the project identity, so reopening a project with another
   runner is refused. Change the string whenever containment changes.
 - In the prototype task layer, each job's capped `stdout` and `stderr` are stored
-  as raw check evidence (`jobs/<n>/stdout`, `jobs/<n>/stderr`); `jobs.json`
-  records the image, argv, input digests, exit status, and those channels.
+  as raw evidence (`jobs/<n>/stdout`, `jobs/<n>/stderr`); `jobs.json` records
+  the image, argv, input digests, timeout, limits, exit status, and those
+  channels.
 - The job's program runs as the same user as the in-container runner, so it can
   shape its own result record. Treat job output as that program's claim about
   itself, never as host evidence about anything else.

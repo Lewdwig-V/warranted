@@ -17,6 +17,7 @@ import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import partial
 from importlib.metadata import version as package_version
 from pathlib import Path
 from time import perf_counter_ns
@@ -26,7 +27,7 @@ from uuid import uuid4
 
 from warranted.acceptance import Acceptance, AcceptanceContext, Evidence, Status
 from warranted.guard import DuplicateGuard, default_normalize
-from warranted.jobs import JobContext, JobRunner, PodmanJobs
+from warranted.jobs import JobContext, JobRunner, PodmanJobs, pinned_image
 from warranted.ledger import (
     ROOT_SCOPE,
     BudgetExceeded,
@@ -43,7 +44,7 @@ from warranted.operations import (
     reconcile_operation,
     validate_operations,
 )
-from warranted.sandbox import SANDBOX_ID, Sandbox
+from warranted.sandbox import Sandbox, sandbox_id
 from warranted.worker import (
     TOKEN_UNITS,
     Episode,
@@ -228,6 +229,8 @@ def domain_identity(domain: Domain) -> dict[str, str]:
 
 def _project_identity(domain: Domain, environment_id: str, jobs) -> dict[str, str]:
     """A project binds its domain, worker environment, and checker job runner."""
+    if not pinned_image(domain.worker_image):
+        raise ValueError("domain worker image must be pinned by digest or image ID")
     runner = getattr(jobs, "identity", None)
     if type(runner) is not str or not runner:
         raise ValueError("job runner needs a stable identity string")
@@ -425,12 +428,14 @@ class Project:
         root: Path,
         domain: Domain,
         *,
-        environment: Callable = Sandbox,
-        environment_id: str = SANDBOX_ID,
+        environment: Callable | None = None,
+        environment_id: str | None = None,
         jobs: JobRunner | None = None,
     ):
+        """By default, workers run in containers from the domain's worker image."""
         self.root, self.domain = Path(root), domain
-        self.environment, self.environment_id = environment, environment_id
+        self.environment = environment or partial(Sandbox, image=domain.worker_image)
+        self.environment_id = environment_id or sandbox_id(domain.worker_image)
         self.jobs = jobs if jobs is not None else PodmanJobs()
         if set(domain.checkers) and not all(
             _NAME.fullmatch(name) for name in domain.checkers
@@ -458,7 +463,7 @@ class Project:
         root = Path(root)
         identity = _project_identity(
             domain,
-            options.get("environment_id", SANDBOX_ID),
+            options.get("environment_id") or sandbox_id(domain.worker_image),
             options.get("jobs") or PodmanJobs(),
         )
         root.mkdir(parents=True)
