@@ -156,9 +156,11 @@ Checkers are trusted host code, like ReSchema's in-process qiling recorder. A
 checker that touches no state shared with other runs declares `isolated = True`;
 only isolated checks are confined to their run's [ledger scope](m7-run-scopes.md).
 Untrusted code runs only through `run_job`: a one-shot container from a pinned
-image, with no network and only a per-job scratch directory mounted. Each job,
-seed, and verdict is a ledger operation, so a completed check is reused on resume
-and an interrupted one stays unknown.
+image, with no network and only a per-job scratch directory mounted. The check is
+the ledger operation: its seeds, job records, job output, and verdict are recorded
+as evidence of that one operation, so a completed check is reused on resume and an
+interrupted one stays unknown. Jobs are not separate operations; see
+[question 7](#answers-to-open-questions-1-5-and-7).
 
 The host builds the acceptance decision from the task's required checks. A
 missing, unknown, or stale required verdict blocks acceptance, as it does now.
@@ -420,20 +422,66 @@ feedback, the original status, and the original host-only data are kept as
 host-only evidence. The CSV checker's feedback is 293 bytes, so the limit only
 catches faults.
 
+### Answers to open questions 1, 5, and 7
+
+These are decisions from the prototype's evidence, not measurements. Each says
+what would reopen it.
+
+**Follow-on episodes (question 1).** A follow-on episode receives the restored
+workspace and the feedback files, not the earlier conversation. State the worker
+needs to carry forward belongs in the workspace, as files it chose to write, which
+is the legible state this harness is built around; a transcript is the model's
+private scratch space and grows with every step, which matters once
+[token budgets](m7-token-budgets.md) bind. A fresh conversation also makes each
+episode's input exactly the recorded files, which keeps replay and resume simple.
+The evidence is weak: scripted runs in both slices needed nothing more, and live
+models have not been tried. Reopen it if M8 shows live workers repeating work that
+the earlier conversation would have prevented and that workspace notes do not.
+
+**Host kit names (question 5).** The domain code of both prototype domains imports
+only `CheckContext`, `Verdict`, and `VerdictStatus` from the task layer, plus a
+pinned image constant from `warranted.sandbox`. The fixture runners in
+`examples/m1` to `examples/m5` import far more, including private helpers
+(`_encode`, `_digest`, `_json_object`, `containers._run`), because each runner
+drives the ledger, worker, and acceptance directly; on the task layer, `Project`
+does that driving. What the host kit must keep exposing is therefore what the task
+layer does not yet cover:
+
+| Need | Names | Until |
+| --- | --- | --- |
+| Model services passed to `Project.start` | `LocalChatCompletions`, `OpenRouterChatCompletions` | Permanent; adapters are host-kit components |
+| Evidence export | `export_evidence` | The CLI gains an export command |
+| Proof checks for the migration fixture | `Proofs`, `proof_status`, `Applicability`, `Claims` | The migration fixture moves onto the task layer |
+| Worker image for a domain | `warranted.sandbox.IMAGE` | Domains supply their own pinned worker images |
+
+Private helpers get no public equivalent unless a migrated fixture still needs
+one. The M5 research runners are not migrated; they stay on the host kit as they
+are. The answer is provisional until the migration fixture actually moves.
+
+**Checker jobs (question 7).** Jobs stay evidence inside their check, as slice 2
+built them. A job is contained, offline, bounded in time, and has no external
+effect, and its cost is covered by the check's own unit. Making jobs separate
+operations needs parent and child operations in the ledger, because `begin`
+refuses dispatch in a scope with an in-flight operation, and that is a new
+mechanism with no demonstrated need. Two things would reopen it: a job expensive
+enough to need its own charge or budget, or a job that needs network, credentials,
+or another external effect. The second is a host-mediated operation, not a
+checker job, and belongs to that design.
+
 ## Open questions
 
-1. Does a follow-on episode receive the earlier conversation, or only the restored
-   workspace and feedback? The current worker links episodes but starts each one
-   from its inputs.
+1. Answered provisionally: only the restored workspace and feedback. See
+   [open questions 1, 5, and 7](#answers-to-open-questions-1-5-and-7).
 2. Provisionally answered by slices 1 and 2: a `[private]` section of the task
    file. Revisit if private data must be large or shared between tasks.
 3. Answered: the domain declares `sources`, and the host digests them with the
    class source files. See [open questions 3 and 4](#answers-to-open-questions-3-and-4).
 4. Answered: yes, 64 KiB, and oversized feedback is a checker fault. See
    [open questions 3 and 4](#answers-to-open-questions-3-and-4).
-5. Which `warranted.host` names do the fixtures still need once they move onto the
-   task layer? That list decides what the host kit has to keep exposing.
+5. Answered provisionally from the current imports; final once the migration
+   fixture moves. See [open questions 1, 5, and 7](#answers-to-open-questions-1-5-and-7).
 6. Answered: budgets and blocking are scoped to a run by ledger scopes. See the
    [run scopes design note](m7-run-scopes.md).
-7. Should checker jobs become child operations with their own charges and
-   recovery, or stay evidence inside their check?
+7. Answered: jobs stay evidence inside their check until a job needs its own
+   charge or a side effect. See
+   [open questions 1, 5, and 7](#answers-to-open-questions-1-5-and-7).
