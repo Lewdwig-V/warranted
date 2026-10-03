@@ -1,0 +1,27 @@
+# RE-style family: a re-recorded program, so facts about the old one are stale.
+id = "rle-rerecorded"
+objective = "Read task.md, model mystery.py, write result.json, then submit."
+checks = ["replay"]
+
+[inputs]
+"mystery.py" = "mystery-v2.py"
+"task.md" = "task.md"
+"probe.py" = "probe.py"
+
+[private]
+"hidden.json" = "hidden-family.json"
+
+[budgets]
+submissions = 3
+checks = 3
+
+[duplicate_guard]
+exact_repeats = 1
+near_repeats = 2
+near_edit_floor = 8
+near_edit_percent = 2
+window = 8
+
+[memory]
+scope = "rle-family"
+depends = ["mystery.py"]

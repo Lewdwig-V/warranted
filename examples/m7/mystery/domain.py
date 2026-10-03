@@ -6,6 +6,7 @@ reveals the first divergence on a nominated case, but only counts for hidden cas
 """
 
 import base64
+import hashlib
 import json
 import random
 
@@ -37,7 +38,9 @@ print(json.dumps(results))
 
 
 class Replay:
-    version = "1"
+    """Facts: an accepted model, bound to the exact program it reproduces."""
+
+    version = "2"
     isolated = True  # contained jobs and host-recorded entropy; no shared state
 
     def _run(self, ctx: CheckContext, source: bytes, cases: list[str]):
@@ -126,7 +129,11 @@ class Replay:
             "nominated": {"checked": len(nominated), "first_divergence": first},
             "hidden": {"checked": len(hidden), "failed": hidden_failed},
         }
-        return Verdict(status, feedback, {"hidden_cases": hidden})
+        facts = ()
+        if status is VerdictStatus.PASSED:
+            program = hashlib.sha256(ctx.inputs["mystery.py"]).hexdigest()
+            facts = ({"program_sha256": program, "model": payload["model"]},)
+        return Verdict(status, feedback, {"hidden_cases": hidden}, facts)
 
 
 def _describe(item) -> str:
