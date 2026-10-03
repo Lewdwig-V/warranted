@@ -132,7 +132,7 @@ published to PyPI.
 
 | Name | What it is | Reference |
 | --- | --- | --- |
-| `LeanProof` | A checker: verifies the worker's `Solution.lean` against a target, then checks the domain's premises | [proofs in the task layer](../proposals/m7-proofs.md#data-flow) |
+| `LeanProof` | A checker: checks the domain's premises and correspondence, then verifies the worker's `Solution.lean` against a target | [proofs in the task layer](../proposals/m7-proofs.md#data-flow) |
 | `ProofVerifier` | Protocol for the verifier a project is created with (`proofs=`); bound into the project identity | [proofs in the task layer](../proposals/m7-proofs.md#identity-and-pinning) |
 | `LeanVerifier` | The verifier: the pinned Lean bundle and hardened container | [proof verification](proof-verification.md#verification-flow) |
 | `ProofResult` | A verification's status, diagnostic, axiom set, identity, elapsed time, and raw evidence | [proof verification](proof-verification.md#verification-flow) |

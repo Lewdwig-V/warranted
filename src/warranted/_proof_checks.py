@@ -48,10 +48,21 @@ class LeanVerifier:
 class LeanProof:
     """A checker: verify the worker's Lean source against a domain-owned target.
 
-    The source is the captured workspace file `source`. `premises`, if given, is
-    trusted domain code returning {name: bool}; a proved theorem whose premise
-    fails does not apply here, so the verdict is UNSUPPORTED. A proof never
-    authorizes acceptance on its own: tasks still require their other checks.
+    The source is the captured workspace file `source`. `premises` and
+    `correspondence`, if given, are trusted domain code returning {name: bool};
+    both run before verification and fail closed (a non-boolean result raises
+    TypeError, an exception propagates as a checker fault).
+
+    - `premises` are applicability conditions about the task's inputs. A proved
+      theorem whose premise fails does not apply here: UNSUPPORTED.
+    - `correspondence` checks that the worker's candidate matches the theorem's
+      model. A proved theorem whose correspondence fails is the worker's
+      mistake: REJECTED, with feedback. A failed premise wins over both.
+
+    Premise and correspondence results are shown to the worker in feedback, so
+    they must not be computed from private inputs in a way that leaks them. A
+    proof never authorizes acceptance on its own: tasks still require their
+    other checks.
     """
 
     isolated = True  # a contained verifier over captured bytes; no shared state
@@ -62,21 +73,23 @@ class LeanProof:
         target: ProofTarget,
         source: str = "Solution.lean",
         premises: Callable | None = None,
+        correspondence: Callable | None = None,
     ):
         if not isinstance(target, ProofTarget):
             raise ValueError("LeanProof needs a ProofTarget")
         if type(source) is not str or not source or "/" in source:
             raise ValueError("source must be a workspace file name")
-        self.target, self.source, self.premises = target, source, premises
+        self.target, self.source = target, source
+        self.premises, self.correspondence = premises, correspondence
         self.sources = (target.path,)
         self.version = "1:" + target.theorem
 
     def check(self, ctx):
         from warranted._tasks import Verdict, VerdictStatus
 
-        premises = {} if self.premises is None else dict(self.premises(ctx))
-        if not all(type(n) is str and type(v) is bool for n, v in premises.items()):
-            raise TypeError("premises must map names to booleans")
+        premises = _results(self.premises, ctx, "premises")
+        correspondence = _results(self.correspondence, ctx, "correspondence")
+        checks = {"premises": premises, "correspondence": correspondence}
         try:
             files = json.loads(ctx.candidate["workspace.json"])
             data = base64.b64decode(files[self.source], validate=True)
@@ -86,7 +99,7 @@ class LeanProof:
                 {
                     "proof": "missing",
                     "error": f"{self.source} was not submitted",
-                    "premises": premises,
+                    **checks,
                 },
             )
         if not 0 < len(data) <= _proofs.SOURCE_LIMIT:
@@ -95,14 +108,13 @@ class LeanProof:
                 {
                     "proof": "invalid",
                     "error": f"{self.source} must be 1 to {_proofs.SOURCE_LIMIT} bytes",
-                    "premises": premises,
+                    **checks,
                 },
             )
         result = ctx.verify(self.target, data)
+        proved = _proofs.ProofStatus.PROVED
         status = {
-            _proofs.ProofStatus.PROVED: VerdictStatus.PASSED
-            if all(premises.values())
-            else VerdictStatus.UNSUPPORTED,
+            proved: VerdictStatus.PASSED,
             _proofs.ProofStatus.REJECTED: VerdictStatus.REJECTED,
             _proofs.ProofStatus.UNPROVED: VerdictStatus.UNPROVED,
             _proofs.ProofStatus.UNSUPPORTED: VerdictStatus.UNSUPPORTED,
@@ -110,10 +122,29 @@ class LeanProof:
                 VerdictStatus.INFRASTRUCTURE_FAILURE
             ),
         }[result.status]
+        if result.status is proved and not all(premises.values()):
+            status = VerdictStatus.UNSUPPORTED  # applicability wins
+        elif result.status is proved and not all(correspondence.values()):
+            status = VerdictStatus.REJECTED
         feedback = {
             "proof": result.status.value,
-            "diagnostic": result.diagnostic[:4096],
             "axioms": list(result.axioms),
-            "premises": premises,
+            **checks,
         }
-        return Verdict(status, feedback)
+        diagnostic = result.diagnostic[:4096]
+        # Only Lean's own output reaches the worker; a verifier-side
+        # unsupported or infrastructure diagnostic can name container internals.
+        if result.status in (
+            proved,
+            _proofs.ProofStatus.REJECTED,
+            _proofs.ProofStatus.UNPROVED,
+        ):
+            return Verdict(status, {**feedback, "diagnostic": diagnostic})
+        return Verdict(status, feedback, host_only={"diagnostic": diagnostic})
+
+
+def _results(fn, ctx, kind):
+    results = {} if fn is None else dict(fn(ctx))
+    if not all(type(n) is str and type(v) is bool for n, v in results.items()):
+        raise TypeError(f"{kind} must map names to booleans")
+    return results

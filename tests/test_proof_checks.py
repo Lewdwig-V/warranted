@@ -161,9 +161,12 @@ def workspace(files):
     ).encode()
 
 
-def checked(verifier, files, premises=None):
+def checked(verifier, files, premises=None, correspondence=None):
     ctx = CheckContext({"workspace.json": workspace(files)}, {}, {}, None, verifier)
-    return LeanProof(TARGETS["uniqueness"], premises=premises).check(ctx), ctx
+    proof = LeanProof(
+        TARGETS["uniqueness"], premises=premises, correspondence=correspondence
+    )
+    return proof.check(ctx), ctx
 
 
 @pytest.mark.parametrize(
@@ -180,6 +183,75 @@ def test_proof_outcomes_map_to_verdicts(status, expected):
     verdict, _ = checked(FakeVerifier({PROOF: status}), {"Solution.lean": PROOF})
     assert verdict.status is expected
     assert verdict.feedback["proof"] == status.value
+
+
+@pytest.mark.parametrize(
+    "status, lean",
+    [
+        (ProofStatus.PROVED, True),
+        (ProofStatus.REJECTED, True),
+        (ProofStatus.UNPROVED, True),
+        (ProofStatus.UNSUPPORTED, False),
+        (ProofStatus.INFRASTRUCTURE_FAILURE, False),
+    ],
+)
+def test_only_a_lean_diagnostic_reaches_the_worker(status, lean):
+    verdict, _ = checked(FakeVerifier({PROOF: status}), {"Solution.lean": PROOF})
+    diagnostic = f"fake {status.value}"
+    if lean:
+        assert verdict.feedback["diagnostic"] == diagnostic
+        assert verdict.host_only is None
+    else:
+        assert "diagnostic" not in verdict.feedback
+        assert verdict.host_only == {"diagnostic": diagnostic}
+
+
+def test_a_proved_theorem_whose_correspondence_fails_is_rejected():
+    verdict, _ = checked(
+        FakeVerifier({PROOF: ProofStatus.PROVED}),
+        {"Solution.lean": PROOF},
+        lambda ctx: {"input_unique": True},
+        lambda ctx: {"identity_selection": False},
+    )
+    assert verdict.status is VerdictStatus.REJECTED
+    assert verdict.feedback["proof"] == "proved"
+    assert verdict.feedback["premises"] == {"input_unique": True}
+    assert verdict.feedback["correspondence"] == {"identity_selection": False}
+
+
+def test_a_failed_premise_wins_over_a_failed_correspondence():
+    verdict, _ = checked(
+        FakeVerifier({PROOF: ProofStatus.PROVED}),
+        {"Solution.lean": PROOF},
+        lambda ctx: {"input_unique": False},
+        lambda ctx: {"identity_selection": False},
+    )
+    assert verdict.status is VerdictStatus.UNSUPPORTED
+
+
+@pytest.mark.parametrize(
+    "correspondence",
+    [lambda ctx: {"x": 1}, lambda ctx: {1: True}, lambda ctx: 1 / 0],
+)
+def test_a_faulty_correspondence_is_never_a_pass(correspondence):
+    with pytest.raises((TypeError, ZeroDivisionError)):
+        checked(
+            FakeVerifier({PROOF: ProofStatus.PROVED}),
+            {"Solution.lean": PROOF},
+            correspondence=correspondence,
+        )
+
+
+def test_a_rejected_source_reports_premises_and_correspondence():
+    verdict, _ = checked(
+        FakeVerifier(),
+        {},
+        lambda ctx: {"input_unique": True},
+        lambda ctx: {"identity_selection": False},
+    )
+    assert verdict.status is VerdictStatus.REJECTED
+    assert verdict.feedback["premises"] == {"input_unique": True}
+    assert verdict.feedback["correspondence"] == {"identity_selection": False}
 
 
 def test_a_proved_theorem_whose_premise_fails_is_unsupported():
