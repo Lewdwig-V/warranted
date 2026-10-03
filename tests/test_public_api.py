@@ -68,3 +68,25 @@ def test_importing_the_package_prints_nothing():
         check=True,
     )
     assert (result.stdout, result.stderr) == (b"", b"")
+
+
+DOCS = sorted([ROOT / "README.md", *(ROOT / "docs/reference").glob("*.md")])
+
+
+@pytest.mark.parametrize("path", DOCS, ids=lambda p: str(p.relative_to(ROOT)))
+def test_documented_examples_import_only_public_names(path):
+    text = path.read_text()
+    blocks = [b.split("```", 1)[0] for b in text.split("```python\n")[1:]]
+    for block in blocks:
+        try:
+            tree = ast.parse(block)
+        except SyntaxError:
+            continue  # a signature sketch, not runnable code
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
+                "warranted"
+            ):
+                assert node.module in PUBLIC, f"{path.name} imports {node.module}"
+                target = warranted if node.module == "warranted" else warranted.host
+                for alias in node.names:
+                    assert alias.name in target.__all__, alias.name
