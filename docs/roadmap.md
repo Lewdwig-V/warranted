@@ -176,7 +176,9 @@ domain project supplies only domain knowledge. Specifically:
   `revise` for [contract revisions](reference/cli.md#contract-revisions).
 - [ ] **Release discipline.** Tagged releases with a changelog, semantic
   versioning, and a deprecation policy for the public API; reference docs
-  generated from or tested against it.
+  generated from or tested against it. The [changelog](../CHANGELOG.md),
+  [policy, and API reference](reference/api.md) exist, and tests and CI check
+  them against the code; the item completes when `v0.1.0` is tagged.
 
 **Completion evidence:** both existing fixtures run through the public API and
 CLI with their current guarantees and tests intact. A minimal reverse-engineering

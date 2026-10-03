@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]  # tests/test_release.py checks the tag names the package version
   pull_request:
   workflow_dispatch:
 

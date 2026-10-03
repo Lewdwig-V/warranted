@@ -1,9 +1,9 @@
 """Durable, checkable knowledge for long-horizon agent work.
 
 This package is Warranted's task layer: the public API a domain project builds
-on. It will follow semantic versioning from 1.0; until then, changes are listed
-in the changelog. The low-level kit is `warranted.host`, which is public but not
-versioned. Every module whose name starts with an underscore is private.
+on, versioned semantically with the deprecation policy in docs/reference/api.md.
+The low-level kit is `warranted.host`, which is public but outside semantic
+versioning. Every module whose name starts with an underscore is private.
 """
 
 from importlib.metadata import version as _version
