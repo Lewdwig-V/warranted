@@ -156,7 +156,7 @@ def test_the_proof_task_is_refused_without_a_verifier(tmp_path):
 
 
 def test_timestamp_premises_require_one_offset_for_every_row():
-    task = UNIQUENESS
+    task = TIMESTAMP
 
     def single_offset(result):
         ctx = CheckContext(
@@ -169,3 +169,22 @@ def test_timestamp_premises_require_one_offset_for_every_row():
     shifted = json.loads(json.dumps(CANDIDATES["correct"]))
     shifted["rows"][0][1] = "2025-12-31T22:30:00Z"  # one hour off the other rows
     assert single_offset(shifted) == {"single_offset": False}
+
+
+def test_uniqueness_premises_fail_closed_on_malformed_rows():
+    def identity_selection(result):
+        ctx = CheckContext(
+            {"result.json": json.dumps(result).encode()},
+            UNIQUENESS.inputs,
+            UNIQUENESS.private,
+        )
+        return CSV.uniqueness_premises(ctx)["identity_selection"]
+
+    rows = CANDIDATES["correct"]["rows"]
+    assert identity_selection({"rows": rows}) is True
+    assert identity_selection({"rows": [5]}) is False
+    assert identity_selection({"rows": [[]]}) is False
+    assert identity_selection({"rows": [rows[0], [5, "x", 1]]}) is False
+    # M4's semantics: an empty selection is an identity selection; the transformation
+    # check rejects it (unlike timestamp_premises, which needs a row to show an offset).
+    assert identity_selection({"rows": []}) is True
