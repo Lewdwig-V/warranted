@@ -38,7 +38,9 @@ class LeanVerifier:
         self.bundle = Path(bundle_path).read_bytes()
         _proofs._validate(b"x", seconds)
         self.seconds = seconds
-        self.identity = "lean-verifier-v1:" + hashlib.sha256(self.bundle).hexdigest()
+        # The timeout is policy: a shorter one can turn a proof UNPROVED.
+        digest = hashlib.sha256(self.bundle).hexdigest()
+        self.identity = f"lean-verifier-v1:{digest}:{seconds}s"
 
     def verify(self, source: bytes, target: ProofTarget) -> Verification:
         _proofs._validate(source, self.seconds)
@@ -63,9 +65,13 @@ class LeanProof:
     they must not be computed from private inputs in a way that leaks them. A
     proof never authorizes acceptance on its own: tasks still require their
     other checks.
+
+    Pass `isolated=True` only when `premises` and `correspondence` touch no
+    state shared with other runs (see `Checker`); the verifier itself is
+    contained. The challenge bytes the target holds are pinned through
+    `version`, so the project identity matches exactly what is verified.
     """
 
-    isolated = True  # a contained verifier over captured bytes; no shared state
     needs_proofs = True
 
     def __init__(
@@ -74,6 +80,7 @@ class LeanProof:
         source: str = "Solution.lean",
         premises: Callable | None = None,
         correspondence: Callable | None = None,
+        isolated: bool = False,
     ):
         if not isinstance(target, ProofTarget):
             raise ValueError("LeanProof needs a ProofTarget")
@@ -81,8 +88,11 @@ class LeanProof:
             raise ValueError("source must be a workspace file name")
         self.target, self.source = target, source
         self.premises, self.correspondence = premises, correspondence
-        self.sources = (target.path,)
-        self.version = "1:" + target.theorem
+        if type(isolated) is not bool:
+            raise ValueError("isolated must be True or False")
+        self.isolated = isolated
+        challenge = hashlib.sha256(target.challenge).hexdigest()
+        self.version = f"2:{target.theorem}:{challenge}"
 
     def check(self, ctx):
         from warranted._tasks import Verdict, VerdictStatus

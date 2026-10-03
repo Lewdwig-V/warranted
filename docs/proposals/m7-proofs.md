@@ -148,13 +148,19 @@ shown to the worker, so they must not leak private inputs.
 
 ## Identity and pinning
 
-- **Target bytes.** A checker may declare `sources`, which are folded into the
-  domain's identity digest beside the domain's own declared sources.
-  `LeanProof` declares its challenge file, so an edited theorem or challenge
-  refuses to reopen the project.
-- **Verifier.** `LeanVerifier.identity` includes the bundle digest, the policy
-  digest, and the toolchain manifest. A rebuilt bundle refuses to reopen the
-  project, as a changed job runner does.
+- **Target bytes.** `LeanProof`'s `version` includes the theorem name and the
+  sha256 of the challenge bytes the target holds, and the domain identity
+  records every checker's version. An edited theorem or challenge refuses to
+  reopen the project, and the pinned bytes are exactly the bytes verified,
+  never a later re-read of the path. Other checkers may declare `sources`,
+  which are folded into the domain's identity digest.
+- **Verifier.** `LeanVerifier.identity` includes the bundle digest (which
+  covers the policy digest and toolchain manifest) and the timeout. A rebuilt
+  bundle or a changed timeout refuses to reopen the project, as a changed job
+  runner does.
+- **Isolation.** `LeanProof` is not isolated by default, because its premise
+  and correspondence callbacks are domain code. A domain passes
+  `isolated=True` when they touch no shared state.
 - **No verifier.** A project created without `proofs=` refuses to start a task
   whose contracts, including scheduled revisions, require a `LeanProof` checker.
 - **Bundle change.** The supervisor now reads the challenge and theorem from the

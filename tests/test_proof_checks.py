@@ -13,6 +13,7 @@ from warranted import (
     CheckContext,
     LeanProof,
     Project,
+    ProofTarget,
     RunOutcome,
     TaskSpec,
     Verdict,
@@ -305,10 +306,38 @@ def test_a_forged_verdict_file_in_the_workspace_is_ignored():
     assert verdict.status is VerdictStatus.REJECTED
 
 
-def test_a_lean_proof_pins_its_challenge():
-    proof = LeanProof(TARGETS["uniqueness"])
-    assert proof.sources == (TARGETS["uniqueness"].path,)
-    assert proof.needs_proofs is True and proof.isolated is True
+def test_a_lean_proof_pins_the_challenge_bytes_it_verifies(tmp_path):
+    # The identity is derived from the bytes the target holds, never by
+    # rereading the path, so an edit after construction cannot split the two.
+    path = tmp_path / "Challenge.lean"
+    path.write_bytes(TARGETS["uniqueness"].challenge)
+    target = ProofTarget(path, "Warranted.uniqueness_preserved")
+    proof = LeanProof(target)
+    assert hashlib.sha256(target.challenge).hexdigest() in proof.version
+    path.write_bytes(b"theorem changed : True := trivial\n")
+    assert LeanProof(target).version == proof.version
+    rebuilt = LeanProof(ProofTarget(path, "Warranted.uniqueness_preserved"))
+    assert rebuilt.version != proof.version
+    assert not hasattr(proof, "sources")
+
+
+def test_a_lean_proof_is_isolated_only_when_declared():
+    assert LeanProof(TARGETS["uniqueness"]).isolated is False
+    assert LeanProof(TARGETS["uniqueness"], isolated=True).isolated is True
+    assert LeanProof(TARGETS["uniqueness"]).needs_proofs is True
+    with pytest.raises(ValueError, match="isolated"):
+        LeanProof(TARGETS["uniqueness"], isolated="yes")
+
+
+def test_the_verifier_identity_includes_its_timeout(tmp_path):
+    from warranted import LeanVerifier
+    from warranted._proofs import LIMITS
+
+    bundle = tmp_path / "bundle.json"
+    bundle.write_bytes(b'{"bundle": "test"}')
+    default, short = LeanVerifier(bundle), LeanVerifier(bundle, seconds=5)
+    assert default.identity != short.identity
+    assert str(LIMITS["seconds"]) in default.identity
 
 
 def proof_domain():
