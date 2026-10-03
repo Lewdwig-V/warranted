@@ -252,8 +252,16 @@ matrix through rootless Podman.
 
 Differences from the M5 drivers: a candidate accepted before the checkpoint ends
 its run, so M5's "accept, revise, reject the same run" sequence becomes a project
-revision and a new run. The proof cases and the A–E treatments stay on the host
-kit.
+revision and a new run. The A–E treatments stay on the host kit.
+
+[`proof.toml`](../../examples/m7/migration/proof.toml) adds a `LeanProof` check
+named `renaming` beside the other obligations, verified against
+`MigrationChallenge.lean`. Its premise `renaming_correspondence` runs the candidate
+on the `migrate` reference cases and requires that host and timeout are renamed
+exactly; an invalid patch, or a reference suite with no `migrate` case, never
+yields a true premise (the latter is a checker fault). The theorem covers both
+label variants, so a candidate that drops the label passes the proof and is
+rejected by `legacy_label`. The proofs stay unable to accept on their own.
 
 ## Proof cases
 

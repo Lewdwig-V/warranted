@@ -2,14 +2,19 @@
 
 import base64
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from test_experimental_mystery import LocalJobs
 from test_experimental_tasks import CANDIDATES, CONFIG, CSV, ENVIRONMENT, Model
+from test_migration_fixture import CANDIDATES as MIGRATIONS
+from test_migration_fixture import MIGRATION
 
 from warranted import (
     CheckContext,
+    LeanVerifier,
     Project,
     ProofResult,
     ProofStatus,
@@ -190,10 +195,6 @@ def test_uniqueness_premises_fail_closed_on_malformed_rows():
     assert identity_selection({"rows": []}) is True
 
 
-from test_experimental_mystery import LocalJobs  # noqa: E402
-from test_migration_fixture import CANDIDATES as MIGRATIONS  # noqa: E402
-from test_migration_fixture import MIGRATION  # noqa: E402
-
 MIGRATION_TASK = TaskSpec.load(ROOT / "examples/m7/migration/proof.toml")
 
 
@@ -216,3 +217,59 @@ def test_the_renaming_proof_omits_the_label_and_the_obligation_decides(
     result = proj.start(replace(MIGRATION_TASK, submissions=1), CONFIG, Model())
     assert result.submissions[0].verdicts["renaming"] is VerdictStatus.PASSED
     assert [s.decision for s in result.submissions] == [decision]
+
+
+def test_renaming_premise_fails_closed_and_needs_a_migrate_case():
+    def premises(payload, private=MIGRATION_TASK.private):
+        ctx = CheckContext(
+            {"result.json": json.dumps(payload).encode()},
+            MIGRATION_TASK.inputs,
+            private,
+            LocalJobs(),
+        )
+        return MIGRATION.renaming_premises(ctx)
+
+    invalid = {"renaming_correspondence": False}
+    assert premises({"migrate.py": ""}) == invalid
+    assert premises({"migrate.py": MIGRATIONS["complete"], "extra": "x"}) == invalid
+    no_cases = {**MIGRATION_TASK.private, "references.json": b"{}"}
+    with pytest.raises(ValueError, match="no migrate case"):
+        premises({"migrate.py": MIGRATIONS["complete"]}, no_cases)
+
+
+needs_lean = pytest.mark.skipif(
+    os.environ.get("WARRANTED_PROOF_TESTS") != "1"
+    or not os.environ.get("WARRANTED_PROOF_BUNDLE"),
+    reason="requires WARRANTED_PROOF_TESTS=1 and WARRANTED_PROOF_BUNDLE",
+)
+
+
+@pytest.mark.proof
+@needs_lean
+@pytest.mark.parametrize(
+    "task, check, proof, candidate, decision",
+    [
+        (UNIQUENESS, "uniqueness", UNIQUENESS_PROOF, "correct", "accepted"),
+        (UNIQUENESS, "uniqueness", UNIQUENESS_PROOF, "dropped-row", "rejected"),
+        (TIMESTAMP, "timestamp", TIMESTAMP_PROOF, "wrong-offset", "rejected"),
+    ],
+)
+def test_real_proofs_on_the_task_layer(
+    tmp_path, task, check, proof, candidate, decision
+):
+    verifier = LeanVerifier(os.environ["WARRANTED_PROOF_BUNDLE"])
+    proj, _ = csv_project(tmp_path, [(CANDIDATES[candidate], proof)], verifier)
+    result = proj.start(one(task), CONFIG, Model())
+    assert result.submissions[0].verdicts[check] is VerdictStatus.PASSED
+    assert [s.decision for s in result.submissions] == [decision]
+
+
+@pytest.mark.proof
+@needs_lean
+def test_a_sorry_proof_is_rejected_by_the_real_verifier(tmp_path):
+    verifier = LeanVerifier(os.environ["WARRANTED_PROOF_BUNDLE"])
+    sorry = (CSV_DIR / "UniquenessChallenge.lean").read_bytes()  # ends in `by sorry`
+    assert b"sorry" in sorry
+    proj, _ = csv_project(tmp_path, [(CANDIDATES["correct"], sorry)], verifier)
+    result = proj.start(one(UNIQUENESS), CONFIG, Model())
+    assert result.submissions[0].verdicts["uniqueness"] is VerdictStatus.REJECTED

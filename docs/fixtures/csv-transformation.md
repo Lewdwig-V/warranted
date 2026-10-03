@@ -484,8 +484,32 @@ under `definition-v2`.
 Differences from the M2 driver: the task layer checks every submission afresh, so
 M2's selective-rebuild counts have no equivalent; a candidate accepted before a
 revision ends its run, and the revision applies to new runs. The M4 uniqueness
-proof is not yet a task-layer check; the M1–M4 drivers remain for their own
+proof also runs on the task layer (below); the M1–M4 drivers remain for their own
 guarantees.
+
+### Proof tasks
+
+[`proof-uniqueness.toml`](../../examples/m7/csv/proof-uniqueness.toml) and
+[`proof-timestamp.toml`](../../examples/m7/csv/proof-timestamp.toml) require a
+`LeanProof` check beside `transformation`, so a proof never replaces it. The worker
+submits `Solution.lean` with `result.json`; the host verifies it against the
+domain-owned challenge (`UniquenessChallenge.lean`, `TimestampChallenge.lean`).
+Premises are trusted domain code: `input_unique` and `identity_selection` for
+uniqueness, `single_offset` for the timestamp. A proved theorem whose premise fails
+is `unsupported`, not rejected. A project without a verifier refuses these tasks.
+
+| Case | Proof check | Run decision |
+| --- | --- | --- |
+| `correct`, valid uniqueness proof | passed | accepted |
+| `dropped-row` or `empty`, valid uniqueness proof | passed | rejected by `transformation` |
+| `correct`, input with duplicate IDs | unsupported (`input_unique` fails) | not accepted (unsupported) |
+| `correct`, wrong or `sorry` proof | rejected | rejected |
+| `correct`, valid timestamp proof | passed | accepted |
+| `wrong-offset`, valid timestamp proof (holds for any single offset) | passed | rejected by `transformation` |
+| rows with mixed offsets | unsupported (`single_offset` fails) | not accepted (unsupported) |
+
+[`tests/test_proof_fixtures.py`](../../tests/test_proof_fixtures.py) runs these
+with a fake verifier; its `proof`-marked tests run the real Lean verifier in CI.
 
 ## Specification failures exercised
 
