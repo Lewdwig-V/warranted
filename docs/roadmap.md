@@ -167,6 +167,8 @@ domain project supplies only domain knowledge. Specifically:
 - [ ] **CLI.** Commands to initialise a project, run and resume a task, report
   status and accounting, export evidence, and run a pinned campaign of tasks. The
   CLI uses only the public API.
+  `init`, `run`, `resume`, `status`, `memory`, and `export` are implemented
+  ([reference](reference/cli.md)); campaigns remain.
 - [ ] **Release discipline.** Tagged releases with a changelog, semantic
   versioning, and a deprecation policy for the public API; reference docs
   generated from or tested against it.

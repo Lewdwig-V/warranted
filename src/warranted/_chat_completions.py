@@ -274,11 +274,16 @@ class LocalChatCompletions:
         expected = ArtifactRef(
             hashlib.sha256(self.snapshot.data).hexdigest(), len(self.snapshot.data)
         )
+        # The pin is a project snapshot, or a run's recorded configuration that
+        # the request cites (the task layer); the ledger verified both inputs.
+        cited = any(
+            name.endswith("/model-api.json") and ref == expected
+            for name, ref in request.origin.inputs.items()
+        )
         if (
             request.origin.kind != "model"
             or request.origin.producer != self.service_id
-            or pinned is None
-            or pinned.artifact != expected
+            or not (cited or (pinned is not None and pinned.artifact == expected))
         ):
             raise ValueError(
                 "model service configuration differs from the pinned request"

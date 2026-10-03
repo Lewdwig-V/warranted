@@ -48,6 +48,8 @@ def test_the_cli_and_m7_examples_use_only_the_public_api(path):
     for module, names in imports(path):
         assert module in PUBLIC, f"{path.name} imports {module}"
         for name in names:
+            if module == "warranted" and name == "__version__":
+                continue
             assert not name.startswith("_"), f"{path.name} imports {module}.{name}"
             target = warranted if module == "warranted" else warranted.host
             assert name in target.__all__, f"{name} is not exported by {module}"

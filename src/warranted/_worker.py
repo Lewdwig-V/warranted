@@ -97,6 +97,9 @@ class Episode:
     files: Mapping[str, Evidence] = field(default_factory=dict)
     workspace: Evidence | None = None
     container_timeout_seconds: int = 120
+    # Recorded adapter configuration that model requests cite, so an adapter can
+    # verify its pin without a project snapshot. Never delivered to the worker.
+    model_pin: Evidence | None = None
 
     def __post_init__(self):
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", self.episode_id):
@@ -118,6 +121,8 @@ class Episode:
         object.__setattr__(self, "files", MappingProxyType(dict(self.files)))
         if self.workspace is not None and type(self.workspace) is not Evidence:
             raise ValueError("workspace requires captured evidence")
+        if self.model_pin is not None and type(self.model_pin) is not Evidence:
+            raise ValueError("model pin requires captured evidence")
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("episode step limit must be between 1 and 100")
         if (
@@ -242,6 +247,7 @@ class Journal:
         for ref in (
             *episode.files.values(),
             *((episode.workspace,) if episode.workspace else ()),
+            *((episode.model_pin,) if episode.model_pin else ()),
         ):
             if ref.name in inputs and inputs[ref.name] != ref.artifact:
                 raise ValueError("conflicting context evidence")
@@ -311,7 +317,12 @@ class Journal:
                 if kind == "model"
                 else "warranted-worker",
                 "1",
-                {**self.inputs, evidence.name: evidence.artifact},
+                {**self.inputs, evidence.name: evidence.artifact}
+                | (
+                    {self.episode.model_pin.name: self.episode.model_pin.artifact}
+                    if kind == "model" and self.episode.model_pin is not None
+                    else {}
+                ),
             ),
             self.ledger.project,
         )

@@ -12,7 +12,7 @@ from warranted._chat_completions import LocalChatCompletions
 from warranted._claims import Applicability
 from warranted._guard import DuplicateGuard, default_normalize
 from warranted._jobs import JobContext, JobLimits, JobResult, JobRunner, PodmanJobs
-from warranted._ledger import Outcome
+from warranted._ledger import Balance, Outcome
 from warranted._openrouter import OpenRouterChatCompletions
 from warranted._operations import Operation, OperationContext, OperationResult
 from warranted._sandbox import IMAGE as DEFAULT_WORKER_IMAGE
@@ -32,6 +32,7 @@ from warranted._tasks import (
     RunConfig,
     RunOutcome,
     RunResult,
+    RunStatus,
     Submission,
     TaskSpec,
     Verdict,
@@ -50,6 +51,7 @@ __all__ = [
     "NOTES_COUNT",
     "NOTES_LIMIT",
     "Applicability",
+    "Balance",
     "CheckContext",
     "Checker",
     "Domain",
@@ -71,6 +73,7 @@ __all__ = [
     "RunConfig",
     "RunOutcome",
     "RunResult",
+    "RunStatus",
     "Submission",
     "TaskSpec",
     "Verdict",

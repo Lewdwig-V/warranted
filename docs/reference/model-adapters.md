@@ -20,8 +20,10 @@ SDK, streaming, automatic retries, redirects, or environment proxies.
   `model` ledger unit counts attempts. Prompt and completion tokens are reserved
   only for [verified models](#token-budgets). Money is never a ledger unit.
 - Each request records its service as the request producer, so the request digest
-  binds the configured service identity. An adapter whose configuration differs
-  from the pinned request refuses to send anything.
+  binds the configured service identity. The adapter's configuration is pinned
+  either as the project's `model-api` snapshot or, in the task layer, as the
+  run's recorded `model-api.json`, which every model request cites. An adapter
+  whose configuration differs from the pin refuses to send anything.
 - Raw request and response bytes, status, and known usage are recorded before
   parsing. HTTP failures, malformed replies, and parse errors keep their charge.
 - If a response is lost after dispatch, the attempt stays unknown, keeps its
