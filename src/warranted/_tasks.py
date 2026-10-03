@@ -692,12 +692,19 @@ class Project:
                 if submission is None:
                     break
                 submissions.append(submission)
+            # A run scope's unresolved operations include the root scope's.
             blocked = tuple(
-                op.request.origin.operation_id
-                for scope in (run.scope, ROOT_SCOPE)
-                for op in ledger.unresolved(scope)
+                dict.fromkeys(
+                    op.request.origin.operation_id
+                    for op in ledger.unresolved(run.scope)
+                )
             )
             accounting = dict(ledger.accounting(run.scope))
+            ended = None
+            if len(submissions) < run.task.submissions:
+                ended = self._ended_without_submission(
+                    ledger, self._episode_id(run, len(submissions) + 1)
+                )
         outcome = None
         final = {
             str(Status.ACCEPTED): RunOutcome.ACCEPTED,
@@ -711,6 +718,11 @@ class Project:
             outcome = final[submissions[-1].decision]
         elif len(submissions) == run.task.submissions:
             outcome = RunOutcome.REJECTED
+        elif ended is RunOutcome.INFRASTRUCTURE_FAILURE:
+            outcome = ended
+        elif ended is not None:
+            # Resume would replay the same finished episode, so the run is over.
+            outcome = RunOutcome.REJECTED if submissions else RunOutcome.INCOMPLETE
         return RunStatus(
             run.run_id,
             run.task.id,
@@ -721,6 +733,33 @@ class Project:
             blocked,
             MappingProxyType(accounting),
         )
+
+    @staticmethod
+    def _ended_without_submission(ledger: Ledger, episode_id: str):
+        """How a finished episode ended without a submission, or None.
+
+        A completed attempt recorded as infrastructure failure ends the run as
+        one; a failed model attempt, or a finished episode that did not submit,
+        ends it like a step limit does. An episode still in progress, or one that
+        submitted, gives None.
+        """
+        prefix, failed = f"episode/{episode_id}/", None
+        for operation in ledger.operations():
+            origin = operation.request.origin
+            if origin.operation_id.startswith(prefix) and operation.completion:
+                outcome = operation.completion.result.outcome
+                if outcome is Outcome.INFRASTRUCTURE_FAILURE:
+                    return RunOutcome.INFRASTRUCTURE_FAILURE
+                if outcome is Outcome.FAILED and origin.kind == "model":
+                    failed = RunOutcome.INCOMPLETE
+        if failed is not None:
+            return failed
+        for o in ledger.history():
+            if o.origin.operation_id == prefix + "finished":
+                result = json.loads(ledger.read_artifact(o.artifacts["result.json"]))
+                if result.get("exit_status") != "Submitted":
+                    return RunOutcome.INCOMPLETE
+        return None
 
     def _recorded_submission(self, ledger: Ledger, run: _Run, index: int):
         """A submission's recorded decision, or None if none is recorded yet."""

@@ -60,7 +60,11 @@ def load_domain(reference: str, base: Path):
         sys.modules[name] = module
         spec.loader.exec_module(module)
     else:
-        module = importlib.import_module(module_name)
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError as error:
+            message = f"cannot import domain module {module_name}: {error}"
+            raise UsageError(message) from error
     found = module
     for part in attribute.split("."):
         if not hasattr(found, part):

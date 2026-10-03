@@ -88,6 +88,7 @@ def test_init_accepts_an_importable_module(tmp_path, capsys):
     [
         ["init", "{p}", "--domain", "no-colon"],
         ["init", "{p}", "--domain", "test_cli:Missing"],
+        ["init", "{p}", "--domain", "missing_package:Domain"],
         ["init", "{p}", "--domain", "missing.py:Domain"],
         ["init", "{p}", "--domain", "test_cli:Tiny", "--allow", "model"],
         ["status", "{p}"],
@@ -131,7 +132,9 @@ def test_a_rejected_run_exits_1(tmp_path, capsys, scripted, model):
     assert "rejected" in capsys.readouterr().out
 
 
-def test_an_open_run_resumes_from_the_cli(tmp_path, capsys, scripted, model):
+def test_a_run_that_ended_without_submitting_is_not_open(
+    tmp_path, capsys, scripted, model
+):
     project = init(tmp_path, capsys)
     config, _ = model
     scripted += [None]  # the first episode never submits
@@ -139,12 +142,12 @@ def test_an_open_run_resumes_from_the_cli(tmp_path, capsys, scripted, model):
     assert code == 1
     run = out(capsys)
     assert run["outcome"] == "incomplete"
+    # The episode finished without submitting; resume would only replay it.
     assert main(["status", str(project), run["run"], "--json"]) == 0
-    assert out(capsys)["outcome"] is None  # open: resume to continue
+    assert out(capsys)["outcome"] == "incomplete"
     scripted[0] = "correct"
     resumed = main(["resume", str(project), run["run"], "--config", str(config)])
-    # The recorded episode replays as it was: still no submission.
-    assert resumed == 1
+    assert resumed == 1  # the recorded episode replays as it was
 
 
 def test_resume_refuses_a_different_model(tmp_path, capsys, scripted, model):
@@ -274,3 +277,26 @@ def test_a_cli_run_drives_a_real_container_with_a_real_adapter(tmp_path, capsys)
     assert code == 1
     assert out(capsys)["outcome"] == "incomplete"
     assert [p for p, _ in calls].count("/v1/chat/completions") == 1
+
+
+def test_status_reports_an_open_run_and_each_blocker_once(
+    tmp_path, capsys, scripted, model
+):
+    from warranted._ledger import ROOT_SCOPE, Ledger, Origin, Request
+
+    project = init(tmp_path, capsys)
+    config, _ = model
+    scripted += ["wrong-offset", "correct"]
+    main(["run", str(project), str(TASK), "--config", str(config), "--json"])
+    run = out(capsys)["run"]
+    with Ledger.open(project / "ledger") as ledger:
+        session = ledger.start_session()
+        request = Request(
+            Origin("shared/probe", "tool", "test", "1", {}), ledger.project
+        )
+        ledger.reserve(session, request, {"tool": 1}, ROOT_SCOPE)
+        assert ledger.begin(session, request)  # dispatched, never completed
+    assert main(["status", str(project), run, "--json"]) == 0
+    status = out(capsys)
+    assert status["outcome"] == "unknown"
+    assert status["blocked"] == ["shared/probe"]

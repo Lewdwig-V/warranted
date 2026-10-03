@@ -94,11 +94,18 @@ the operations blocking the run, and the run scope's usage for each unit
 Status is read-only and needs no model. Its outcome is taken from recorded
 decisions:
 
-- `open` (JSON `null`): the run has submissions left and no decision has ended
-  it, so `resume` can continue it;
 - `unknown`: an operation in the run's scope or the root scope is unresolved;
+- the final decision of the last submission, when it ended the run;
 - `rejected`: every allowed submission was used without acceptance;
-- otherwise, the final decision of the last submission.
+- `incomplete` (or `rejected`, after earlier submissions): the next episode
+  finished without submitting, for example at its step limit, or its model
+  attempt failed. Resume would only replay that episode;
+- `infrastructure_failure`: an attempt in the next episode recorded one;
+- `open` (JSON `null`): otherwise. The run has submissions left and nothing
+  recorded has ended it, so `resume` can continue it.
+
+A run that a budget stopped before its next step could start still shows
+`open`, because nothing records that stop; resuming it reports the budget again.
 
 ## Memory
 
