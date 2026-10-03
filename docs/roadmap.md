@@ -16,6 +16,7 @@ deferred until M8 lands.
 | M5 | Second task family and A–E knowledge-workflow comparison | Fixtures complete; comparison deferred |
 | M7 | Stable harness API and CLI | Next |
 | M8 | ReSchema rebuilt on Warranted | Planned, after M7 |
+| M9 | Verified optimisation loop for Minkowski | Proposed |
 | M6 | Dream-RSI replay-based scheduling | Deferred |
 | M3a | Optional Jev classifier and judge | Deferred |
 
@@ -229,6 +230,24 @@ full accounting.
 **Decision:** any capability ReSchema needs that only makes sense for reverse
 engineering stays in ReSchema. If M8 shows an M7 interface does not fit, revise
 the interface before 1.0 rather than adding a ReSchema-specific path.
+
+## M9 — Verified optimisation loop for Minkowski
+
+Proposed; not started. A second, non-reverse-engineering consumer: a loop that
+improves [Minkowski](https://github.com/Lewdwig-V/minkowski)'s performance,
+accepting a change only when Minkowski's own correctness checks pass and a
+deterministic measure improves, then making it the next baseline. The
+[design note](proposals/optimisation-loop.md) maps the use case onto the current
+interfaces and proposes, in order:
+
+- [ ] A strategy that tries several candidates per round, built first on an
+  ARC-AGI-1/2 puzzle fixture.
+- [ ] Patch candidates against a pinned source tree, and checker measurements
+  with a task-declared objective.
+- [ ] Deterministic measures as the only gates, and a pinned build cache.
+- [ ] Chains: accepted rounds promoted into the next baseline with recorded
+  lineage.
+- [ ] Later: improving the agent itself, building on M6.
 
 ## M5 — Generality and the knowledge experiment
 
