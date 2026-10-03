@@ -18,6 +18,7 @@ from warranted import (
     CampaignTask,
     LocalChatCompletions,
     Project,
+    Revision,
     RunConfig,
     RunOutcome,
     RunResult,
@@ -268,6 +269,15 @@ def cmd_export(args) -> int:
     return 0
 
 
+def cmd_revise(args) -> int:
+    project = open_project(args.dir)
+    revision = Revision.load(Path(args.revision), project.imported)
+    project.revise(args.task, revision)
+    applied = [r.id for r in project.revisions(args.task)]
+    print(f"task {args.task} revised by {revision.owner}: {', '.join(applied)}")
+    return 0
+
+
 def cmd_import(args) -> int:
     project = open_project(args.dir)
     for name in args.files:
@@ -424,6 +434,12 @@ def parser() -> argparse.ArgumentParser:
     sub.add_argument("dir")
     sub.add_argument("run")
     sub.add_argument("dest")
+    sub = command(
+        "revise", cmd_revise, "Record an owner-approved revision for new runs."
+    )
+    sub.add_argument("dir")
+    sub.add_argument("task", help="task ID")
+    sub.add_argument("revision", help="revision TOML file")
     sub = command("import", cmd_import, "Pin files in the project; prints refs.")
     sub.add_argument("dir")
     sub.add_argument("files", nargs="+", metavar="FILE")

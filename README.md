@@ -99,7 +99,7 @@ and keep only its reverse-engineering logic
   [M7 proposal](docs/proposals/m7-harness-api.md), and `warranted.host` exports
   the low-level kit. Modules whose names start with an underscore are private.
   Until 1.0, either surface may change; changes will be listed in the changelog.
-- There is no campaign interface, and contract revisions are not yet part of the
+- The CSV and migration fixtures still run on their own drivers, not yet on the
   task layer.
 - The measured A–E comparison, with frontier and smaller models, separated
   development and held-out tasks, and full cost reporting.

@@ -166,8 +166,8 @@ domain project supplies only domain knowledge. Specifically:
   M7's completion evidence.
 - [x] **CLI.** Commands to initialise a project, run and resume a task, report
   status and accounting, export evidence, and run a pinned campaign of tasks. The
-  CLI uses only the public API ([reference](reference/cli.md)). `revise` waits
-  for contract revisions in the task layer.
+  CLI uses only the public API ([reference](reference/cli.md)), including
+  `revise` for [contract revisions](reference/cli.md#contract-revisions).
 - [ ] **Release discipline.** Tagged releases with a changelog, semantic
   versioning, and a deprecation policy for the public API; reference docs
   generated from or tested against it.
