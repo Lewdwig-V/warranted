@@ -123,7 +123,10 @@ class CsvDomain:
             UNIQUENESS,
             premises=uniqueness_premises,
             correspondence=uniqueness_correspondence,
+            isolated=True,  # the callbacks read only the check's own bytes
         ),
-        "timestamp": LeanProof(TIMESTAMP, correspondence=timestamp_correspondence),
+        "timestamp": LeanProof(
+            TIMESTAMP, correspondence=timestamp_correspondence, isolated=True
+        ),
     }
     sources = (M2_SOURCE,)  # loaded with runpy, so not found by following imports

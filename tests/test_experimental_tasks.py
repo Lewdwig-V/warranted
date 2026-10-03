@@ -521,8 +521,6 @@ def domain_with(*sources):
 def test_the_csv_domain_pins_the_evaluator_it_loads_with_runpy():
     names = [name for name, _ in _source_files(CSV.CsvDomain())]
     assert names == [
-        "checker/timestamp/0/TimestampChallenge.lean",
-        "checker/uniqueness/0/UniquenessChallenge.lean",
         "class/_proof_checks.py",
         "class/domain.py",
         "source/0/experiments.py",
