@@ -244,8 +244,10 @@ entries from runs of the same split. Runs outside any campaign form their own
 group. A plan is also refused if a task's memory scope is shared by tasks of
 another split, in this campaign or in any campaign already pinned in the
 project. Held-out runs therefore never see training or development facts.
-This separates memory, not task lineage: nothing yet refuses the same task in
-different splits across campaigns ([enforcement](enforcement.md#7-splits-stay-separate-failures-and-costs-are-reported)).
+A task also keeps its split: a plan is refused if one of its tasks was planned
+in another split by any campaign already pinned in the project. A task's lineage
+is its ID, which revisions keep; a copy of a task under a new ID is not detected
+([enforcement](enforcement.md#7-splits-stay-separate-failures-and-costs-are-reported)).
 
 `campaign report` lists every planned run with its split, task, configuration,
 repetition, and outcome, including runs that failed or have not started, and

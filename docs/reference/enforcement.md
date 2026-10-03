@@ -98,7 +98,7 @@ not replay in the M6 sense.
 | Clause | Tier | Enforced by | Negative cases |
 | --- | --- | --- | --- |
 | Splits separated by provenance | Partial | For memory only: a memory scope cannot span splits, across campaigns | `test_campaigns.py::test_a_memory_scope_cannot_span_splits`, `::test_memory_is_shared_only_within_a_split_across_campaigns` |
-| Splits separated by lineage | Documented | Nothing refuses the same task appearing in one split in one campaign and in another split in a later campaign | — |
+| Splits separated by lineage | Partial | `Project.plan_campaign` refuses a task planned in another split by any pinned campaign. Lineage is the task ID, which revisions keep; a copy under a new ID is not detected, and runs outside campaigns have no split. | `test_campaigns.py::test_a_task_cannot_change_split_across_campaigns` |
 | Failed attempts are reported | Partial | `campaign_report` and `RunStatus` include every planned run; the ledger is append-only. Only the unknown case is tested. | `test_campaigns.py::test_unknown_runs_are_resumed_when_the_campaign_runs_again` |
 | Optimisation cost is reported | Not built | No optimiser exists | — |
 
@@ -117,7 +117,6 @@ not replay in the M6 sense.
   is not recorded as an infrastructure failure. The error is raised after the
   check operation begins, outside the handler for checker faults, so the run is
   left `unknown` instead.
-- **Lineage separation between splits** is not enforced (invariant 7).
 - **Host-kit staleness** is reported, not enforced: a caller of `Claims` must
   refuse a stale application itself (invariant 2).
 - **Rejected runs and cost totals** in campaign reports have no test.

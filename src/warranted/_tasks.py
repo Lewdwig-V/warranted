@@ -753,7 +753,8 @@ class CampaignSpec:
 
     Each repetition runs every task under every configuration, in the order
     given. A memory scope may not be shared by tasks of different splits, so
-    held-out results never draw on training or development facts.
+    held-out results never draw on training or development facts, and a task
+    keeps one split across every campaign in the project.
     """
 
     id: str
@@ -1474,6 +1475,15 @@ class Project:
                     continue
                 for planned in other["entries"]:
                     for entry in entries:
+                        if (
+                            entry["task"] == planned["task"]
+                            and entry["split"] != planned["split"]
+                        ):
+                            # A task's lineage is its ID; revisions keep it.
+                            raise ValueError(
+                                f"task {entry['task']} is used by "
+                                f"{planned['split']} runs of campaign {other['id']}"
+                            )
                         if (
                             entry["scope"] is not None
                             and entry["scope"] == planned["scope"]
