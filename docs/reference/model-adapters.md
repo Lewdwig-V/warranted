@@ -121,10 +121,13 @@ uv run --locked python examples/m7/token_bound.py measure runs/token-bound \
   --model <installed-tag> --base-url http://127.0.0.1:11434/v1
 ```
 
-It reads the tag's installed digest and sends ten fixed cases with `max_tokens`
-16. The cases cover empty, one-character, digit-dense, symbol-dense, whitespace,
+It reads the tag's installed digest, checks it again before every case and once
+after the last, and stops if the tag has moved. It sends ten fixed cases with
+`max_tokens` 16. The cases cover empty, one-character, digit-dense, symbol-dense, whitespace,
 non-ASCII, many tiny messages, and longer prose. It writes `report.json` and every
-raw request and response. It exits 0 and prints the `model@digest` key only when
+raw request and response, and the raw metadata responses that pin the digest.
+A case counts only if its response passes the adapter's own checks: the same
+model, and non-negative, consistent token counts. It exits 0 and prints the `model@digest` key only when
 every case reported prompt tokens within the bound; a missing count fails the
 measurement. The script only measures; adding the key is a separate reviewed
 change.

@@ -65,12 +65,14 @@ CASES = {
 }
 
 
-def installed(client: LocalChatCompletions) -> dict:
-    """The tag's installed metadata; the digest pins what was measured."""
+def installed(client: LocalChatCompletions, raw: Path, label: str) -> dict:
+    """The tag's installed metadata, kept raw; the digest pins what was measured."""
     with http_response(
         client.base_url.removesuffix("/v1") + "/api/tags", None, 10
     ) as response:
         body, status = response.read(MAX_BYTES + 1), response.status
+    (raw / f"{label}.tags-status.json").write_bytes(_encode(status))
+    (raw / f"{label}.tags-response").write_bytes(body)
     if status != 200 or len(body) > MAX_BYTES:
         raise ValueError(f"model metadata HTTP status {status}")
     models = json.loads(body, object_pairs_hook=_json_object)["models"]
@@ -80,8 +82,31 @@ def installed(client: LocalChatCompletions) -> dict:
     return matches[0]
 
 
+def reported_prompt_tokens(client: LocalChatCompletions, status: int, body: bytes):
+    """Prompt tokens only from a response the adapter would accept as measured."""
+    if status != 200:
+        return None
+    try:
+        value = json.loads(body, object_pairs_hook=_json_object)
+    except ValueError:
+        return None
+    if type(value) is not dict or value.get("model") != client.model:
+        return None
+    usage = value.get("usage")
+    keys = ("prompt_tokens", "completion_tokens", "total_tokens")
+    if type(usage) is not dict or any(
+        type(usage.get(key)) is not int or usage[key] < 0 for key in keys
+    ):
+        return None
+    if usage["total_tokens"] != usage["prompt_tokens"] + usage["completion_tokens"]:
+        return None
+    return usage["prompt_tokens"]
+
+
 def measure(client: LocalChatCompletions, out: Path) -> dict:
-    model = installed(client)
+    raw = out / "raw"
+    raw.mkdir(parents=True)
+    model = installed(client, raw, "before")
     pinned = type(
         "Measured",
         (LocalChatCompletions,),
@@ -94,20 +119,19 @@ def measure(client: LocalChatCompletions, out: Path) -> dict:
         client.seed,
         model["digest"],
     )
-    raw = out / "raw"
-    raw.mkdir(parents=True)
     rows = []
     for name, messages in CASES.items():
         payload = _encode({"messages": messages})
         wire, _ = pinned._wire(payload)
         bound = pinned.reservation(payload)["prompt_tokens"]
+        # The tag could be repointed mid-measurement; never measure another model.
+        changed = pinned._model_changed()
+        if changed is not None:
+            raise ValueError(f"before case {name}: {changed}")
         status, body = pinned._post(wire)
         (raw / f"{name}.request.json").write_bytes(wire)
         (raw / f"{name}.response").write_bytes(body)
-        usage = None
-        if status == 200:
-            usage = json.loads(body, object_pairs_hook=_json_object).get("usage")
-        prompt = usage.get("prompt_tokens") if type(usage) is dict else None
+        prompt = reported_prompt_tokens(pinned, status, body)
         rows.append(
             {
                 "case": name,
@@ -120,6 +144,8 @@ def measure(client: LocalChatCompletions, out: Path) -> dict:
                 "response_sha256": hashlib.sha256(body).hexdigest(),
             }
         )
+    if installed(client, raw, "after")["digest"] != model["digest"]:
+        raise ValueError("installed model digest changed during the measurement")
     passed = all(row["within_bound"] for row in rows)
     report = {
         "measured_at": datetime.now(UTC).isoformat(timespec="seconds"),

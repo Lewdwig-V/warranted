@@ -58,3 +58,47 @@ def test_a_tag_that_is_not_installed_is_refused_before_inference(tmp_path):
     other = {"model": {"name": "other:1b", "digest": DIGEST}}
     with pytest.raises(ValueError, match="not installed"):
         run(tmp_path, response(), other)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"model": "another:1b"},
+        {"usage": {"prompt_tokens": -5, "completion_tokens": 6, "total_tokens": 1}},
+        {"usage": {"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 99}},
+    ],
+)
+def test_a_response_the_adapter_would_reject_is_not_a_measurement(tmp_path, changes):
+    code, _ = run(tmp_path, response(**changes))
+    report = json.loads((tmp_path / "out/report.json").read_bytes())
+    assert code == 1
+    assert not any(row["within_bound"] for row in report["cases"])
+
+
+def test_the_metadata_that_pins_the_digest_is_kept_raw(tmp_path):
+    run(tmp_path, response())
+    for label in ("before", "after"):
+        body = json.loads((tmp_path / f"out/raw/{label}.tags-response").read_bytes())
+        assert body["models"] == [INSTALLED["model"]]
+
+
+class Repointing(dict):
+    """Installed metadata whose tag moves to another digest on the third read."""
+
+    def __init__(self):
+        super().__init__(INSTALLED)
+        self.reads = 0
+
+    def __getitem__(self, key):
+        if key == "model":
+            self.reads += 1
+            if self.reads > 2:
+                return {"name": "gemma4:26b", "digest": "d" * 64}
+        return super().__getitem__(key)
+
+
+def test_a_repointed_tag_stops_the_measurement(tmp_path):
+    # Reads: the initial pin, the check before case 1, then the check before case 2.
+    with pytest.raises(ValueError, match="digest differs"):
+        _, calls = run(tmp_path, response(), Repointing())
+    assert not (tmp_path / "out/report.json").exists()
