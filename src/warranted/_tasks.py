@@ -96,6 +96,7 @@ def _digest(data: bytes) -> str:
 class VerdictStatus(StrEnum):
     PASSED = "passed"
     REJECTED = "rejected"
+    UNPROVED = "unproved"  # could not be established within limits; fails the gate
     UNSUPPORTED = "unsupported"
     INFRASTRUCTURE_FAILURE = "infrastructure_failure"
 
@@ -2126,6 +2127,7 @@ class Project:
             outcome, code = {
                 VerdictStatus.PASSED: (Outcome.SUCCEEDED, 0),
                 VerdictStatus.REJECTED: (Outcome.SUCCEEDED, 0),
+                VerdictStatus.UNPROVED: (Outcome.SUCCEEDED, 0),
                 VerdictStatus.UNSUPPORTED: (Outcome.FAILED, 1),
                 VerdictStatus.INFRASTRUCTURE_FAILURE: (
                     Outcome.INFRASTRUCTURE_FAILURE,
