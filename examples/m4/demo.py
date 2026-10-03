@@ -25,6 +25,9 @@ from warranted._proof_receipts import Proofs, proof_status  # noqa: E402
 from warranted._worker import record_once, unresolved  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
+TARGETS = runpy.run_path(str(Path(__file__).resolve().parents[1] / "proof_targets.py"))[
+    "TARGETS"
+]
 M2 = runpy.run_path(str(HERE.parent / "m2/experiments.py"))
 FIELDS = ("injective", "unique_input", "correspondence")
 MAPPING = {"version": 1, "function": "identity", "equality": "exact"}
@@ -76,7 +79,7 @@ def snapshots(bundle: Path) -> dict:
         "m4-intent.json": HERE / "intent.json",
         "input-duplicates.csv": HERE / "input-duplicates.csv",
         "Solution.lean": HERE / "Solution.lean",
-        "Challenge.lean": proofs.RESOURCES / "Challenge.lean",
+        "Challenge.lean": TARGETS["uniqueness"].path,
         "proofs.py": Path(proofs.__file__),
         "proof_receipts.py": Path(proof_receipts.__file__),
         "proof-bundle.json": bundle,
@@ -165,7 +168,11 @@ def proof_work(host, bundle: Path) -> tuple[Evidence, dict]:
         ("timeout", "Timeout.lean", 5),
     ):
         adapter = Proofs(
-            host.ledger, host.session, bundle, seconds=seconds, target_id="uniqueness"
+            host.ledger,
+            host.session,
+            bundle,
+            seconds=seconds,
+            target=TARGETS["uniqueness"],
         )
         request = adapter.check("m4-proof/" + name, host.ref(source))
         status = proof_status(host.ledger, request, adapter.target)
@@ -376,7 +383,7 @@ def demonstrate(stage: str, root: Path, bundle: Path, *, crash: bool = False) ->
     started = perf_counter_ns()
     execute = proofs._verify
 
-    def witnessed(data, captured_bundle, *, target_id, seconds):
+    def witnessed(data, captured_bundle, *, target, seconds):
         with (root / "proof-executions.jsonl").open("ab") as stream:
             stream.write(
                 json.dumps(
@@ -384,7 +391,7 @@ def demonstrate(stage: str, root: Path, bundle: Path, *, crash: bool = False) ->
                 ).encode()
                 + b"\n"
             )
-        return execute(data, captured_bundle, target_id=target_id, seconds=seconds)
+        return execute(data, captured_bundle, target=target, seconds=seconds)
 
     with (
         Ledger.open(root / "ledger") as ledger,

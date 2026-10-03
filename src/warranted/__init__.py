@@ -15,6 +15,7 @@ from warranted._jobs import JobContext, JobLimits, JobResult, JobRunner, PodmanJ
 from warranted._ledger import Balance, Outcome
 from warranted._openrouter import OpenRouterChatCompletions
 from warranted._operations import Operation, OperationContext, OperationResult
+from warranted._proofs import ProofTarget
 from warranted._sandbox import IMAGE as DEFAULT_WORKER_IMAGE
 from warranted._tasks import (
     FACTS_COUNT,
@@ -81,6 +82,7 @@ __all__ = [
     "OperationResult",
     "Outcome",
     "PodmanJobs",
+    "ProofTarget",
     "Project",
     "Revision",
     "RunConfig",

@@ -32,6 +32,9 @@ from warranted._sandbox import SANDBOX_ID  # noqa: E402
 from warranted._worker import Episode, record_once, unresolved  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
+TARGETS = runpy.run_path(str(Path(__file__).resolve().parents[1] / "proof_targets.py"))[
+    "TARGETS"
+]
 M4 = runpy.run_path(str(HERE.parent / "m4/demo.py"))
 M2 = M4["M2"]
 M5 = runpy.run_path(str(HERE / "demo.py"))
@@ -129,12 +132,9 @@ def snapshots(bundle: Path) -> dict[str, Snapshot]:
         "proof/timestamp": HERE / "Timestamp.lean",
     }.items():
         captured[name] = Snapshot(path.read_bytes(), "m5/" + name, "1")
-    for target_id in ("uniqueness", "migration", "timestamp"):
-        target = proofs._target(target_id)
+    for target_id, target in TARGETS.items():
         captured["target/" + target_id] = Snapshot(
-            (proofs.RESOURCES / target["challenge"]).read_bytes(),
-            "m5/approved-target/" + target_id,
-            "1",
+            target.challenge, "m5/approved-target/" + target_id, "1"
         )
     intent = M5["decode"](captured["proof-intent.json"].data)
     for family in ("migration", "timestamp"):
@@ -198,7 +198,7 @@ def proof_work(
     ):
         if target_id not in targets:
             continue
-        adapter = Proofs(host.ledger, host.session, bundle, target_id=target_id)
+        adapter = Proofs(host.ledger, host.session, bundle, target=TARGETS[target_id])
         if adapter.target.artifact != host.ref("target/" + target_id).artifact:
             raise ValueError("verifier target differs from the approved fixture target")
         request = adapter.check(operation_id, host.ref(source))
@@ -408,15 +408,18 @@ def migration_cases(host, theorem: Evidence, prefix: str = "migration/") -> dict
 def demonstrate(stage: str, root: Path, bundle: Path, *, crash: bool = False) -> dict:
     execute = proofs._verify
 
-    def witnessed(data, captured, *, target_id, seconds):
+    def witnessed(data, captured, *, target, seconds):
         with (root / "proof-executions.jsonl").open("ab") as stream:
             stream.write(
                 _encode(
-                    {"target": target_id, "source": hashlib.sha256(data).hexdigest()}
+                    {
+                        "target": target.theorem,
+                        "source": hashlib.sha256(data).hexdigest(),
+                    }
                 )
                 + b"\n"
             )
-        return execute(data, captured, target_id=target_id, seconds=seconds)
+        return execute(data, captured, target=target, seconds=seconds)
 
     with (
         Ledger.open(root / "ledger") as ledger,

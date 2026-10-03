@@ -2,14 +2,20 @@
 
 import json
 import multiprocessing
+import runpy
+from pathlib import Path
 
 import pytest
 
+from warranted import ProofTarget
 from warranted._acceptance import Evidence, Status
 from warranted._claims import Claims
 from warranted._ledger import Ledger, Manifest, Snapshot
 from warranted._proof_receipts import Proofs
 from warranted._proofs import RESOURCES, ProofStatus, Verification, policy_digest
+
+ROOT = Path(__file__).resolve().parents[1]
+TARGETS = runpy.run_path(str(ROOT / "examples/proof_targets.py"))["TARGETS"]
 
 
 def setup(root):
@@ -50,8 +56,8 @@ def test_receipts_cannot_cross_approved_targets_and_need_no_live_registry(
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
         session = ledger.start_session()
-        migration = Proofs(ledger, session, bundle, target_id="migration")
-        timestamp = Proofs(ledger, session, bundle, target_id="timestamp")
+        migration = Proofs(ledger, session, bundle, target=TARGETS["migration"])
+        timestamp = Proofs(ledger, session, bundle, target=TARGETS["timestamp"])
         migrated = migration.check("migration", source(ledger))
         timed = timestamp.check("timestamp", source(ledger))
         assert proof_status(ledger, migrated, timestamp.target) is Status.UNSUPPORTED
@@ -70,8 +76,8 @@ def test_receipts_cannot_cross_approved_targets_and_need_no_live_registry(
 def boundary(monkeypatch, status=ProofStatus.PROVED, *, forge=False):
     from warranted import _proofs as proofs
 
-    def verify(data, bundle, *, target_id, seconds):
-        identity, raw = proofs._inputs(data, bundle, seconds, target_id)
+    def verify(data, bundle, *, target, seconds):
+        identity, raw = proofs._inputs(data, bundle, seconds, target)
         identity["podman"] = {"Version": "test"}
         if forge:
             identity["solution"] = "0" * 64
@@ -107,7 +113,9 @@ def test_exact_outcomes_and_costs_survive_restart(
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
         session = ledger.start_session()
-        proofs = Proofs(ledger, session, bundle, seconds=5, target_id="uniqueness")
+        proofs = Proofs(
+            ledger, session, bundle, seconds=5, target=TARGETS["uniqueness"]
+        )
         request = proofs.check("attempt", source(ledger))
         claim = Claims(ledger, session).record(
             "The conditional theorem.",
@@ -136,7 +144,7 @@ def test_forged_identity_never_completes_or_releases_reservation(tmp_path, monke
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
         session = ledger.start_session()
-        proofs = Proofs(ledger, session, bundle, target_id="uniqueness")
+        proofs = Proofs(ledger, session, bundle, target=TARGETS["uniqueness"])
         request = proofs.check("attempt", source(ledger))
         claim = Claims(ledger, session).record(
             "The conditional theorem.",
@@ -166,7 +174,7 @@ def test_wrong_target_or_copied_receipt_cannot_establish_proof(tmp_path, monkeyp
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
         session = ledger.start_session()
-        proofs = Proofs(ledger, session, bundle, target_id="uniqueness")
+        proofs = Proofs(ledger, session, bundle, target=TARGETS["uniqueness"])
         first = proofs.check("first", source(ledger))
         assert proof_status(ledger, first, proofs.target) is Status.PASSED
         # Even another input of the same request is not the theorem target.
@@ -201,8 +209,9 @@ def test_changed_request_cannot_reuse_operation_id(tmp_path, monkeypatch, change
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
         session = ledger.start_session()
-        proofs = Proofs(ledger, session, bundle, target_id="uniqueness")
+        proofs = Proofs(ledger, session, bundle, target=TARGETS["uniqueness"])
         proofs.check("attempt", source(ledger))
+        target = TARGETS["uniqueness"]
         if change == "kernel":
             monkeypatch.setattr(verifier.platform, "release", lambda: "changed kernel")
         elif change == "runtime":
@@ -212,18 +221,12 @@ def test_changed_request_cannot_reuse_operation_id(tmp_path, monkeypatch, change
         elif change == "bundle":
             bundle.write_bytes(bundle.read_bytes() + b"\n")
         elif change == "challenge":
-            resources = tmp_path / "proof"
-            resources.mkdir()
-            for path in RESOURCES.iterdir():
-                if path.is_file():
-                    (resources / path.name).write_bytes(path.read_bytes())
-            (resources / "Challenge.lean").write_bytes(
-                b"changed target and definitions"
-            )
-            monkeypatch.setattr(verifier, "RESOURCES", resources)
+            changed = tmp_path / "Changed.lean"
+            changed.write_bytes(b"changed target and definitions")
+            target = ProofTarget(changed, TARGETS["uniqueness"].theorem)
         elif change == "policy":
             monkeypatch.setattr(verifier, "policy_digest", lambda: "new policy")
-        if change in ("challenge", "policy"):
+        if change == "policy":
             data = json.loads(bundle.read_bytes())
             data["policy"] = verifier.policy_digest()
             bundle.write_text(json.dumps(data))
@@ -232,7 +235,7 @@ def test_changed_request_cannot_reuse_operation_id(tmp_path, monkeypatch, change
             session,
             bundle,
             seconds=5 if change == "limits" else 120,
-            target_id="uniqueness",
+            target=target,
         )
         with pytest.raises(OperationConflict):
             current.check(
@@ -250,7 +253,9 @@ def test_changed_project_context_cannot_reuse_receipt(tmp_path, monkeypatch):
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
-        proofs = Proofs(ledger, ledger.start_session(), bundle, target_id="uniqueness")
+        proofs = Proofs(
+            ledger, ledger.start_session(), bundle, target=TARGETS["uniqueness"]
+        )
         request = proofs.check("attempt", source(ledger))
         changed = replace(
             request.context,
@@ -267,14 +272,18 @@ def test_corrupt_raw_export_blocks_reuse_without_running_again(tmp_path, monkeyp
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
-        proofs = Proofs(ledger, ledger.start_session(), bundle, target_id="uniqueness")
+        proofs = Proofs(
+            ledger, ledger.start_session(), bundle, target=TARGETS["uniqueness"]
+        )
         request = proofs.check("attempt", source(ledger))
         ref = ledger.lookup(request).completion.observation.artifacts["solution.ndjson"]
         target = proofs.target
     path = tmp_path / "ledger" / "artifacts" / "sha256" / ref.digest
     path.write_bytes(b"corrupt")
     with Ledger.open(tmp_path / "ledger") as ledger:
-        proofs = Proofs(ledger, ledger.start_session(), bundle, target_id="uniqueness")
+        proofs = Proofs(
+            ledger, ledger.start_session(), bundle, target=TARGETS["uniqueness"]
+        )
         with pytest.raises(CorruptArtifact):
             proofs.check("attempt", source(ledger))
         assert proof_status(ledger, request, target) is Status.UNSUPPORTED
@@ -289,7 +298,9 @@ def test_budget_exhaustion_blocks_verifier_but_allows_exact_reuse(
     boundary(monkeypatch, ProofStatus.UNPROVED)
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
-        proofs = Proofs(ledger, ledger.start_session(), bundle, target_id="uniqueness")
+        proofs = Proofs(
+            ledger, ledger.start_session(), bundle, target=TARGETS["uniqueness"]
+        )
         first = proofs.check("one", source(ledger))
         proofs.check("two", source(ledger, "other"))
         assert proofs.check("one", source(ledger)) == first
@@ -308,7 +319,7 @@ def test_unknown_blocks_retry_and_new_attempt_even_with_forged_success(
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
         session = ledger.start_session()
-        proofs = Proofs(ledger, session, bundle, target_id="uniqueness")
+        proofs = Proofs(ledger, session, bundle, target=TARGETS["uniqueness"])
         request = proofs.request("attempt", source(ledger))
         ledger.reserve(session, request, {"proof": 1})
         assert ledger.begin(session, request)
@@ -318,7 +329,9 @@ def test_unknown_blocks_retry_and_new_attempt_even_with_forged_success(
         )
         assert proof_status(ledger, request, proofs.target) is Status.UNSUPPORTED
     with Ledger.open(tmp_path / "ledger") as ledger:
-        proofs = Proofs(ledger, ledger.start_session(), bundle, target_id="uniqueness")
+        proofs = Proofs(
+            ledger, ledger.start_session(), bundle, target=TARGETS["uniqueness"]
+        )
         assert proofs.check("attempt", source(ledger)) == request
         assert proof_status(ledger, request, proofs.target) is Status.UNSUPPORTED
         with pytest.raises(UnknownOutcome):
@@ -333,7 +346,9 @@ def test_bundle_file_changes_cannot_change_captured_verification(tmp_path, monke
     boundary(monkeypatch)
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
-        proofs = Proofs(ledger, ledger.start_session(), bundle, target_id="uniqueness")
+        proofs = Proofs(
+            ledger, ledger.start_session(), bundle, target=TARGETS["uniqueness"]
+        )
         bundle.write_bytes(b"not the captured bundle")
         request = proofs.check("attempt", source(ledger))
         assert proof_status(ledger, request, proofs.target) is Status.PASSED
@@ -372,7 +387,9 @@ def _host(root, bundle, point, pipe):
 
             patch.setattr(ledger, method, stop_after_commit)
         session = ledger.start_session()
-        proofs = Proofs(ledger, session, bundle, seconds=5, target_id="uniqueness")
+        proofs = Proofs(
+            ledger, session, bundle, seconds=5, target=TARGETS["uniqueness"]
+        )
         request = proofs.request("attempt", source(ledger))
         claim = Claims(ledger, session).record(
             "The conditional theorem.",
@@ -447,7 +464,7 @@ def test_historical_claim_needs_no_live_tools_and_keeps_validation_when_stale(
     ledger, bundle = setup(tmp_path / "ledger")
     with ledger:
         session = ledger.start_session()
-        proofs = Proofs(ledger, session, bundle, target_id="uniqueness")
+        proofs = Proofs(ledger, session, bundle, target=TARGETS["uniqueness"])
         request = proofs.check("attempt", source(ledger))
         claim = Claims(ledger, session).record(
             "The conditional theorem under a declared application assumption.",
@@ -485,7 +502,9 @@ def test_runtime_unavailable_is_attributable_and_cleanup_uncertainty_is_not(
 
     monkeypatch.setattr(verifier, "require_runtime", unavailable)
     with ledger:
-        proofs = Proofs(ledger, ledger.start_session(), bundle, target_id="uniqueness")
+        proofs = Proofs(
+            ledger, ledger.start_session(), bundle, target=TARGETS["uniqueness"]
+        )
         known = proofs.check("known", source(ledger))
         assert (
             proof_status(ledger, known, proofs.target) is Status.INFRASTRUCTURE_FAILURE

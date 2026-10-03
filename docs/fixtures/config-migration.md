@@ -258,7 +258,7 @@ kit.
 ## Proof cases
 
 `examples/m5/proof_cases.py` pairs each of three host-approved proof targets
-(`src/warranted/proof/targets.json`) with a successful control and a candidate
+([`examples/proof_targets.py`](../../examples/proof_targets.py)) with a successful control and a candidate
 that passes its narrow proof but fails an independent task obligation. The
 unchanged CSV and migration checkers decide acceptance. Target binding, receipts,
 and the verifier are described in
@@ -327,7 +327,7 @@ executions after either resume. Reports also retain measured operation time and
 the bundle's recorded build time. One local native test completed the kill and
 both resumes in 61 seconds (a development measurement). `reports/` and
 `exports/` contain private development references and must not become worker
-context. The receipt format is version 2 and the proof API requires `target_id`;
+context. The receipt format is version 2 and the proof API takes `target=` (a `ProofTarget`);
 there is no reader for the older format, so use a new run directory and rebuilt
 bundle.
 

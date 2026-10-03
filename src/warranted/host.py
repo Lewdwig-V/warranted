@@ -59,7 +59,7 @@ from warranted._ledger import _json_object as strict_json_object
 from warranted._openrouter import OpenRouterChatCompletions, command_format
 from warranted._operations import Operation, OperationContext, OperationResult
 from warranted._proof_receipts import Proofs, proof_status
-from warranted._proofs import ProofStatus, Verification, policy_digest
+from warranted._proofs import ProofStatus, ProofTarget, Verification, policy_digest
 from warranted._proofs import verify as verify_proof
 from warranted._sandbox import (
     CANDIDATE_LIMIT,
@@ -131,6 +131,7 @@ __all__ = [
     "Outcome",
     "PodmanJobs",
     "ProofStatus",
+    "ProofTarget",
     "Proofs",
     "ReceiptService",
     "Request",

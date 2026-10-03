@@ -14,14 +14,18 @@ model-driven proof worker or proof-search evaluation.
 
 ## Targets and axiom policy
 
-The trusted registry [`src/warranted/proof/targets.json`](../../src/warranted/proof/targets.json)
-maps a `target_id` to a challenge file and required theorem:
+A domain supplies each target as a `ProofTarget(path, theorem)`: a Lean challenge
+file and the qualified theorem name a proof must establish. `ProofTarget` reads
+the challenge bytes once, and the host passes both challenge and theorem to the
+in-container supervisor at verification time; a worker cannot select or alter
+them. The fixtures' three targets are listed in
+[`examples/proof_targets.py`](../../examples/proof_targets.py):
 
-| `target_id` | Challenge | Required theorem | Statement |
+| Key | Challenge | Required theorem | Statement |
 | --- | --- | --- | --- |
-| `uniqueness` | `Challenge.lean` | `Warranted.uniqueness_preserved` | An injective identifier mapping preserves `Nodup` |
-| `timestamp` | `Timestamp.lean` | `Warranted.timestamp_roundtrip` | `(localSeconds - assumedOffsetSeconds) + assumedOffsetSeconds = localSeconds` over `Int` |
-| `migration` | `Migration.lean` | `Warranted.migration_renaming` | Migration preserves host and timeout under renaming, for label-keeping and label-dropping variants |
+| `uniqueness` | [`examples/m7/csv/UniquenessChallenge.lean`](../../examples/m7/csv/UniquenessChallenge.lean) | `Warranted.uniqueness_preserved` | An injective identifier mapping preserves `Nodup` |
+| `timestamp` | [`examples/m7/csv/TimestampChallenge.lean`](../../examples/m7/csv/TimestampChallenge.lean) | `Warranted.timestamp_roundtrip` | `(localSeconds - assumedOffsetSeconds) + assumedOffsetSeconds = localSeconds` over `Int` |
+| `migration` | [`examples/m7/migration/MigrationChallenge.lean`](../../examples/m7/migration/MigrationChallenge.lean) | `Warranted.migration_renaming` | Migration preserves host and timeout under renaming, for label-keeping and label-dropping variants |
 
 The uniqueness target uses Lean's core string and list definitions with exact
 identifier equality (`Nodup` means a list has no duplicate elements):
@@ -55,7 +59,7 @@ actual axiom set across all dependencies and rejects `sorryAx`, custom axioms,
 and native-evaluation axioms, including indirect uses. Expanding the set requires
 a new reviewed policy version, which changes the policy digest.
 
-An unknown `target_id` fails before any runtime dispatch. A receipt for one target
+A value that is not a `ProofTarget` fails before any runtime dispatch. A receipt for one target
 cannot support another. The timestamp theorem treats the offset as a model
 parameter; it does not establish which offset the source contract requires. The
 migration theorem does not cover the optional label. The fixtures that use these
@@ -154,17 +158,21 @@ Download and cached build times vary and do not measure proof reuse.
 import json
 from pathlib import Path
 
+from warranted import ProofTarget
 from warranted.host import verify_proof as verify
 
+target = ProofTarget(
+    "examples/m7/csv/UniquenessChallenge.lean", "Warranted.uniqueness_preserved"
+)
 source = Path("examples/m4/Solution.lean").read_bytes()
-result = verify(source, Path("runs/m4-tools/bundle.json"), target_id="uniqueness")
+result = verify(source, Path("runs/m4-tools/bundle.json"), target=target)
 Path("runs/m4-control.json").write_text(json.dumps(result.as_dict(), indent=2))
 print(result.status, result.axioms)
 ```
 
 The expected status is `proved` with actual axioms `Quot.sound` and `propext`.
 
-`verify(source, bundle_path, *, target_id, seconds=120)` returns a `Verification`
+`verify(source, bundle_path, *, target, seconds=120)` returns a `Verification`
 (`status`, `diagnostic`, `axioms`, `identity`, `elapsed_ns`, `raw`). `source` must
 be nonempty `bytes` of at most 1 MiB, captured by the host after stopping the
 producing worker. `seconds` is an integer from 1 to 120; the result records the
@@ -249,7 +257,7 @@ with Ledger.create(
     snapshots,
 ) as ledger:
     session = ledger.start_session()
-    proofs = Proofs(ledger, session, bundle, target_id="uniqueness")
+    proofs = Proofs(ledger, session, bundle, target=target)
     solution = Evidence("solution", ledger.project.snapshots["solution"].artifact)
     request = proofs.check("uniqueness-1", solution)
     claim = Claims(ledger, session).record(
@@ -263,7 +271,7 @@ with Ledger.create(
 
 with Ledger.open(root) as ledger:
     session = ledger.start_session()
-    proofs = Proofs(ledger, session, bundle, target_id="uniqueness")
+    proofs = Proofs(ledger, session, bundle, target=target)
     assert proofs.check("uniqueness-1", solution) == request
     print(Claims(ledger, session).assess(claim, {}))
     print(ledger.accounting()["proof"])
@@ -274,7 +282,7 @@ completion, with one spent `proof` unit and nothing reserved.
 
 API summary:
 
-- `Proofs(ledger, session, bundle, *, target_id, seconds=120)` captures the host
+- `Proofs(ledger, session, bundle, *, target, seconds=120)` captures the host
   policy (bundle bytes, challenge, configuration, identity) once as ledger
   evidence. `proofs.target` is the captured challenge artifact.
 - `check(operation_id, solution)` returns the operation `Request`, not a success
