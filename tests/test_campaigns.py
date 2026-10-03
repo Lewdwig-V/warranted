@@ -218,3 +218,23 @@ def test_memory_is_shared_only_within_a_split_across_campaigns(tmp_path):
         proj.run_campaign(spec("held-1", held_out, repetitions=1), MODELS)
     proj.run_campaign(spec("train-2", training, repetitions=1), MODELS)
     assert [e["tier"] for e in shown()] == ["verified"]  # same split: shared
+
+
+def test_a_task_cannot_change_split_across_campaigns(tmp_path):
+    proj, _ = project(tmp_path, ["correct"])
+    proj.run_campaign(
+        spec("train-1", (CampaignTask(TASK, "training"),), repetitions=1), MODELS
+    )
+    for split in ("development", "held-out"):
+        with pytest.raises(ValueError, match="training runs of campaign train-1"):
+            proj.plan_campaign(spec(f"c-{split}", (CampaignTask(TASK, split),)), MODELS)
+    # A revised task keeps its ID, and so its lineage and split.
+    from test_revisions import REVISION
+
+    proj.revise(TASK.id, REVISION)
+    with pytest.raises(ValueError, match="training runs of campaign train-1"):
+        proj.plan_campaign(
+            spec("after-revision", (CampaignTask(TASK, "held-out"),)), MODELS
+        )
+    # The same split in another campaign is allowed.
+    proj.plan_campaign(spec("train-2", (CampaignTask(TASK, "training"),)), MODELS)

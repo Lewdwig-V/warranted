@@ -9,6 +9,8 @@ versioning and deprecation policy. The format follows
 
 ### Changed
 
+- A campaign plan is refused if one of its tasks was planned in another split
+  by a campaign already pinned in the project.
 - Proof targets are owned by domains: `ProofTarget(path, theorem)` replaces
   the core `targets.json` registry, and the verifier receives the challenge and
   theorem from the host. The three fixture challenges moved to `examples/`.
