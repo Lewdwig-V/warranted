@@ -96,7 +96,9 @@ class Operation(Protocol):
     def reservation(self, arguments: JSON) -> Mapping[str, int]: ...
     def execute(self, ctx: OperationContext, arguments: JSON) -> OperationResult: ...
     # Optional, for effect == "external": settle an unknown outcome from a receipt.
-    def reconcile(self, ctx: OperationContext, arguments: JSON) -> OperationResult | None: ...
+    def reconcile(
+        self, ctx: OperationContext, arguments: JSON
+    ) -> OperationResult | None: ...
 
 
 @dataclass(frozen=True)
@@ -117,7 +119,11 @@ files.
 
 An operation's units are ordinary ledger units, such as `probe`, chosen by the
 domain. They must appear in the project allowances, and run configuration
-`[budgets]` may cap them, as it caps model, tool, and token units.
+`[budgets]` may cap them, as it caps model, tool, and token units. The exception
+is a unit used by any shared operation. Shared operations reserve in the root
+scope, which a run's cap does not see, so a run configuration that caps such a
+unit is refused at start rather than silently unenforced. The project allowance
+still binds those units.
 
 ### Lifecycle of one request
 
@@ -169,10 +175,12 @@ scope. On resume, the same operation ID is found unknown, and the run stops as
 the effect:
 
 - **`effect = "none"`** (for example, a probe of a pinned binary in a contained
-  job). Running it again has no external effect, so reconciliation may execute it
-  again under the original reservation and settle the original operation. This is
-  not a retry of a side effect. The recorded result is labelled as a
-  reconciliation.
+  job). The operation changed nothing outside the host, so the only unknown is
+  what it consumed. Reconciliation settles it as an infrastructure failure
+  charged its full reservation, the conservative bound, with a record that the
+  usage was unmeasured. It does not execute the operation again: a second run
+  would consume resources the first attempt's settlement could not account for.
+  The worker can ask again, which is a new operation with its own reservation.
 - **`effect = "external"`**. Only the operation's `reconcile` can settle it, from
   a receipt held by the external service, following the
   [receipt pattern](../reference/model-adapters.md#fake-receipt-service) that M3
@@ -228,9 +236,11 @@ result is unsupported; replay never executes an operation.
 - Repeating an effect-free request with the same arguments reuses the result at
   zero cost. Repeating an external-effect request charges and executes again.
 - A host killed during `execute` leaves the operation unknown and the run blocked.
-  On resume, an effect-free operation is reconciled by re-execution under its
-  original reservation. An external one without a receipt stays blocked and is
-  never executed again.
+  Reconciling an effect-free operation charges its full reservation without
+  executing it again, so the run's spent total never undercounts the lost attempt.
+  An external one without a receipt stays blocked and is never executed again.
+- A run configuration that caps a unit used by a shared operation is refused at
+  start.
 - A worker cannot modify delivered files in place, and whatever it does with its
   copies, a forged result file in a submitted workspace cannot be cited as
   evidence.
@@ -286,3 +296,6 @@ These are the expected changes, recorded so the review can judge the cost:
 3. Is one request per command enough, or will workers need batches, for example
    many probes in one call? Batching would be one operation with list arguments,
    charged per item.
+4. Do shared operations need per-run caps? That would need the ledger to charge
+   one operation against both its run's scope and the root scope. Refusing the cap
+   keeps the ledger unchanged until a case needs it.
