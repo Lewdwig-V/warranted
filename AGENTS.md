@@ -91,7 +91,9 @@ add passing placeholder tests.
 
 These are requirements for the future runtime. Maintain the threat model and
 negative cases as each boundary is implemented; do not claim enforcement from
-documentation or a prompt alone.
+documentation or a prompt alone. [Enforcement status](docs/reference/enforcement.md)
+records what enforces each clause today; update it with any change to that
+enforcement.
 
 ## Verification and changes
 
