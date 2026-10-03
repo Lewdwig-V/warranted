@@ -117,7 +117,9 @@ and keep only its reverse-engineering logic
 The research items above are deferred until ReSchema runs on Warranted.
 
 See the [roadmap](docs/roadmap.md) for status and open decisions, and the
-[design](docs/design.md) for the invariants these components enforce.
+[design](docs/design.md) for the invariants they are designed to enforce. The
+[enforcement status](docs/reference/enforcement.md) records which are enforced
+and tested today.
 
 ## Inspirations and foundations
 

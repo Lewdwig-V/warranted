@@ -1,7 +1,9 @@
 # Design
 
-Updated 2026-10-02. This document states the invariants Warranted enforces and
-the reasons for them. Each section says what is implemented. The
+Updated 2026-10-03. This document states the invariants Warranted is designed
+to enforce and the reasons for them. Each section says what is implemented, and
+[enforcement status](reference/enforcement.md) records which clauses are
+enforced and tested today. The
 [reference docs](reference/) describe how to use each component, the
 [roadmap](roadmap.md) gives status, and the [evaluation design](experiments/evaluation-design.md)
 describes the experiments. Jev and the Dream-RSI scheduling experiment are not built.
@@ -101,7 +103,9 @@ for one trusted writer:
 Keep observations immutable; corrections create new records with lineage.
 Keep a conditional theorem's checked status separate from support for applying
 it to current inputs. Retracting a premise invalidates dependent applications,
-not the theorem's logical derivation. Incomplete dependency capture requires a
+not the theorem's logical derivation. Today task-layer memory and acceptance
+block on a stale premise; the host kit's `Claims` reports staleness and leaves
+blocking to its caller ([enforcement](reference/enforcement.md#2-validity-is-separate-from-applicability)). Incomplete dependency capture requires a
 conservative broader review rather than a claim of precise invalidation.
 Dependencies are declared by the trusted host; they are not inferred.
 
@@ -126,7 +130,10 @@ receipt, not that two models' errors are necessarily uncorrelated.
 
 Check the current input and dependency versions at acceptance, not merely when a
 worker began. All entry paths, including resumes and direct commands, use the
-same boundary. Neither the worker nor an optimiser may alter the objective,
+same boundary. In the task layer a run pins its contract: a project revision
+applies to new runs, and resuming a run it affects is refused
+([enforcement](reference/enforcement.md#4-the-host-checks-gates-at-the-protected-transition)).
+Neither the worker nor an optimiser may alter the objective,
 acceptance contract, checker, gate classification, or enforcement to improve a
 score. Contract-owner revisions are explicit new versions, not passes of old gates.
 
@@ -310,6 +317,7 @@ domain-independent; reverse-engineering behavior remains in ReSchema.
 | [Jev / TypeSafe](https://docs.typesafe.ai/introduction) | Candidate for the optional, not-yet-started classifier and judge | [Classification and judgment](#jev-system-1-classification-and-judgment) |
 | [Hindsight](https://hindsight.vectorize.io/) | Later memory integration candidate | [Scope and provisional choices](#scope-and-provisional-choices) |
 | [AutoSaddler](https://github.com/microsoft/AutoSaddler) | Later harness-optimisation candidate | [Scope and provisional choices](#scope-and-provisional-choices) |
+| [Clauderizer](https://github.com/CollinCusce/Clauderizer/blob/3b792597d2cfc05a72bcad82227eae007bbf41ca/docs/ENFORCEMENT.md) (Collin Cusce and contributors, Apache-2.0, 2.0.3) | Method only, with no code or integration: a tiered ladder naming what enforces each rule, including "only text" | [Enforcement status](reference/enforcement.md) |
 
 Credit the source where its idea is introduced, explain our adaptation, and retain
 the citation when refactoring the design. Research inspiration does not imply an
