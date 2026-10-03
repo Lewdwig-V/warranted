@@ -325,9 +325,11 @@ this is implemented.
    kind requires. A lemma passes the Lean kernel. A helper passes tests on its
    source tasks. A rule passes when the tasks it summarises are re-run with it
    shown. Promotion also requires two things:
-   - **No interference:** no regression on tasks that were already solved.
-     This is the interleaved replay that complementary learning systems call
-     for.
+   - **No interference:** no regression on training and development tasks
+     that were already solved. This is the interleaved replay that
+     complementary learning systems call for. Held-out tasks never enter this
+     check: a held-out result may not steer promotion, and consulting one
+     retires its set.
    - **Transfer:** improvement on development tasks that are not among its
      sources.
 
@@ -509,7 +511,8 @@ None of these use cases should add domain vocabulary to Warranted:
 - **Unchecked consolidation is not memory.** A slow-tier proposal that has not
   passed its checks is never shown, and never shown as verified.
 - **Interference blocks promotion.** A slow-tier entry that causes a regression
-  on an already-solved task is not promoted, even if it improves others.
+  on an already-solved training or development task is not promoted, even if
+  it improves others. The interference check never reads a held-out result.
 - **Observation is not causation.** A usefulness report labels observational
   comparisons as such. A causal claim needs a pinned random withholding plan.
 - **Private outputs stay private.** An ARC test output never appears in
