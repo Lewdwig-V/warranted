@@ -48,19 +48,25 @@ for name, encoded in payload['workspace'].items():
         file.write(base64.b64decode(encoded, validate=True))
 """
 # Root-owned and read-only to the worker; /work is sticky, so the worker cannot
-# replace these entries either.
+# replace these entries either. Container root has no CAP_DAC_OVERRIDE, so each
+# directory is opened for writing as its owner, then made read-only again.
 _DELIVER = """
 import base64, json, os, sys
 payload = json.load(sys.stdin)
-path = '/work'
+path, opened = '/work', []
 for part in payload['path'].split('/'):
     path += '/' + part
-    if not os.path.isdir(path):
-        os.mkdir(path, 0o555)
+    if os.path.isdir(path):
+        os.chmod(path, 0o755)
+    else:
+        os.mkdir(path, 0o755)
+    opened.append(path)
 for name, encoded in payload['files'].items():
     with open(path + '/' + name, 'xb') as file:
         file.write(base64.b64decode(encoded, validate=True))
     os.chmod(path + '/' + name, 0o444)
+for directory in reversed(opened):
+    os.chmod(directory, 0o555)
 """
 _EXECUTE = """
 import subprocess, sys
