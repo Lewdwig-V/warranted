@@ -1,0 +1,20 @@
+# The M5 configuration migration under its initial contract.
+id = "config-migration"
+objective = """Read README.md and change only migrate.py. Write result.json as a JSON \
+object {"migrate.py": "<the complete new source>"}, then submit."""
+checks = ["migration"]
+
+[inputs]
+"README.md" = "../../m5/fixture/seed/README.md"
+"settings.json" = "../../m5/fixture/seed/settings.json"
+"migrate.py" = "../../m5/fixture/seed/migrate.py"
+"modern_consumer.py" = "../../m5/fixture/seed/modern_consumer.py"
+"legacy_consumer.py" = "../../m5/fixture/seed/legacy_consumer.py"
+"example_test.py" = "../../m5/fixture/seed/example_test.py"
+
+[private]
+"references.json" = "../../m5/fixture/references.json"
+"contract.json" = "contract-initial.json"
+
+[budgets]
+submissions = 3
