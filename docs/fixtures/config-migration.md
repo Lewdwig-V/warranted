@@ -258,7 +258,7 @@ kit.
 ## Proof cases
 
 `examples/m5/proof_cases.py` pairs each of three host-approved proof targets
-(`src/warranted/proof/targets.json`) with a successful control and a candidate
+([`examples/proof_targets.py`](../../examples/proof_targets.py)) with a successful control and a candidate
 that passes its narrow proof but fails an independent task obligation. The
 unchanged CSV and migration checkers decide acceptance. Target binding, receipts,
 and the verifier are described in
