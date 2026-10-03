@@ -159,10 +159,9 @@ class Requests:
                 encoded = len(_encode(result))
             shown_total += encoded
             if files:
+                # Delivery is idempotent, so a replay repeats it until it holds.
                 result["files"] = sorted(f"{path}/{name}" for name in files)
-                if result.pop("_fresh", False):
-                    deliveries.append(Delivery(path, files))
-            result.pop("_fresh", None)
+                deliveries.append(Delivery(path, files))
             results.append(result)
         return results, deliveries
 
@@ -214,12 +213,23 @@ class Requests:
             ledger,
             session,
             Origin(operation_id + "/input", "operation-input", PRODUCER, "1", {}),
-            {"arguments.json": _encode(arguments), "key.json": key},
+            {
+                "arguments.json": _encode(arguments),
+                "key.json": key,
+                # Which evidence each declared file is, so reconciliation later
+                # reads this run's bytes even when another run triggers it.
+                "inputs.json": _encode({n: ref.name for n, ref in inputs.items()}),
+            },
         )
         # Inputs are named by the evidence they cite, so the ledger binds each one.
         stdout = Evidence.captured(tool.observation, "stdout")
         key = Evidence.captured(capture, "key.json")
-        cited = [stdout, Evidence.captured(capture, "arguments.json"), key]
+        cited = [
+            stdout,
+            Evidence.captured(capture, "arguments.json"),
+            Evidence.captured(capture, "inputs.json"),
+            key,
+        ]
         cited += list(inputs.values())
         request = Request(
             Origin(
@@ -279,9 +289,7 @@ class Requests:
                         {"reuse.json": _encode({"source": source_id})},
                     )
                     return (
-                        *self._seen(
-                            ledger, name, source.completion, source_id, fresh=True
-                        ),
+                        *self._seen(ledger, name, source.completion, source_id),
                         refused,
                     )
             reservation = dict(operation.reservation(arguments))
@@ -318,18 +326,18 @@ class Requests:
             ),
             _evidence(result, ctx),
         )
-        return (*self._seen(ledger, name, completion, fresh=True), refused)
+        return (*self._seen(ledger, name, completion), refused)
 
-    def _seen(self, ledger, name, completion, source=None, fresh=False):
+    def _seen(self, ledger, name, completion, source=None):
         """The observation and delivered files for one recorded result."""
-        return self._shown(ledger, name, completion, source, fresh), self._files(
+        return self._shown(ledger, name, completion, source), self._files(
             ledger, completion
         )
 
     @staticmethod
-    def _shown(ledger, name, completion: Completion, source, fresh) -> dict:
+    def _shown(ledger, name, completion: Completion, source) -> dict:
         outcome = completion.result.outcome
-        result = {"status": outcome.value, "operation": name, "_fresh": fresh}
+        result = {"status": outcome.value, "operation": name}
         if source is not None:
             result["reused_from"] = source
         if outcome in (Outcome.SUCCEEDED, Outcome.FAILED):
@@ -427,7 +435,6 @@ def reconcile_operation(
     ledger,
     operations: Mapping[str, Operation],
     request: Request,
-    files: Mapping[str, Evidence],
     jobs: JobRunner | None = None,
 ) -> AttemptResult | None:
     """Settle an unknown operation without executing it again, or return None.
@@ -459,8 +466,14 @@ def reconcile_operation(
     arguments = json.loads(
         ledger.read_artifact(_cited(request.origin, "arguments.json"))
     )
+    # The files this operation cited when it was requested, whichever run asks now.
+    names = json.loads(ledger.read_artifact(_cited(request.origin, "inputs.json")))
     ctx = OperationContext(
-        {n: ledger.read_artifact(files[n].artifact) for n in operation.inputs}, jobs
+        {
+            n: ledger.read_artifact(request.origin.inputs[names[n]])
+            for n in operation.inputs
+        },
+        jobs,
     )
     result = receipt(ctx, arguments)
     if result is None:

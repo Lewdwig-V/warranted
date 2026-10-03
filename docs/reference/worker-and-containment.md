@@ -233,9 +233,10 @@ stdout line, then one JSON object, is a request:
 
 A batch holds 1 to 32 items and at most 1 MiB. It costs one `tool` unit and one
 worker turn, and each item is its own operation. A domain normally wraps the
-marker in a command; `examples/m7/mystery/probe.py` is one. A request that also
-prints the submission marker, is malformed, or is too large gets one error result
-and records no operation.
+marker in a command; `examples/m7/mystery/probe.py` is one. Output that carries
+both the request and submission markers, in either order, is neither: it gets one
+error result, records no operation, and the sandbox captures no candidate. A
+malformed or oversized batch is refused the same way.
 
 **Declaring.** An operation provides `version`, `effect` (`"none"` or
 `"external"`), `shared`, `reusable`, `inputs` (the task files it may read),
@@ -257,7 +258,7 @@ domain's operations are refused until the project funds them.
 | Reserve | In the run's scope, or the root scope for `shared` operations. A refusal is recorded, and every later item in the batch is refused too. |
 | Execute | `begin`, then `execute`. An exception leaves the operation unknown and stops the episode. |
 | Complete | Raw evidence includes the operation's `raw`, `shown.json`, seeds, jobs, job output, and `files/*`. Shown output over 64 KiB makes the result an infrastructure failure, kept as `oversized-shown.json`. |
-| Deliver | Files are written root-owned and read-only into `/work/responses/<tool index>/<item>/` while the container runs. They are copies; the ledger record is the result. Replay does not deliver again. |
+| Deliver | Files are written root-owned and read-only into `/work/responses/<tool index>/<item>/` while the container runs. The host creates `/work/responses` when it loads the container, so the worker cannot create, link, or replace anything under it; a path component that is not a host-owned directory is refused. Delivery is idempotent and is repeated on replay, so a host that stopped between recording and delivering completes the delivery on resume. The files are copies; the ledger record is the result. |
 
 The worker sees the results in a `host_results` field of the next observation,
 written by the host and separate from the command's own output. Once a batch's
@@ -268,7 +269,9 @@ results reach 256 KiB, later items' shown output is delivered only as
 settled as an infrastructure failure charged its full reservation and marked
 unmeasured; it is never executed again. An unknown external operation is settled
 only by its `reconcile` from a receipt, and otherwise stays unknown and blocks its
-scope.
+scope. `reconcile` receives the task files the operation cited when it was
+requested, recorded in its `inputs.json`, so a shared operation settled during
+another run never sees that run's files.
 
 **Budgets.** Run budgets may cap operation units. A run that caps a unit used by a
 shared operation is refused at start, because shared operations reserve in the
@@ -277,7 +280,8 @@ root scope, where a run cap does not apply.
 **Limits.** Operations are trusted domain code running in the host process; use
 `run_job` for untrusted code. Delivery needs a running container, so an episode
 resumed after its container was lost cannot continue past the request, as for
-any other command. Nothing yet runs live models against operations.
+any other command. Nothing yet runs live models against operations. These
+container changes made the sandbox identity `podman-rootless-v4`.
 
 ## Native tests
 

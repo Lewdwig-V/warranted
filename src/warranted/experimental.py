@@ -560,7 +560,7 @@ class Project:
                         episode,
                         model=model,
                         environment=environment,
-                        reconcile=self._reconcile(run),
+                        reconcile=self._reconcile(),
                         requests=self._requests(run),
                     )
             except UnknownOutcome as error:
@@ -612,16 +612,17 @@ class Project:
             return None
         return Requests(operations, self._task_files(run), self.jobs)
 
-    def _reconcile(self, run: _Run):
-        """Settle this run's unknown operations without executing them again."""
+    def _reconcile(self):
+        """Settle unknown operations without executing them again.
+
+        Each operation is settled from the evidence it cited when requested, so a
+        shared operation from another run is never given this run's files.
+        """
         operations = _operations(self.domain)
-        files = self._task_files(run)
 
         def reconcile(request):
             with Ledger.open(self.ledger_root) as ledger:
-                return reconcile_operation(
-                    ledger, operations, request, files, self.jobs
-                )
+                return reconcile_operation(ledger, operations, request, self.jobs)
 
         return reconcile
 

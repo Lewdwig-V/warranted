@@ -438,3 +438,70 @@ def test_an_unfunded_operation_unit_is_refused_not_a_crash(tmp_path):
     assert proj.start(ONE, CONFIG, Model()).outcome is RunOutcome.ACCEPTED
     [shown] = [o for o in observations(proj) if "host_results" in o]
     assert shown["host_results"][0]["status"] == "refused"
+
+
+class HostDied(Exception):
+    pass
+
+
+def test_an_interrupted_delivery_is_repeated_on_replay(tmp_path):
+    files = Counted(files={"trace.txt": b"trace"})
+    item = {"operation": "files", "arguments": {}}
+    proj, steps = project(tmp_path, [[request(item), SUBMIT]], domain(files=files))
+    attempts = []
+
+    def deliver(path, delivered):
+        attempts.append(path)
+        if len(attempts) == 1:
+            raise HostDied("host stopped after recording, before delivering")
+        steps.deliveries.append((path, dict(delivered)))
+
+    original = steps.__call__
+
+    def environment(ledger_root, episode):
+        env = original(ledger_root, episode)
+        env.deliver = deliver
+        return env
+
+    steps.__call__ = environment
+    proj.environment = environment
+    with pytest.raises(HostDied):
+        proj.start(ONE, CONFIG, Model())
+    [run_id] = proj.runs()
+    assert proj.resume(run_id, Model()).outcome is RunOutcome.ACCEPTED
+    assert files.calls == 1  # recorded once, delivered on the replay
+    assert steps.deliveries == [("responses/1/1", {"trace.txt": b"trace"})]
+
+
+def test_reconciliation_reads_the_files_the_operation_cited(tmp_path):
+    class Receipted(Counted):
+        def reconcile(self, ctx, arguments):
+            self.reconciled_with = dict(ctx.inputs)
+            return OperationResult(Outcome.SUCCEEDED, {"shared": 1}, shown={})
+
+    shared = Receipted(
+        effect="external", shared=True, unit="shared", crash=True, inputs=("task.md",)
+    )
+    item = {"operation": "shared", "arguments": {}}
+    proj, _ = project(tmp_path, [[request(item), SUBMIT]], domain(shared=shared))
+    assert proj.start(ONE, CONFIG, Model()).outcome is RunOutcome.UNKNOWN
+    other = dict(ONE.inputs)
+    other["task.md"] = b"a different task\n"
+    task = TaskSpec(ONE.id, ONE.objective, other, ONE.private, ONE.checks, 1)
+    # Another run's start reconciles the root-scoped operation first.
+    proj.start(task, CONFIG, Model())
+    assert shared.reconciled_with == {"task.md": ONE.inputs["task.md"]}
+
+
+def test_submit_first_output_with_a_request_marker_is_neither(tmp_path):
+    both = (
+        b"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\nWARRANTED_REQUEST\n",
+        0,
+        {},  # the sandbox captures no candidate for output carrying both markers
+    )
+    proj, _ = project(tmp_path, [[both, SUBMIT]])
+    result = proj.start(ONE, CONFIG, Model())
+    assert result.outcome is RunOutcome.ACCEPTED
+    [shown] = [o for o in observations(proj) if "host_results" in o]
+    assert shown["host_results"][0]["status"] == "error"
+    assert operations(proj) == []

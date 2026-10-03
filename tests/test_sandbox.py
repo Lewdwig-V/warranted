@@ -363,12 +363,15 @@ def test_delivered_operation_files_are_root_owned_and_read_only(tmp_path):
     episode = replace(setup(tmp_path), max_steps=3)
     commands = iter(
         [
-            "printf 'WARRANTED_REQUEST\\n{}\\n'",
+            # The host made responses/ at load time; the worker cannot add to it.
+            "mkdir responses/1 2>/dev/null && echo MADE;"
+            " ln -s /etc responses/x 2>/dev/null && echo LINKED;"
+            " printf 'WARRANTED_REQUEST\\n{}\\n'",
             "cat responses/1/1/a.txt; echo;"
             " (echo x >> responses/1/1/a.txt) 2>/dev/null && echo WROTE;"
             " mv responses moved 2>/dev/null && echo MOVED;"
             " rm -rf responses 2>/dev/null && echo REMOVED;"
-            " stat -c '%U %a' responses/1/1/a.txt",
+            " stat -c '%U %a' responses/1/1/a.txt; ls responses",
             "echo '{}' > result.json &&"
             " printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'",
         ]
@@ -381,9 +384,8 @@ def test_delivered_operation_files_are_root_owned_and_read_only(tmp_path):
         )
 
     def requests(journal, index, completion):
-        return [{"status": "succeeded"}], [
-            Delivery("responses/1/1", {"a.txt": b"hello"})
-        ]
+        delivery = Delivery("responses/1/1", {"a.txt": b"hello"})
+        return [{"status": "succeeded"}], [delivery, delivery]  # idempotent
 
     with Sandbox(tmp_path / "ledger", episode) as sandbox:
         run_workflow(
@@ -401,7 +403,7 @@ def test_delivered_operation_files_are_root_owned_and_read_only(tmp_path):
             if op.request.origin.operation_id.endswith("/tool/2")
         ]
         stdout = ledger.read_artifact(second.completion.observation.artifacts["stdout"])
-    assert stdout.decode().split() == ["hello", "root", "444"]
+    assert stdout.decode().split() == ["hello", "root", "444", "1"]
 
 
 def test_unsafe_delivery_paths_are_refused(tmp_path):

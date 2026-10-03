@@ -437,11 +437,10 @@ class WorkerEnvironment:
         if completion.result.outcome is Outcome.INFRASTRUCTURE_FAILURE:
             raise RuntimeError("worker infrastructure failure")
         lines = stdout.splitlines(keepends=True)
-        if (
-            completion.result.exit_code == 0
-            and lines
-            and lines[0].strip() == SUBMIT_MARKER
-        ):
+        markers = {line.strip() for line in lines} & {SUBMIT_MARKER, REQUEST_MARKER}
+        first = lines[0].strip() if lines else b""
+        succeeded = completion.result.exit_code == 0
+        if succeeded and first == SUBMIT_MARKER and len(markers) == 1:
             raise Submitted(
                 {
                     "role": "exit",
@@ -457,11 +456,14 @@ class WorkerEnvironment:
             "stderr": stderr.decode(errors="replace"),
             "returncode": completion.result.exit_code,
         }
-        if (
-            completion.result.exit_code == 0
-            and lines
-            and lines[0].strip() == REQUEST_MARKER
-        ):
+        if succeeded and first in markers and len(markers) == 2:
+            observation["host_results"] = [
+                {
+                    "status": "error",
+                    "error": "a command cannot both request operations and submit",
+                }
+            ]
+        elif succeeded and first == REQUEST_MARKER:
             # Host-written, separate from anything the command printed.
             observation["host_results"] = self._requests(completion)
         return observation

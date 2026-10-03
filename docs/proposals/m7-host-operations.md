@@ -368,9 +368,21 @@ Still open:
 - **Inputs cite evidence.** The operation's request cites the command's stdout,
   the canonical arguments, the reuse key, and each declared task file by their
   evidence names, so the ledger checks every one against a recorded capture.
-- **Replay does not deliver again.** Files are delivered only when an item is
-  executed or reused in the current call. A replayed episode has no running
-  container until its next new command.
+- **Delivery is idempotent and repeated on replay.** A host that stops between
+  recording a result and delivering its files completes the delivery when the
+  episode replays. A repeated delivery with the same content is a no-op, and
+  different content at a delivered path is refused. Without a live container,
+  delivery is skipped; the next new command then needs a fresh episode anyway.
+- **The host owns `/work/responses`.** It is created root-owned and read-only
+  when the container is loaded, so the worker cannot create a path or symlink
+  under it before a delivery. Delivery refuses any component that is not a
+  host-owned directory.
+- **Both markers, in either order, are neither.** The worker and the sandbox both
+  apply the rule, so output beginning with the submission marker and carrying a
+  request marker is not captured as a candidate.
+- **Reconciliation reads the cited inputs.** Each request records which evidence
+  each declared input file is, and `reconcile` reads those bytes, so a shared
+  operation settled during another run never sees that run's files.
 - **A request marker without operations is answered.** A task whose domain
   declares no operations returns one error result rather than silently ignoring
   the request.
