@@ -1,6 +1,7 @@
 # M7 design note: model providers through litellm
 
-Proposed 2026-10-04; not yet reviewed. This note designs how the task layer and the
+Proposed 2026-10-04; its open questions were decided the same day (see
+[decisions](#decisions)). This note designs how the task layer and the
 CLI reach hosted models: any OpenAI-compatible API (OpenAI, OpenRouter, Hugging
 Face Inference Providers, and similar) and the Anthropic API. It extends the
 [model adapters](../reference/model-adapters.md) and the CLI's
@@ -58,7 +59,7 @@ implements the same model boundary as `LocalChatCompletions`: `model`,
 - The output format is the worker's `{"command": string}` JSON object, requested
   through litellm's `response_format` with a JSON schema. How litellm honours it
   depends on what it believes the model supports; see
-  [model capabilities](#model-capabilities-are-declared-not-looked-up).
+  [structured output](#structured-output-only-where-litellm-knows-it-is-native).
 - The two existing adapters stay. `LocalChatCompletions` remains the dependency-
   free path for Ollama with digest pinning, and `OpenRouterChatCompletions`
   remains the pinned route the M5 experiments recorded.
@@ -78,46 +79,33 @@ already does for HTTPS. This is the isolation boundary:
 - **Deadline.** One deadline covers the whole child. At the deadline the host
   kills it, and the attempt is unknown. This does not prove the provider stopped.
 - **Output.** The child prints one JSON result: the normalized response, the
-  provider's raw response body when litellm exposes it, the response headers,
-  the status, and usage. The host records these before parsing.
+  response headers, the status, and usage. The host records these before parsing.
 
-### Model capabilities are declared, not looked up
+### Structured output only where litellm knows it is native
 
 litellm decides how to send a request from its model map, a table of each
-model's capabilities. Running offline, it uses the copy bundled with the installed
-version, and that copy lags new models. In litellm 1.101.0 the bundled map has no
-entry for `claude-opus-5-5` or `claude-sonnet-5-5`. For a model it does not know,
-litellm asks for JSON output through a tool and forces the call with
-`tool_choice: {type: "tool"}`. Claude Opus 5.5, Claude Sonnet 5.5 and Claude
-Fable 5.1 reject forced tool use with a 400, so every request would fail. (For
-Claude Opus 4.8, which the map does know, litellm uses native structured output.)
+model's capabilities. Running offline, it uses the copy bundled with the pinned
+version, and that copy lags new models: litellm 1.104.0 knows `claude-opus-5-5`
+and `claude-fable-5-1` but not `claude-sonnet-5-5`. For a model whose map entry
+lacks native structured output, litellm asks for JSON through a tool and forces
+the call with `tool_choice: {type: "tool"}`. Current Claude models reject forced
+tool use with a 400, so that fallback must never be triggered.
 
-The adapter therefore declares the capabilities litellm needs for the run's
-model, and the child registers them with `litellm.register_model` before the
-call. The values are fields of the adapter's configuration, so they are pinned
-and recorded with the run:
-
-- `supports_native_structured_output` (send `output_format` rather than a
-  forced tool);
-- `supports_forced_tool_use`;
-- `supports_output_config` (whether `effort` may be sent).
-
-For Anthropic models the CLI fills these from a small table in the adapter, kept
-with the model IDs it names; any other model must state them in `run.toml`. A
-model with no declared capabilities is refused when the run is configured, not on
-the first call. Upgrading litellm to a version whose bundled map knows the model
-removes the need, but a declaration still wins, so behaviour never depends on
-which map litellm happens to load.
+The adapter therefore sends `response_format` only when litellm's own model
+information reports `supports_native_structured_output` for the run's model.
+Otherwise it sends no `response_format`: the prompt already asks for the
+`{"command": string}` object, and `WorkerModel` validates every reply and returns
+a format error to the worker as it does today. Which path a run uses is part of
+its pinned configuration. Warranted keeps no table of models or providers; a newer
+litellm that knows more models is picked up by upgrading the pin.
 
 ### Evidence and its limits
 
 The recorded request is the exact litellm call (model, messages, parameters,
 endpoint) with the key replaced by its SHA-256. The recorded response is the
-provider's raw body when litellm returns it, plus litellm's normalized
-`ModelResponse`. When a provider's raw body is unavailable, the record says so,
-and the normalized form is the evidence. That limit is stated, not hidden: the
-bytes are litellm's, not the provider's, and AGENTS.md's "raw evidence retains its
-origin" holds only as far as litellm reports the origin.
+litellm's normalized `ModelResponse`, which is the evidence. Its origin is
+litellm at the recorded version, reporting what the provider returned;
+normalization can drop provider-specific fields, but it does not invent results.
 
 Outcomes follow the local adapter's table:
 
@@ -167,22 +155,21 @@ timeout_seconds = 300
 # effort = "medium"
 ```
 
-The CLI refuses a key file readable by group or others. The run records the key's
-SHA-256, and resume refuses a different key only if the project pinned one (an
-open question below).
+The CLI refuses a key file readable by group or others. The key is not part of
+the run's identity: a rotated key resumes the run. Records hold no key material.
 
 ### Pinning
 
 The run's `model-api.json` records the litellm model string, the litellm version,
-`api_base`, `max_tokens`, `timeout_seconds`, the pinned `parameters`, the response
-schema, and the key's SHA-256. `service_id` is `litellm/<sha256 of that record>`.
+`api_base`, `max_tokens`, `timeout_seconds`, the pinned `parameters`, and whether
+structured output is sent. `service_id` is `litellm/<sha256 of that record>`.
 Upgrading litellm changes the service identity, so it refuses to resume a run that
 started on another version, like any other changed adapter configuration.
 
 ### Dependency
 
-litellm becomes a direct dependency, pinned to the version mini-swe-agent already
-resolves (1.101.0 today), so the lockfile does not change. The model-adapters
+litellm becomes a direct dependency, pinned at 1.104.0 (upgraded from the 1.101.0
+that mini-swe-agent resolved; mini requires `>=1.75.5`). The model-adapters
 reference changes its "no provider SDK" statement. litellm loads provider SDKs
 (`openai`, and `anthropic` when installed) inside the child. Retries are disabled
 at both layers, and nothing reaches the network outside the one request.
@@ -201,17 +188,17 @@ at both layers, and nothing reaches the network outside the one request.
   file, makes one fixed request each to Anthropic and to an OpenAI-compatible
   endpoint, and records the result under `docs/experiments/`. CI never runs it.
 
-## Open questions
+## Decisions
 
-1. **Codex.** Does "Codex" mean OpenAI models over Chat Completions (covered
-   here), models served only on OpenAI's Responses API (litellm's `responses()`,
-   a second call shape), or driving the Codex CLI as the worker (a different
-   integration, out of scope)?
-2. **Key pinning.** Should a run be bound to one key's SHA-256, so a rotated key
-   refuses to resume, or only to the provider and model, so a rotated key
-   resumes?
-3. **litellm version.** Pin 1.101.0 (what mini-swe-agent resolves today) and
-   declare capabilities as above, or move to a newer litellm whose bundled map
-   knows the current Claude models, if mini-swe-agent's constraint allows it?
-4. **Raw bodies.** If a provider's raw body is unavailable through litellm, is the
-   normalized response acceptable evidence, or should that provider be refused?
+Decided 2026-10-04. Warranted maintains no per-API connectors; it uses what the
+pinned litellm provides.
+
+1. **Providers, including "Codex".** Whatever `litellm.completion` reaches,
+   including OpenAI-compatible endpoints through `openai/<model>` with
+   `api_base`. litellm bridges models that are served only on the Responses API
+   where it supports them; Warranted adds no second call shape.
+2. **Keys.** Not pinned: a rotated key resumes a run.
+3. **litellm version.** Upgrade and pin; take new model knowledge by upgrading,
+   never by a Warranted table.
+4. **Evidence.** litellm's normalized response is accepted as the recorded
+   result.
