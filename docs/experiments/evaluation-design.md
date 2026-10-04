@@ -17,9 +17,11 @@ not been run; the dated records below are development diagnostics only.
 | [2026-09-24 OpenRouter GLM diagnostic](2026-09-24-openrouter-glm-diagnostic.md) | Five `z-ai/glm-5.3-flash` migration-A attempts all stopped before submission, dominated by provider errors, truncation, and a returned provider failure. |
 | [2026-09-24 submission controls](2026-09-24-submission-controls.md) | Interface diagnostic with local Qwen: explicit submission instructions produced accepted submissions, but the twelve-run comparison combined prompt changes and cannot isolate their effects. |
 | [2026-09-25 corrected submission controls](2026-09-25-corrected-submission-controls.md) | Twelve repeated runs with corrected prompts: seven accepted, two rejected (packaging), three unsubmitted; every final program passes the original five checks, but only two reject the boolean-version diagnostic case. |
+| [2026-10-04 litellm live check](2026-10-04-litellm-openrouter-live-check.md) | Four single-request connectivity checks of the litellm adapter through OpenRouter (`z-ai/glm-5.3-flash`): an expired key failed once as a known 401; a fresh key returned the exact command once given an exact instruction. No task. |
 
-All four use public development fixtures. None compares models or treatments,
-and none reaches the approved revision and restart path.
+The five task records use public development fixtures. None of the six records
+compares models or treatments, and none reaches the approved revision and
+restart path.
 
 ## Task families
 
