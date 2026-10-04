@@ -111,7 +111,7 @@ The ledger units `prompt_tokens` and `completion_tokens` bound what model calls
 may spend ([design](../proposals/m7-token-budgets.md)). An adapter reserves them
 only when its model is in the class's `verified_models`, keyed by
 `model@model_digest` for `LocalChatCompletions`, by `model@provider_tag` for
-`OpenRouterChatCompletions`, and by the model string for
+`OpenRouterChatCompletions`, and by `model@api_base` for
 `LiteLLMChatCompletions`. An Ollama tag can be repointed or re-pulled, so a
 local model without a pinned `model_digest` is never verified, and before each
 inference for a verified model the adapter reads `/api/tags` and settles an
@@ -313,21 +313,34 @@ contained.
   OpenAI-compatible endpoint is `openai/<model>` with `api_base`.
 - **Configuration.** `max_tokens` is 1–131072 and `timeout_seconds` 1–600.
   `api_base` is an http(s) URL without credentials. `parameters` are extra
-  JSON-valued `completion` arguments, such as `temperature`. They cannot set
-  what the adapter owns: the model, messages, key, endpoint, limits, timeout,
-  streaming, retries, response format, tools, headers, callbacks, or any
-  `litellm_*`/`mock_*` argument.
+  JSON-valued `completion` arguments from an allowlist of sampling and model
+  settings: `temperature`, `top_p`, `top_k`, `seed`, `stop`,
+  `presence_penalty`, `frequency_penalty`, `reasoning_effort`, `thinking`, and
+  `user`. Any other name is refused at construction, because litellm arguments
+  such as `retry_policy`, `extra_body`, or `context_window_fallback_dict` can
+  re-enable retries, reroute the call, or change what is sent. Anthropic's
+  effort setting is reached through `reasoning_effort`.
 - **Key.** `api_key_file` names a file that is readable only by its owner and
-  holds one key. The adapter refuses a missing, empty, or group- or
-  other-readable file, at construction and again before each call. The key goes
-  to the child process over stdin. It never appears in argv, the child's
-  environment, recorded requests, worker inputs, or exports. Neither the key nor
-  its digest is recorded, so a rotated key resumes a run. Any copy of the key in
-  the child's output is replaced with `[api key]` before it is recorded.
+  holds one key of letters, digits, and `._~+/=-`. The adapter refuses a
+  missing, empty, or group- or other-readable file, at construction and again
+  before each call. The key goes to the child process over stdin. It never
+  appears in argv, the child's environment, recorded requests, worker inputs, or
+  exports. No digest of it is recorded, so a rotated key resumes a run. In the
+  recorded output, the key itself, and its first 8 and last 4 characters (the fragments providers
+echo in masked forms such as `sk-...abcd`), are replaced with `[api key]`
+wherever they appear in the child's output before it is recorded; for a key
+shorter than 12 characters only the whole key is replaced. Other fragments a
+provider might echo are not detected.
 - **Child process.** Each call runs `python -I` with an environment that holds
-  only `LITELLM_LOCAL_MODEL_COST_MAP=True`, `LITELLM_MODE=PRODUCTION`, and
-  `LITELLM_TELEMETRY=False`. litellm uses its bundled model map, does not load a
-  `.env` file, and sees no inherited provider keys or proxies. Callbacks are
+  only `LITELLM_LOCAL_MODEL_COST_MAP`, `LITELLM_LOCAL_ANTHROPIC_BETA_HEADERS`,
+  `LITELLM_LOCAL_BLOG_POSTS`, `LITELLM_LOCAL_AUTOROUTER_PRESETS`, and
+  `LITELLM_LOCAL_POLICY_TEMPLATES` (all `True`), `LITELLM_MODE=PRODUCTION`, and
+  `LITELLM_TELEMETRY=False`. litellm uses its bundled copies of the files it
+  would otherwise fetch from GitHub; without them, every Anthropic call that
+  sends an `anthropic-beta` header, including native structured output, fetches
+  the beta-header table. It does not load a `.env` file and sees no inherited
+  provider keys or proxies. A test routes the child through a recording proxy
+  and checks that nothing but the provider request is made. Callbacks are
   cleared. The call sets `stream=False`, `num_retries=0`, `max_retries=0`, and
   `timeout=timeout_seconds`. The host kills the child at `timeout_seconds` plus
   20 seconds for start-up. This does not prove the provider stopped.
@@ -340,11 +353,11 @@ contained.
   An unmapped model counts as not native. litellm 1.104.0 reports native
   structured output for `anthropic/claude-opus-5-5` but not for `openai/gpt-5`
   or `anthropic/claude-sonnet-5-5`.
-- **Pinning.** The `model-api` record holds the model string, the litellm
-  version the child imports, `api_base`, `max_tokens`, `timeout_seconds`,
+- **Pinning.** The `model-api` record holds the model string, the litellm,
+  `openai`, and `httpx` versions the child imports, `api_base`, `max_tokens`, `timeout_seconds`,
   `parameters`, whether structured output is sent, the 2 MiB byte limit, and the
   token-bound settings. `service_id` is `litellm/<sha256 of that record>`.
-  Resuming with any change, including another litellm version, is refused. The
+  Resuming with any change, including another package version, is refused. The
   key file path is not pinned.
 - **Records.** `litellm-request.json` is the exact call without the key.
   `litellm-response.json` is the child's result: litellm's normalized response
@@ -360,8 +373,8 @@ contained.
 | --- | --- | --- | --- |
 | Request over 2 MiB | `failed`, not sent | 0 | Diagnostic |
 | Key file missing or unsafe at call time | `infrastructure_failure`, not sent | 0 | Diagnostic |
-| Child killed at the deadline, timeout, or connection lost (a transport error anywhere in the exception's cause chain) | Unknown, reservation kept | Reserved | — |
-| Any HTTP error (4xx, 429, 5xx, 529), or another litellm error | `infrastructure_failure`; never retried | 1 | Request, result, error |
+| Child killed at the deadline, timeout, connection lost (a transport error anywhere in the exception's cause chain), or HTTP 408 or 504 (litellm raises `litellm.Timeout`) | Unknown, reservation kept; the exception names the error class and status | Reserved | — |
+| Any other HTTP error (4xx, 429, 500, 502, 503, 529), or another litellm error | `infrastructure_failure`; never retried | 1 (a verified model is charged its full token reservation, because the upstream may have run) | Request, result, error |
 | Malformed provider reply, or missing, zero-prompt, or inconsistent usage | `infrastructure_failure` | 1 | Request, result, error |
 | Tool calls, no text, more than one choice, or an unsupported finish reason | `infrastructure_failure` | 1 | Request, result, `tokens.json`, error |
 | Refusal (Anthropic `stop_reason: "refusal"`, `finish_reason: "content_filter"`, or an OpenAI `refusal`) | `failed` | 1 | Also `refusal`, `response`, `tokens.json` |
@@ -373,8 +386,9 @@ tokens is treated as unmeasured. litellm reports a dropped connection as an HTTP
 500, so the child checks the error's cause chain for a timeout or transport
 error; only a chain without one counts as a received reply. A 429 or 529 means
 the provider did not run the request, but the adapter still never retries it.
-Token budgets follow the [verified-models rule](#token-budgets), keyed by the
-model string. The list is empty, so only `model` units are reserved. Money stays
+Token budgets follow the [verified-models rule](#token-budgets), keyed by
+`model@api_base` (empty after `@` when no `api_base` is set): a measurement
+holds for one model at one endpoint. The list is empty, so only `model` units are reserved. Money stays
 out of the ledger, and the adapter does not compute dollars from litellm's price
 table.
 
@@ -396,6 +410,12 @@ these variables.
 
 - litellm's normalized response is the recorded evidence. Normalization can drop
   provider-specific fields, and the raw provider bytes are not kept.
+- The child's environment drops `SSL_CERT_FILE`, `SSL_CERT_DIR`, and the proxy
+  variables. A corporate CA or a required proxy is unsupported. The default
+  suite exercises only plain HTTP to a loopback server; the HTTPS path to a real
+  provider is tested only by the opt-in live test.
+- A lost attempt cannot be recorded without settling it, so its error class and
+  status are only in the raised exception, not the ledger.
 - The bundled model map lags new models. A newer litellm is taken by upgrading
   the pin, which changes every run's service identity.
 - Distinguishing a lost connection from a received error depends on litellm

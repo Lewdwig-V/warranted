@@ -88,10 +88,11 @@ temperature = 0
 ```
 
 The adapter fields are `api_key_file`, `max_tokens`, `timeout_seconds`,
-`api_base`, and `parameters`. The key file is read by the host and refused if it
-is missing, empty, or readable by group or others. A relative path is resolved
-from the current directory. The run pins the model, the litellm version, and
-every field except the key file, so `resume` accepts a rotated key but refuses
+`api_base`, and `parameters`. `parameters` accepts only sampling and model
+settings ([the allowlist](model-adapters.md#litellm)). The key file is read by
+the host and refused if it is missing, empty, or readable by group or others. A
+relative path is resolved from the current directory. The run pins the model,
+the litellm, `openai`, and `httpx` versions, and every field except the key file, so `resume` accepts a rotated key but refuses
 any other change.
 
 `provider = "openrouter"` is refused for now. The OpenRouter adapter checks each

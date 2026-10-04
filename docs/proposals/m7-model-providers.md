@@ -34,7 +34,9 @@ record the raw result. That boundary stays. Only the call behind it changes.
    before parsing, a lost response stays unknown and blocks, and nothing is
    retried automatically (AGENTS.md invariant 5).
 3. API keys never reach argv, recorded requests, worker inputs, exports, or the
-   worker's environment. Records hold no key material, not even a digest.
+   worker's environment. No digest of the key is recorded. In recorded output,
+   the key and its first 8 and last 4 characters are redacted; other echoed
+   fragments are not detected.
 4. The run pins the provider, model, endpoint, and request parameters. Resuming
    with a different configuration is refused, as it is for the local adapter.
 5. Ordinary tests need no network or credentials.
@@ -153,11 +155,12 @@ max_tokens = 4096
 timeout_seconds = 300
 # api_base = "https://router.huggingface.co/v1"   # for openai/<model> endpoints
 # [adapter.parameters]                             # pinned, recorded
-# effort = "medium"
+# reasoning_effort = "medium"
 ```
 
 The CLI refuses a key file readable by group or others. The key is not part of
-the run's identity: a rotated key resumes the run. Records hold no key material.
+the run's identity: a rotated key resumes the run. No digest is recorded, and
+the key and its first 8 and last 4 characters are redacted from recorded output.
 
 ### Pinning
 
@@ -186,8 +189,7 @@ at both layers, and nothing reaches the network outside the one request.
     refused;
   - zero retries: a fake 500 or 429 produces exactly one request.
 - **Opt-in live checks.** `-m live`, gated by an environment variable and a key
-  file, makes one fixed request each to Anthropic and to an OpenAI-compatible
-  endpoint, and records the result under `docs/experiments/`. CI never runs it.
+  file, makes one fixed request to the configured provider. CI never runs it.
 
 ## Decisions
 
