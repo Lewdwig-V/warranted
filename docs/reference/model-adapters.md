@@ -406,7 +406,8 @@ WARRANTED_LIVE_MODEL=anthropic/claude-opus-5-5 \
 ```
 
 Set `WARRANTED_LIVE_API_BASE` for an `openai/<model>` endpoint. CI never sets
-these variables.
+these variables. The first live runs, through OpenRouter, are recorded in the
+[2026-10-04 live check](../experiments/2026-10-04-litellm-openrouter-live-check.md).
 
 ### Limits
 
@@ -415,7 +416,8 @@ these variables.
 - The child's environment drops `SSL_CERT_FILE`, `SSL_CERT_DIR`, and the proxy
   variables. A corporate CA or a required proxy is unsupported. The default
   suite exercises only plain HTTP to a loopback server; the HTTPS path to a real
-  provider is tested only by the opt-in live test.
+  provider is tested only by the opt-in live test, which has passed against
+  OpenRouter.
 - A lost attempt cannot be recorded without settling it, so its error class and
   status are only in the raised exception, not the ledger.
 - The bundled model map lags new models. A newer litellm is taken by upgrading

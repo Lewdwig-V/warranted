@@ -517,10 +517,21 @@ def test_one_live_request(tmp_path):
     )
     root = tmp_path / "ledger"
     setup(root, model)
-    query(root, model)
+    # An exact instruction: a model without native structured output gets no
+    # schema, so the prompt alone must ask for the command object.
+    instruction = (
+        'Reply with exactly this JSON object and nothing else: {"command": "true"}'
+    )
+    with Ledger.open(root) as ledger:
+        action = WorkerModel(Journal(ledger, episode(model)), model).query(
+            [{"role": "user", "content": instruction}]
+        )
     result, raw, _ = completion(root)
     assert result.outcome is Outcome.SUCCEEDED
-    assert json.loads(raw["response"])["command"]
+    assert result.usage == {"model": 1}
+    tokens = json.loads(raw["tokens.json"])
+    assert tokens["prompt_tokens"] > 0 and tokens["completion_tokens"] > 0
+    assert action["extra"]["actions"] == [{"command": "true"}]
 
 
 @pytest.mark.parametrize("model", ["openai/fake-model", "anthropic/claude-test"])
