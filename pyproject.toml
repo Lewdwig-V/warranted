@@ -43,6 +43,7 @@ line-length = 88
 markers = [
     "container: requires rootless Podman and the pinned local image",
     "proof: requires rootless Podman and the pinned Lean verifier bundle",
+    "live: makes real, paid provider requests; needs WARRANTED_LIVE_TESTS=1 and a key file",
 ]
 
 [tool.ruff.lint]

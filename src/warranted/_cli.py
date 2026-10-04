@@ -16,6 +16,7 @@ from warranted import (
     CampaignReport,
     CampaignSpec,
     CampaignTask,
+    LiteLLMChatCompletions,
     LocalChatCompletions,
     Project,
     Revision,
@@ -38,6 +39,13 @@ EXIT = {
     RunOutcome.INFRASTRUCTURE_FAILURE: 5,
 }
 ADAPTER_FIELDS = {"base_url", "max_tokens", "timeout_seconds", "seed", "model_digest"}
+LITELLM_FIELDS = {
+    "api_key_file",
+    "api_base",
+    "max_tokens",
+    "timeout_seconds",
+    "parameters",
+}
 LOCAL_URL = "http://127.0.0.1:11434/v1"
 
 
@@ -87,7 +95,9 @@ def open_project(directory: str) -> Project:
     return Project(root, load_domain(reference, root))
 
 
-def load_run_config(path: str) -> tuple[RunConfig, LocalChatCompletions]:
+def load_run_config(
+    path: str,
+) -> tuple[RunConfig, LocalChatCompletions | LiteLLMChatCompletions]:
     data = tomllib.loads(Path(path).read_text())
     known = {"model", "provider", "max_steps", "budgets", "adapter"}
     if not data.keys() <= known or "model" not in data:
@@ -98,13 +108,24 @@ def load_run_config(path: str) -> tuple[RunConfig, LocalChatCompletions]:
             "provider openrouter is not supported by the task layer yet: it needs "
             "a pinned runtime the task layer does not record"
         )
-    if provider != "ollama":
-        raise UsageError(f"unknown provider: {provider}")
     adapter = dict(data.get("adapter", {}))
-    if not adapter.keys() <= ADAPTER_FIELDS:
-        raise UsageError(f"adapter settings are limited to {sorted(ADAPTER_FIELDS)}")
-    base_url = adapter.pop("base_url", LOCAL_URL)
-    model = LocalChatCompletions(base_url, data["model"], **adapter)
+    if provider == "litellm":
+        required = {"api_key_file", "max_tokens", "timeout_seconds"}
+        if not required <= adapter.keys() <= LITELLM_FIELDS:
+            raise UsageError(
+                f"litellm adapter settings need {sorted(required)}, and only "
+                f"{sorted(LITELLM_FIELDS)}"
+            )
+        model = LiteLLMChatCompletions(data["model"], **adapter)
+    elif provider == "ollama":
+        if not adapter.keys() <= ADAPTER_FIELDS:
+            raise UsageError(
+                f"adapter settings are limited to {sorted(ADAPTER_FIELDS)}"
+            )
+        base_url = adapter.pop("base_url", LOCAL_URL)
+        model = LocalChatCompletions(base_url, data["model"], **adapter)
+    else:
+        raise UsageError(f"unknown provider: {provider}")
     config = RunConfig(data["model"], data.get("max_steps", 4), data.get("budgets", {}))
     return config, model
 

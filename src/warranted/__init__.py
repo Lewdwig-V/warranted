@@ -13,6 +13,7 @@ from warranted._claims import Applicability
 from warranted._guard import DuplicateGuard, default_normalize
 from warranted._jobs import JobContext, JobLimits, JobResult, JobRunner, PodmanJobs
 from warranted._ledger import Balance, Outcome
+from warranted._litellm import LiteLLMChatCompletions
 from warranted._openrouter import OpenRouterChatCompletions
 from warranted._operations import Operation, OperationContext, OperationResult
 from warranted._proof_checks import LeanProof, LeanVerifier, ProofVerifier
@@ -77,6 +78,7 @@ __all__ = [
     "JobRunner",
     "LeanProof",
     "LeanVerifier",
+    "LiteLLMChatCompletions",
     "LocalChatCompletions",
     "MemoryEntry",
     "MemorySpec",

@@ -7,6 +7,15 @@ versioning and deprecation policy. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `LiteLLMChatCompletions`, a model adapter for hosted models through litellm
+  (OpenAI-compatible APIs and the Anthropic API). It makes one call per attempt
+  in an offline child process with no retries, reads its key from an
+  owner-only file, never records the key, and pins its configuration and the
+  litellm version. The CLI accepts it as `provider = "litellm"`.
+- litellm 1.104.0 is a direct dependency.
+
 ## [0.2.0] - 2026-10-04
 
 ### Changed
