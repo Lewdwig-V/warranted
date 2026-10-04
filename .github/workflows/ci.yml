@@ -224,11 +224,14 @@ jobs:
           m4_pid=$!
           uv run --locked pytest -q -m proof --durations=5 tests/test_m5_treatments.py > /tmp/proofs-m5.log 2>&1 &
           m5_pid=$!
+          uv run --locked pytest -q -m proof --durations=5 tests/test_proof_fixtures.py > /tmp/proofs-fixtures.log 2>&1 &
+          fixtures_pid=$!
           failed=0
           wait "$native_pid" || failed=1
           wait "$m4_pid" || failed=1
           wait "$m5_pid" || failed=1
-          cat /tmp/proofs-native.log /tmp/proofs-m4.log /tmp/proofs-m5.log
+          wait "$fixtures_pid" || failed=1
+          cat /tmp/proofs-native.log /tmp/proofs-m4.log /tmp/proofs-m5.log /tmp/proofs-fixtures.log
           exit "$failed"
       - name: Save native Podman image storage
         if: success() && steps.podman-cache.outputs.cache-hit != 'true'

@@ -4,7 +4,14 @@ import json
 import runpy
 from pathlib import Path
 
-from warranted import DEFAULT_WORKER_IMAGE, CheckContext, Verdict, VerdictStatus
+from warranted import (
+    DEFAULT_WORKER_IMAGE,
+    CheckContext,
+    LeanProof,
+    ProofTarget,
+    Verdict,
+    VerdictStatus,
+)
 
 HERE = Path(__file__).resolve().parent
 M2_SOURCE = HERE.parent.parent / "m2/experiments.py"
@@ -57,9 +64,69 @@ def _one(files, prefix: str) -> str:
     return names[0]
 
 
+UNIQUENESS = ProofTarget(
+    HERE / "UniquenessChallenge.lean", "Warranted.uniqueness_preserved"
+)
+TIMESTAMP = ProofTarget(
+    HERE / "TimestampChallenge.lean", "Warranted.timestamp_roundtrip"
+)
+
+
+def _candidate_rows(ctx: CheckContext) -> list | None:
+    try:
+        rows = M2["decode"](ctx.candidate["result.json"])["rows"]
+    except (KeyError, TypeError, ValueError, RecursionError):
+        return None
+    return rows if type(rows) is list else None
+
+
+def uniqueness_premises(ctx: CheckContext) -> dict[str, bool]:
+    """M4's applicability premise: the input IDs are unique."""
+    source = [row[0] for row in M2["read_rows"](ctx.inputs["input.csv"])]
+    return {"input_unique": len(source) == len(set(source))}
+
+
+def uniqueness_correspondence(ctx: CheckContext) -> dict[str, bool]:
+    """M4's model correspondence: the candidate is an identity selection of the IDs."""
+    source = [row[0] for row in M2["read_rows"](ctx.inputs["input.csv"])]
+    rows = _candidate_rows(ctx)
+    well_formed = rows is not None and all(
+        type(r) is list and len(r) == 3 and type(r[0]) is str for r in rows
+    )
+    remaining = iter(source)
+    # In order, each candidate ID is a source ID: the mapping is the identity.
+    return {"identity_selection": well_formed and all(r[0] in remaining for r in rows)}
+
+
+def timestamp_correspondence(ctx: CheckContext) -> dict[str, bool]:
+    """M5's timestamp application: one fixed offset, in whole seconds, for every row."""
+    from datetime import datetime
+
+    local = {r[0]: r[1] for r in M2["read_rows"](ctx.inputs["input.csv"])}
+    offsets = set()
+    for row in _candidate_rows(ctx) or []:
+        try:
+            utc = datetime.strptime(row[1], "%Y-%m-%dT%H:%M:%SZ")
+            offsets.add((datetime.fromisoformat(local[row[0]]) - utc).total_seconds())
+        except (KeyError, TypeError, ValueError, IndexError):
+            return {"single_offset": False}
+    return {"single_offset": len(offsets) == 1 and all(o == int(o) for o in offsets)}
+
+
 class CsvDomain:
     name = "csv-transformation"
     version = "0.1"
     worker_image = DEFAULT_WORKER_IMAGE
-    checkers = {"transformation": Transformation()}
+    checkers = {
+        "transformation": Transformation(),
+        "uniqueness": LeanProof(
+            UNIQUENESS,
+            premises=uniqueness_premises,
+            correspondence=uniqueness_correspondence,
+            isolated=True,  # the callbacks read only the check's own bytes
+        ),
+        "timestamp": LeanProof(
+            TIMESTAMP, correspondence=timestamp_correspondence, isolated=True
+        ),
+    }
     sources = (M2_SOURCE,)  # loaded with runpy, so not found by following imports

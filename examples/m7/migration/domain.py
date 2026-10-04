@@ -10,7 +10,14 @@ import json
 import runpy
 from pathlib import Path
 
-from warranted import DEFAULT_WORKER_IMAGE, CheckContext, Verdict, VerdictStatus
+from warranted import (
+    DEFAULT_WORKER_IMAGE,
+    CheckContext,
+    LeanProof,
+    ProofTarget,
+    Verdict,
+    VerdictStatus,
+)
 
 HERE = Path(__file__).resolve().parent
 M5_SOURCE = HERE.parent.parent / "m5/demo.py"
@@ -23,6 +30,49 @@ OBLIGATIONS = (
     "input_rejection",
     "repetition",
 )
+
+
+def run_cases(ctx: CheckContext, source: bytes, cases: dict) -> dict:
+    """Run each case in its own contained job; return {case name: judge result}."""
+    detail = {}
+    for name, case in cases.items():
+        job = ctx.run_job(
+            DEFAULT_WORKER_IMAGE,
+            ["python", "-I", "migrate.py"],
+            {"migrate.py": source},
+            stdin=case["input"].encode(),
+            timeout_seconds=M5["CASE_SECONDS"],
+        )
+        detail[name] = M5["judge"](
+            case, job.stdout, job.returncode, job.timed_out or job.truncated
+        )
+    return detail
+
+
+MIGRATION = ProofTarget(
+    HERE / "MigrationChallenge.lean", "Warranted.migration_renaming"
+)
+
+
+def renaming_correspondence(ctx: CheckContext) -> dict[str, bool]:
+    """M5's migration application: the candidate renames host and timeout exactly.
+
+    The theorem covers both label variants, so the label is not a premise; the
+    legacy_label obligation keeps that gap closed.
+    """
+    try:
+        source = M5["candidate_source"](ctx.candidate["result.json"])
+    except (KeyError, ValueError, RecursionError):
+        return {"renaming_correspondence": False}
+    cases = {
+        n: c
+        for n, c in json.loads(ctx.private["references.json"]).items()
+        if c["kind"] == "migrate"
+    }
+    if not cases:
+        raise ValueError("no migrate case assesses renaming")
+    detail = run_cases(ctx, source, cases)
+    return {"renaming_correspondence": all(d["renaming"] for d in detail.values())}
 
 
 class Migration:
@@ -43,21 +93,10 @@ class Migration:
         # An obligation is established only by the cases that assess it, and an
         # invalid patch is never executed, so it establishes nothing.
         results = {"repository_integrity": source is not None}
-        detail = {}
-        for name, case in cases.items() if source is not None else ():
-            job = ctx.run_job(
-                DEFAULT_WORKER_IMAGE,
-                ["python", "-I", "migrate.py"],
-                {"migrate.py": source},
-                stdin=case["input"].encode(),
-                timeout_seconds=M5["CASE_SECONDS"],
-            )
-            values = M5["judge"](
-                case, job.stdout, job.returncode, job.timed_out or job.truncated
-            )
+        detail = run_cases(ctx, source, cases) if source is not None else {}
+        for values in detail.values():
             for obligation, passed in values.items():
                 results[obligation] = results.get(obligation, True) and passed
-            detail[name] = values
         missing = set(required) - results.keys()
         if source is not None and missing:
             raise ValueError(f"no reference case assesses: {sorted(missing)}")
@@ -73,5 +112,11 @@ class MigrationDomain:
     name = "config-migration"
     version = "0.1"
     worker_image = DEFAULT_WORKER_IMAGE
-    checkers = {"migration": Migration()}
+    checkers = {
+        "migration": Migration(),
+        # The correspondence runs contained jobs over the check's own bytes only.
+        "renaming": LeanProof(
+            MIGRATION, correspondence=renaming_correspondence, isolated=True
+        ),
+    }
     sources = (M5_SOURCE,)  # loaded with runpy, so not found by following imports
