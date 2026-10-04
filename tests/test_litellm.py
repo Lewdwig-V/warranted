@@ -8,6 +8,7 @@ Completions and Anthropic Messages wire formats, and each attempt runs the real
 import hashlib
 import json
 import os
+import socket
 import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -80,6 +81,12 @@ def provider(status=200, body=None, mode=None):
                     except OSError:
                         return
                 return
+            if mode == "close":  # read the request, then drop the connection
+                self.connection.shutdown(socket.SHUT_RDWR)
+                return
+            if mode == "sleep":  # past the request timeout, within the deadline
+                release.wait(4)
+                return
             reply = body
             if reply is None:
                 if self.path.endswith("/messages"):
@@ -88,9 +95,13 @@ def provider(status=200, body=None, mode=None):
                     reply = openai_body()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(reply)))
+            extra = 10 if mode == "partial" else 0
+            self.send_header("Content-Length", str(len(reply) + extra))
             self.end_headers()
             self.wfile.write(reply)
+            if mode == "partial":
+                self.wfile.flush()
+                self.connection.shutdown(socket.SHUT_RDWR)
 
         def log_message(self, *_):
             pass
@@ -282,7 +293,8 @@ def test_malformed_or_unmeasured_replies_are_infrastructure_failures(
 def test_a_stalled_provider_is_killed_and_the_attempt_stays_unknown(
     tmp_path, key_file, monkeypatch
 ):
-    monkeypatch.setattr(adapter_module, "STARTUP_SECONDS", 5)
+    # Enough start-up allowance that only the stalled provider can hit the deadline.
+    monkeypatch.setattr(adapter_module, "STARTUP_SECONDS", 15)
     with provider(mode="drip") as (url, calls):
         model = client(key_file, url, timeout_seconds=1)
         root = tmp_path / "ledger"
@@ -385,7 +397,15 @@ def test_oversized_request_is_a_known_local_failure(tmp_path, key_file):
 
 @pytest.mark.parametrize(
     "parameters",
-    [{"api_key": "x"}, {"num_retries": 3}, {"mock_response": "x"}, {"t": object()}],
+    [
+        {"api_key": "x"},
+        {"num_retries": 3},
+        {"retry_policy": {"InternalServerErrorRetries": 3}},
+        {"extra_body": {"x": 1}},
+        {"context_window_fallback_dict": {"openai/fake-model": "openai/other"}},
+        {"mock_response": "x"},
+        {"temperature": object()},
+    ],
 )
 def test_reserved_or_unrecordable_parameters_are_refused(key_file, parameters):
     with pytest.raises(ValueError):
@@ -422,11 +442,16 @@ def test_resume_refuses_a_changed_configuration_but_accepts_a_rotated_key(
             with pytest.raises(ValueError, match="adapter configuration differs"):
                 proj.resume(run_id, changed)
         probe = adapter_module._probe
-        monkeypatch.setattr(
-            adapter_module, "_probe", lambda name: {**probe(name), "version": "0.0.1"}
-        )
-        with pytest.raises(ValueError, match="adapter configuration differs"):
-            proj.resume(run_id, client(key_file, url))
+        for package in ("litellm", "openai", "httpx"):
+
+            def other(name, package=package):
+                found = probe(name)
+                versions = {**found["versions"], package: "0.0.1"}
+                return {**found, "versions": versions}
+
+            monkeypatch.setattr(adapter_module, "_probe", other)
+            with pytest.raises(ValueError, match="adapter configuration differs"):
+                proj.resume(run_id, client(key_file, url))
         monkeypatch.setattr(adapter_module, "_probe", probe)
         with pytest.raises(ValueError, match="model boundary differs"):
             proj.resume(run_id, client(key_file, url, "openai/other-model"))
@@ -496,3 +521,161 @@ def test_one_live_request(tmp_path):
     result, raw, _ = completion(root)
     assert result.outcome is Outcome.SUCCEEDED
     assert json.loads(raw["response"])["command"]
+
+
+@pytest.mark.parametrize("model", ["openai/fake-model", "anthropic/claude-test"])
+@pytest.mark.parametrize(
+    "mode,status", [("close", 200), ("partial", 200), ("sleep", 200), (None, 504)]
+)
+def test_a_lost_reply_stays_unknown_and_is_never_resent(
+    tmp_path, key_file, model, mode, status
+):
+    with provider(
+        status,
+        b'{"error": {"message": "gateway"}}' if status != 200 else None,
+        mode=mode,
+    ) as (url, calls):
+        model = client(key_file, url, model, timeout_seconds=1)
+        root = tmp_path / "ledger"
+        setup(root, model)
+        with pytest.raises(ConnectionError, match="unknown"):
+            query(root, model)
+        with pytest.raises(UnknownOutcome):
+            query(root, model)
+    assert len(calls) == 1
+    with Ledger.open(root) as ledger:
+        assert ledger.operations()[0].state == "unknown"
+        balance = ledger.accounting()["model"]
+        assert (balance.spent, balance.reserved) == (0, 1)
+
+
+@pytest.mark.parametrize("model", ["openai/fake-model", "anthropic/claude-test"])
+@pytest.mark.parametrize("status", [502, 503])
+def test_a_bad_gateway_or_unavailable_reply_is_known(tmp_path, key_file, model, status):
+    with provider(status, b'{"error": {"message": "down"}}') as (url, calls):
+        model = client(key_file, url, model)
+        root = tmp_path / "ledger"
+        setup(root, model)
+        with pytest.raises(RuntimeError, match="model attempt"):
+            query(root, model)
+    assert len(calls) == 1
+    result, _, balance = completion(root)
+    assert result.outcome is Outcome.INFRASTRUCTURE_FAILURE
+    assert (balance.spent, balance.reserved) == (1, 0)
+
+
+def test_an_allowed_parameter_reaches_the_wire(tmp_path, key_file):
+    with provider() as (url, calls):
+        model = client(key_file, url, parameters={"temperature": 0.25, "seed": 7})
+        root = tmp_path / "ledger"
+        setup(root, model)
+        query(root, model)
+    assert (calls[0][2]["temperature"], calls[0][2]["seed"]) == (0.25, 7)
+
+
+@pytest.mark.parametrize("model", ["openai/fake-model", "anthropic/claude-test"])
+def test_echoed_key_material_is_redacted(tmp_path, key_file, model):
+    body = json.dumps(
+        {
+            "type": "error",
+            "error": {
+                "type": "authentication_error",
+                "message": f"bad key {KEY}, or sk-...{KEY[-4:]} ({KEY[:8]}...)",
+            },
+        }
+    ).encode()
+    with provider(401, body) as (url, _):
+        model = client(key_file, url, model)
+        root = tmp_path / "ledger"
+        setup(root, model)
+        with pytest.raises(RuntimeError, match="model attempt"):
+            query(root, model)
+    _, raw, _ = completion(root)
+    record = raw["litellm-response.json"]
+    assert b"[api key]" in record
+    assert KEY[-4:].encode() not in record
+    assert KEY[:8].encode() not in record
+    assert KEY[-4:].encode() not in stored(root)
+
+
+@contextmanager
+def recording_proxy():
+    """A loopback proxy that only counts the connections it is offered."""
+    seen = []
+    listener = socket.create_server(("127.0.0.1", 0))
+    listener.settimeout(0.1)
+    stop = threading.Event()
+
+    def serve():
+        while not stop.is_set():
+            try:
+                connection, _ = listener.accept()
+            except TimeoutError:
+                continue
+            seen.append(connection.recv(4096))
+            connection.close()
+
+    thread = threading.Thread(target=serve)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{listener.getsockname()[1]}", seen
+    finally:
+        stop.set()
+        thread.join()
+        listener.close()
+
+
+def test_the_child_fetches_nothing_but_the_one_request(tmp_path, key_file, monkeypatch):
+    with recording_proxy() as (proxy, seen), provider() as (url, calls):
+        proxied = {
+            name: proxy
+            for name in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
+        }
+        monkeypatch.setattr(
+            adapter_module,
+            "ENV",
+            {**adapter_module.ENV, **proxied, "NO_PROXY": "127.0.0.1"},
+        )
+        adapter_module._probe.cache_clear()
+        for index, name in enumerate(
+            ("openai/fake-model", "anthropic/claude-opus-5-5")
+        ):
+            model = client(key_file, url, name)
+            root = tmp_path / f"ledger-{index}"
+            setup(root, model)
+            query(root, model)
+        adapter_module._probe.cache_clear()
+    assert len(calls) == 2
+    assert "anthropic-beta" in calls[1][1]  # the path that used to fetch headers
+    assert seen == []
+
+
+def test_only_an_unmapped_model_counts_as_not_native(monkeypatch):
+    # A broken model map is an error at construction, never a silent "not native".
+    monkeypatch.setattr(
+        adapter_module,
+        "_PROBE",
+        adapter_module._PROBE.replace(
+            "info = litellm.get_model_info(config['model'])",
+            "raise RuntimeError('model map unreadable')",
+        ),
+    )
+    adapter_module._probe.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="litellm is unavailable"):
+            adapter_module._probe("openai/fake-model")
+    finally:
+        adapter_module._probe.cache_clear()
+
+
+def test_verified_models_are_keyed_by_model_and_endpoint(key_file, monkeypatch):
+    model = client(key_file, "http://127.0.0.1:9")
+    assert model.verification_key == "openai/fake-model@http://127.0.0.1:9/v1"
+    monkeypatch.setattr(
+        LiteLLMChatCompletions,
+        "verified_models",
+        frozenset({model.verification_key}),
+    )
+    assert model.reserved_units == {"model", "prompt_tokens", "completion_tokens"}
+    other = client(key_file, "http://127.0.0.1:10")
+    assert other.reserved_units == {"model"}

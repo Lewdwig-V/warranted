@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 from collections.abc import Mapping
 from dataclasses import KW_ONLY, dataclass, field
@@ -34,10 +35,16 @@ from warranted._ledger import (
 from warranted._openrouter import command_format
 from warranted._worker import AttemptResult
 
-# The child's whole environment: offline model map, no .env loading, and no
-# inherited provider keys or proxies. `python -I` ignores PYTHON* variables.
+# The child's whole environment: litellm's bundled copies of every file it would
+# otherwise fetch from GitHub (model map, Anthropic beta headers, blog posts,
+# autorouter presets, policy templates), no .env loading, and no inherited
+# provider keys, proxies, or CA settings. `python -I` ignores PYTHON* variables.
 ENV = {
     "LITELLM_LOCAL_MODEL_COST_MAP": "True",
+    "LITELLM_LOCAL_ANTHROPIC_BETA_HEADERS": "True",
+    "LITELLM_LOCAL_BLOG_POSTS": "True",
+    "LITELLM_LOCAL_AUTOROUTER_PRESETS": "True",
+    "LITELLM_LOCAL_POLICY_TEMPLATES": "True",
     "LITELLM_MODE": "PRODUCTION",
     "LITELLM_TELEMETRY": "False",
 }
@@ -63,9 +70,12 @@ from importlib.metadata import version
 try:
     info = litellm.get_model_info(config['model'])
     native = info.get('supports_native_structured_output') is True
-except Exception:
+except litellm.ModelNotMappedError:
     native = False  # an unmapped model: send no response_format
-out.write(json.dumps({'version': version('litellm'), 'native': native}))
+out.write(json.dumps({
+    'versions': {name: version(name) for name in ('litellm', 'openai', 'httpx')},
+    'native': native,
+}))
 """
 )
 
@@ -99,37 +109,24 @@ out.write(json.dumps(result, default=str))
 """
 )
 
-# Call settings the adapter owns; `parameters` cannot override or add them.
-RESERVED = frozenset(
+# The only extra `completion` arguments: sampling and model behaviour. Anything
+# else could change retries, routing, the endpoint, or what is recorded.
+PARAMETERS = frozenset(
     {
-        "model",
-        "messages",
-        "api_key",
-        "api_base",
-        "base_url",
-        "max_tokens",
-        "max_completion_tokens",
-        "timeout",
-        "request_timeout",
-        "stream",
-        "stream_options",
-        "num_retries",
-        "max_retries",
-        "fallbacks",
-        "n",
-        "response_format",
-        "tools",
-        "tool_choice",
-        "functions",
-        "function_call",
-        "headers",
-        "extra_headers",
-        "metadata",
-        "client",
-        "logger_fn",
-        "custom_llm_provider",
+        "temperature",
+        "top_p",
+        "top_k",
+        "seed",
+        "stop",
+        "presence_penalty",
+        "frequency_penalty",
+        "reasoning_effort",
+        "thinking",
+        "user",
     }
 )
+# Characters a key may hold, so redacting it never breaks the recorded JSON.
+KEY_PATTERN = re.compile(r"[A-Za-z0-9._~+/=-]+")
 
 
 def _child(script: str, config: bytes, seconds: int) -> bytes:
@@ -149,9 +146,19 @@ def _child(script: str, config: bytes, seconds: int) -> bytes:
     return result.stdout
 
 
+def _redact(data: bytes, key: str) -> bytes:
+    """The key and its usual masked fragments (first 8, last 4) replaced."""
+    data = data.replace(key.encode(), b"[api key]")
+    if len(key) >= 12:  # a short key's fragments would hide unrelated text
+        for part in (key[:8], key[-4:]):
+            data = data.replace(part.encode(), b"[api key]")
+    return data
+
+
 @cache
 def _probe(model: str) -> dict:
-    """The child's litellm version and whether it knows native structured output."""
+    """The child's package versions and whether litellm knows native structured
+    output for the model. An error other than an unmapped model propagates."""
     try:
         return json.loads(_child(_PROBE, _encode({"model": model}), STARTUP_SECONDS))
     except (ConnectionError, ValueError) as error:
@@ -173,7 +180,7 @@ class LiteLLMChatCompletions:
     api_base: str | None = None
     parameters: Mapping = field(default_factory=dict, hash=False)
     # Read from the child at construction and pinned.
-    litellm_version: str = field(init=False)
+    versions: Mapping = field(init=False, hash=False)
     structured_output: bool = field(init=False)
 
     def __post_init__(self):
@@ -203,14 +210,13 @@ class LiteLLMChatCompletions:
             ):
                 raise ValueError("api_base must be an http(s) URL without credentials")
         parameters = self.parameters
-        if not isinstance(parameters, Mapping) or any(
-            type(name) is not str
-            or name in RESERVED
-            or name.startswith(("litellm_", "mock_"))
-            or "callback" in name
-            for name in parameters
-        ):
-            raise ValueError(f"parameters cannot set {sorted(RESERVED)} or litellm_*")
+        if not isinstance(parameters, Mapping):
+            raise ValueError("parameters must be a table")
+        refused = sorted(str(name) for name in parameters if name not in PARAMETERS)
+        if refused:
+            raise ValueError(
+                f"parameters {refused} are not allowed; only {sorted(PARAMETERS)}"
+            )
         try:
             copied = json.loads(_encode(dict(parameters)))
         except (TypeError, ValueError):
@@ -221,7 +227,7 @@ class LiteLLMChatCompletions:
         object.__setattr__(self, "parameters", copied)
         self._key()
         probe = _probe(self.model)
-        object.__setattr__(self, "litellm_version", probe["version"])
+        object.__setattr__(self, "versions", probe["versions"])
         object.__setattr__(self, "structured_output", probe["native"])
 
     def _key(self) -> str:
@@ -235,13 +241,21 @@ class LiteLLMChatCompletions:
             key = self.api_key_file.read_text().strip()
         except (OSError, UnicodeError) as error:
             raise ValueError(f"API key file is unavailable: {error}") from None
-        if not key or any(c.isspace() for c in key):
-            raise ValueError(f"API key file {self.api_key_file} must hold one key")
+        if not KEY_PATTERN.fullmatch(key):
+            raise ValueError(
+                f"API key file {self.api_key_file} must hold one key of "
+                "letters, digits, and ._~+/=-"
+            )
         return key
 
     @property
+    def verification_key(self) -> str:
+        """A measurement holds for one model at one endpoint."""
+        return f"{self.model}@{self.api_base or ''}"
+
+    @property
     def token_bounded(self) -> bool:
-        return self.model in self.verified_models
+        return self.verification_key in self.verified_models
 
     @property
     def reserved_units(self) -> frozenset[str]:
@@ -314,7 +328,7 @@ class LiteLLMChatCompletions:
                 {
                     "adapter": self.adapter_name + "-v1",
                     "model": self.model,
-                    "litellm_version": self.litellm_version,
+                    "versions": self.versions,
                     "api_base": self.api_base,
                     "max_tokens": self.max_tokens,
                     "timeout_seconds": self.timeout_seconds,
@@ -383,11 +397,17 @@ class LiteLLMChatCompletions:
                 "unreadable litellm result; outcome unknown"
             ) from None
         if lost is not False:
-            raise ConnectionError("litellm transport lost; outcome unknown")
+            # The journal cannot record an unsettled attempt; the redacted error
+            # class and status travel in the exception instead.
+            error = value.get("error") or {}
+            detail = _redact(
+                f"{error.get('class')}, status {value.get('status')}".encode(), key
+            ).decode()
+            raise ConnectionError(f"litellm transport lost ({detail}); outcome unknown")
         raw = {
             "litellm-request.json": wire,
-            # A provider error may echo the key; it is never recorded.
-            "litellm-response.json": stdout.replace(key.encode(), b"[api key]"),
+            # A provider error may echo the key or a masked form of it.
+            "litellm-response.json": _redact(stdout, key),
         }
         outcome, exit_code = Outcome.INFRASTRUCTURE_FAILURE, None
         charged = self._usage(1, reserved)  # unmeasured: charged at the bound
