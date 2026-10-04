@@ -4,14 +4,18 @@ A model adapter is the trusted `model` boundary passed to
 [`run_workflow`](worker-and-containment.md#running-an-episode). Each call makes
 one external attempt for one journaled operation and returns the raw bytes and
 known usage. The host records that result before the worker parses it. Warranted
-provides three adapters, listed in the table below. None of them uses a provider
-SDK, streaming, automatic retries, redirects, or environment proxies.
+provides four adapters, listed in the table below. None of them uses streaming,
+automatic retries, or environment proxies. The first three use no provider SDK or
+redirects; `LiteLLMChatCompletions` calls [litellm](https://github.com/BerriAI/litellm),
+which loads the provider's SDK inside a child process with retries disabled at
+both layers.
 
 | Adapter | Module | Endpoint | Lost response | Cost recorded |
 | --- | --- | --- | --- | --- |
 | `ReceiptService` | `warranted.host` | Loopback fake service (`http://127.0.0.1:<port>`) | Reconciled from an exact receipt, or left unknown | Synthetic integer units |
 | `LocalChatCompletions` | `warranted` | Local OpenAI-compatible `http://127.0.0.1:<port>/v1` (Ollama) | Unknown; cannot be reconciled | Attempts plus token counts |
 | `OpenRouterChatCompletions` | `warranted` | `https://openrouter.ai/api/v1` | Unknown; cannot be reconciled; paid cost unknown | Attempts, tokens, and reported USD |
+| `LiteLLMChatCompletions` | `warranted` | Any provider `litellm.completion` reaches: OpenAI-compatible APIs, the Anthropic API | Unknown; cannot be reconciled; paid cost unknown | Attempts plus token counts |
 
 ## Shared attempt contract
 
@@ -106,14 +110,15 @@ rejects it.
 The ledger units `prompt_tokens` and `completion_tokens` bound what model calls
 may spend ([design](../proposals/m7-token-budgets.md)). An adapter reserves them
 only when its model is in the class's `verified_models`, keyed by
-`model@model_digest` for `LocalChatCompletions` and by `model@provider_tag` for
-`OpenRouterChatCompletions`. An Ollama tag can be repointed or re-pulled, so a
+`model@model_digest` for `LocalChatCompletions`, by `model@provider_tag` for
+`OpenRouterChatCompletions`, and by the model string for
+`LiteLLMChatCompletions`. An Ollama tag can be repointed or re-pulled, so a
 local model without a pinned `model_digest` is never verified, and before each
 inference for a verified model the adapter reads `/api/tags` and settles an
 `infrastructure_failure` with zero usage, without sending, unless the tag still
 names exactly the pinned digest. A re-pull between that check and inference is
 not detected. OpenRouter relies on its existing runtime preflight, which pins the
-provider endpoint. **Both lists are empty.** A model is added only after
+provider endpoint. **All three lists are empty.** A model is added only after
 a recorded measurement under `docs/experiments/` shows its reported prompt tokens
 within the bound, including for short prompts. For a local model,
 `examples/m7/token_bound.py` takes that measurement:
@@ -294,3 +299,107 @@ development. These public fixtures are development tasks, so a single diagnostic
 does not establish model quality, treatment differences, or results on unseen
 tasks. The recorded attempts are in the
 [OpenRouter GLM diagnostic](../experiments/2026-09-24-openrouter-glm-diagnostic.md).
+
+## litellm
+
+`LiteLLMChatCompletions(model, *, api_key_file, max_tokens, timeout_seconds, api_base=None, parameters={})`
+makes one [`litellm.completion`](https://docs.litellm.ai/docs/completion) call per
+attempt. It is the task layer's path to hosted models. The
+[design note](../proposals/m7-model-providers.md) records why litellm and how it is
+contained.
+
+- **Model.** A litellm model string that names its provider:
+  `anthropic/claude-opus-5-5`, `openai/gpt-5`, `openrouter/<org>/<model>`. Any
+  OpenAI-compatible endpoint is `openai/<model>` with `api_base`.
+- **Configuration.** `max_tokens` is 1–131072 and `timeout_seconds` 1–600.
+  `api_base` is an http(s) URL without credentials. `parameters` are extra
+  JSON-valued `completion` arguments, such as `temperature`. They cannot set
+  what the adapter owns: the model, messages, key, endpoint, limits, timeout,
+  streaming, retries, response format, tools, headers, callbacks, or any
+  `litellm_*`/`mock_*` argument.
+- **Key.** `api_key_file` names a file that is readable only by its owner and
+  holds one key. The adapter refuses a missing, empty, or group- or
+  other-readable file, at construction and again before each call. The key goes
+  to the child process over stdin. It never appears in argv, the child's
+  environment, recorded requests, worker inputs, or exports. Neither the key nor
+  its digest is recorded, so a rotated key resumes a run. Any copy of the key in
+  the child's output is replaced with `[api key]` before it is recorded.
+- **Child process.** Each call runs `python -I` with an environment that holds
+  only `LITELLM_LOCAL_MODEL_COST_MAP=True`, `LITELLM_MODE=PRODUCTION`, and
+  `LITELLM_TELEMETRY=False`. litellm uses its bundled model map, does not load a
+  `.env` file, and sees no inherited provider keys or proxies. Callbacks are
+  cleared. The call sets `stream=False`, `num_retries=0`, `max_retries=0`, and
+  `timeout=timeout_seconds`. The host kills the child at `timeout_seconds` plus
+  20 seconds for start-up. This does not prove the provider stopped.
+- **Structured output.** At construction, a child with the same environment asks
+  litellm's `get_model_info` whether the model has
+  `supports_native_structured_output`. Only then does the call send a
+  `response_format` with the strict `{"command": string}` schema. Otherwise it
+  sends none, so litellm never falls back to a forced tool call. The prompt still
+  asks for the command object, and the worker rejects malformed replies as usual.
+  An unmapped model counts as not native. litellm 1.104.0 reports native
+  structured output for `anthropic/claude-opus-5-5` but not for `openai/gpt-5`
+  or `anthropic/claude-sonnet-5-5`.
+- **Pinning.** The `model-api` record holds the model string, the litellm
+  version the child imports, `api_base`, `max_tokens`, `timeout_seconds`,
+  `parameters`, whether structured output is sent, the 2 MiB byte limit, and the
+  token-bound settings. `service_id` is `litellm/<sha256 of that record>`.
+  Resuming with any change, including another litellm version, is refused. The
+  key file path is not pinned.
+- **Records.** `litellm-request.json` is the exact call without the key.
+  `litellm-response.json` is the child's result: litellm's normalized response
+  (`model_dump()`), the response headers litellm exposes, and, on failure, the
+  HTTP status and the error class and message. litellm does not report the
+  status of a successful call. `tokens.json` holds the normalized usage, and
+  `response` holds only the final message text. Thinking blocks and reasoning
+  text remain in `litellm-response.json` and never become the command. The
+  response's `model` is recorded but not compared, because providers return
+  dated aliases.
+
+| Situation | Outcome | `model` units | Retained |
+| --- | --- | --- | --- |
+| Request over 2 MiB | `failed`, not sent | 0 | Diagnostic |
+| Key file missing or unsafe at call time | `infrastructure_failure`, not sent | 0 | Diagnostic |
+| Child killed at the deadline, timeout, or connection lost (a transport error anywhere in the exception's cause chain) | Unknown, reservation kept | Reserved | — |
+| Any HTTP error (4xx, 429, 5xx, 529), or another litellm error | `infrastructure_failure`; never retried | 1 | Request, result, error |
+| Malformed provider reply, or missing, zero-prompt, or inconsistent usage | `infrastructure_failure` | 1 | Request, result, error |
+| Tool calls, no text, more than one choice, or an unsupported finish reason | `infrastructure_failure` | 1 | Request, result, `tokens.json`, error |
+| Refusal (Anthropic `stop_reason: "refusal"`, `finish_reason: "content_filter"`, or an OpenAI `refusal`) | `failed` | 1 | Also `refusal`, `response`, `tokens.json` |
+| Truncated (`finish_reason: "length"`) | `failed` | 1 | `response`, `tokens.json` |
+| One text completion (`finish_reason: "stop"`) | `succeeded` | 1 | `response`, `tokens.json` |
+
+litellm fills absent usage with zeros, so a reply that reports zero prompt
+tokens is treated as unmeasured. litellm reports a dropped connection as an HTTP
+500, so the child checks the error's cause chain for a timeout or transport
+error; only a chain without one counts as a received reply. A 429 or 529 means
+the provider did not run the request, but the adapter still never retries it.
+Token budgets follow the [verified-models rule](#token-budgets), keyed by the
+model string. The list is empty, so only `model` units are reserved. Money stays
+out of the ledger, and the adapter does not compute dollars from litellm's price
+table.
+
+`tests/test_litellm.py` runs the real litellm against a local fake provider that
+speaks both the Chat Completions and the Messages wire formats. Every HTTP error
+class reaches the server exactly once. One opt-in test, marked `live`, makes a
+single real request:
+
+```bash
+WARRANTED_LIVE_TESTS=1 WARRANTED_LIVE_KEY_FILE=runs/.secrets/anthropic \
+WARRANTED_LIVE_MODEL=anthropic/claude-opus-5-5 \
+  uv run --locked pytest -q -m live tests/test_litellm.py
+```
+
+Set `WARRANTED_LIVE_API_BASE` for an `openai/<model>` endpoint. CI never sets
+these variables.
+
+### Limits
+
+- litellm's normalized response is the recorded evidence. Normalization can drop
+  provider-specific fields, and the raw provider bytes are not kept.
+- The bundled model map lags new models. A newer litellm is taken by upgrading
+  the pin, which changes every run's service identity.
+- Distinguishing a lost connection from a received error depends on litellm
+  keeping the transport error in the exception chain, as 1.104.0 does for the
+  OpenAI and Anthropic paths.
+- Remote providers give no immutable model identity, and output is not
+  reproducible.

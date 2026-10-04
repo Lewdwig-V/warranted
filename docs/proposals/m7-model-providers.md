@@ -1,7 +1,8 @@
 # M7 design note: model providers through litellm
 
 Proposed 2026-10-04; its open questions were decided the same day (see
-[decisions](#decisions)). This note designs how the task layer and the
+[decisions](#decisions)). Implemented as `LiteLLMChatCompletions`; its current
+behaviour is in the [litellm adapter reference](../reference/model-adapters.md#litellm). This note designs how the task layer and the
 CLI reach hosted models: any OpenAI-compatible API (OpenAI, OpenRouter, Hugging
 Face Inference Providers, and similar) and the Anthropic API. It extends the
 [model adapters](../reference/model-adapters.md) and the CLI's
