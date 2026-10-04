@@ -35,8 +35,8 @@ record the raw result. That boundary stays. Only the call behind it changes.
    retried automatically (AGENTS.md invariant 5).
 3. API keys never reach argv, recorded requests, worker inputs, exports, or the
    worker's environment. No digest of the key is recorded. In recorded output,
-   the key and its first 8 and last 4 characters are redacted; other echoed
-   fragments are not detected.
+   the key, and its first 8 and last 4 characters where a provider masked the
+   key around them, are redacted; other echoed fragments are not detected.
 4. The run pins the provider, model, endpoint, and request parameters. Resuming
    with a different configuration is refused, as it is for the local adapter.
 5. Ordinary tests need no network or credentials.
@@ -160,7 +160,8 @@ timeout_seconds = 300
 
 The CLI refuses a key file readable by group or others. The key is not part of
 the run's identity: a rotated key resumes the run. No digest is recorded, and
-the key and its first 8 and last 4 characters are redacted from recorded output.
+the key, and its masked first-8 and last-4 fragments, are redacted from recorded
+output.
 
 ### Pinning
 

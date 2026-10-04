@@ -598,6 +598,18 @@ def test_echoed_key_material_is_redacted(tmp_path, key_file, model):
     assert KEY[-4:].encode() not in stored(root)
 
 
+def test_fragments_are_redacted_only_where_the_key_was_masked():
+    from warranted._litellm import _redact
+
+    masked = f"sk-...{KEY[-4:]} and {KEY[:8]}... and ****{KEY[-4:]}".encode()
+    assert KEY[-4:].encode() not in _redact(masked, KEY)
+    assert KEY[:8].encode() not in _redact(masked, KEY)
+    # The same characters by chance elsewhere, e.g. in a signature, stay as recorded.
+    chance = f'{{"signature": "AAAA{KEY[-4:]}BBBB{KEY[:8]}CCCC"}}'.encode()
+    assert _redact(chance, KEY) == chance
+    assert b"[api key]" in _redact(f"bad key {KEY}".encode(), KEY)
+
+
 @contextmanager
 def recording_proxy():
     """A loopback proxy that only counts the connections it is offered."""

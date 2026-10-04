@@ -147,11 +147,17 @@ def _child(script: str, config: bytes, seconds: int) -> bytes:
 
 
 def _redact(data: bytes, key: str) -> bytes:
-    """The key and its usual masked fragments (first 8, last 4) replaced."""
+    """The key, and its usual masked fragments, replaced.
+
+    A fragment (first 8 or last 4 characters) is replaced only where a provider
+    masked the key around it (`sk-...abcd`, `sk-proj-****abcd`, `sk-abcdefgh...`),
+    so a chance match elsewhere in the response is left as recorded.
+    """
     data = data.replace(key.encode(), b"[api key]")
     if len(key) >= 12:  # a short key's fragments would hide unrelated text
-        for part in (key[:8], key[-4:]):
-            data = data.replace(part.encode(), b"[api key]")
+        head, tail = re.escape(key[:8].encode()), re.escape(key[-4:].encode())
+        data = re.sub(rb"(?<=[*.])" + tail, b"[api key]", data)
+        data = re.sub(head + rb"(?=[*.])", b"[api key]", data)
     return data
 
 

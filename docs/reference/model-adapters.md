@@ -325,12 +325,14 @@ contained.
   missing, empty, or group- or other-readable file, at construction and again
   before each call. The key goes to the child process over stdin. It never
   appears in argv, the child's environment, recorded requests, worker inputs, or
-  exports. No digest of it is recorded, so a rotated key resumes a run. In the
-  recorded output, the key itself, and its first 8 and last 4 characters (the fragments providers
-echo in masked forms such as `sk-...abcd`), are replaced with `[api key]`
-wherever they appear in the child's output before it is recorded; for a key
-shorter than 12 characters only the whole key is replaced. Other fragments a
-provider might echo are not detected.
+  exports. No digest of it is recorded, so a rotated key resumes a run. Before
+  the child's output is recorded, the whole key is replaced with `[api key]`
+  wherever it appears. Its first 8 and last 4 characters are replaced only where
+  a provider masked the key around them (`sk-...abcd`, `sk-proj-****abcd`,
+  `sk-abcdefgh...`), so the same characters appearing by chance elsewhere, such
+  as inside a signature, stay as recorded. For a key shorter than 12 characters
+  only the whole key is replaced. Other fragments a provider might echo are not
+  detected.
 - **Child process.** Each call runs `python -I` with an environment that holds
   only `LITELLM_LOCAL_MODEL_COST_MAP`, `LITELLM_LOCAL_ANTHROPIC_BETA_HEADERS`,
   `LITELLM_LOCAL_BLOG_POSTS`, `LITELLM_LOCAL_AUTOROUTER_PRESETS`, and
