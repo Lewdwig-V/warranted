@@ -8,6 +8,9 @@
 | Task | None: one connectivity request asking for `{"command": "true"}` |
 | Kind | Development diagnostic |
 | Outcome | Expired key: a known 401. Fresh key: succeeded with the exact command |
+| Source | Runs 1–3 at `cb949a3` (`main` after #72); run 4 at `6138d93` (this test's exact instruction) |
+| Environment | Python 3.12.12; litellm 1.104.0, openai 2.54.0, httpx 0.28.1 (from `uv.lock`); Linux 6.18.33.2-microsoft-standard-WSL2 |
+| Total cost | $0.0003931 reported by OpenRouter (runs 3 and 4); runs 1 and 2 report no cost and are unknown, though a rejected key is not expected to be billed |
 
 The check is the opt-in `tests/test_litellm.py::test_one_live_request`, run with
 `WARRANTED_LIVE_TESTS=1`, an owner-only key file, and
