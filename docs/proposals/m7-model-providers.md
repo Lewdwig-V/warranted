@@ -34,7 +34,7 @@ record the raw result. That boundary stays. Only the call behind it changes.
    before parsing, a lost response stays unknown and blocks, and nothing is
    retried automatically (AGENTS.md invariant 5).
 3. API keys never reach argv, recorded requests, worker inputs, exports, or the
-   worker's environment. Records hold only a key's SHA-256.
+   worker's environment. Records hold no key material, not even a digest.
 4. The run pins the provider, model, endpoint, and request parameters. Resuming
    with a different configuration is refused, as it is for the local adapter.
 5. Ordinary tests need no network or credentials.
@@ -103,7 +103,7 @@ litellm that knows more models is picked up by upgrading the pin.
 ### Evidence and its limits
 
 The recorded request is the exact litellm call (model, messages, parameters,
-endpoint) with the key replaced by its SHA-256. The recorded response is the
+endpoint) with no key material. The recorded response is
 litellm's normalized `ModelResponse`, which is the evidence. Its origin is
 litellm at the recorded version, reporting what the provider returned;
 normalization can drop provider-specific fields, but it does not invent results.
