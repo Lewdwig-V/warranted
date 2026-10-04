@@ -24,7 +24,8 @@ from warranted._ledger import Ledger, Outcome
 from warranted._tasks import RunConfig
 from warranted._worker import Journal, UnknownOutcome, WorkerModel
 
-KEY = "sk-file-key-0123456789abcdef"
+# Fragments must not occur by chance in a ledger (hex digests, UUIDs, timestamps).
+KEY = "sk-file-key-0123456789wxyzQ~vZ"
 COMMAND = '{"command":"true"}'
 
 
