@@ -174,11 +174,12 @@ domain project supplies only domain knowledge. Specifically:
   status and accounting, export evidence, and run a pinned campaign of tasks. The
   CLI uses only the public API ([reference](reference/cli.md)), including
   `revise` for [contract revisions](reference/cli.md#contract-revisions).
-- [ ] **Release discipline.** Tagged releases with a changelog, semantic
+- [x] **Release discipline.** Tagged releases with a changelog, semantic
   versioning, and a deprecation policy for the public API; reference docs
   generated from or tested against it. The [changelog](../CHANGELOG.md),
   [policy, and API reference](reference/api.md) exist, and tests and CI check
-  them against the code; the item completes when `v0.1.0` is tagged.
+  them against the code. `v0.1.0` and `v0.2.0` are tagged, and CI checked each
+  tag against the package version.
 
 **Completion evidence:** both existing fixtures run through the public API and
 CLI with their current guarantees and tests intact. A minimal reverse-engineering
