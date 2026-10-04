@@ -9,6 +9,7 @@ requires-python = ">=3.12"
 dependencies = [
     "langgraph==1.2.11",
     "langgraph-checkpoint-sqlite==3.1.1",
+    "litellm==1.104.0",
     "mini-swe-agent==2.4.6",
 ]
 
@@ -42,6 +43,7 @@ line-length = 88
 markers = [
     "container: requires rootless Podman and the pinned local image",
     "proof: requires rootless Podman and the pinned Lean verifier bundle",
+    "live: makes real, paid provider requests; needs WARRANTED_LIVE_TESTS=1 and a key file",
 ]
 
 [tool.ruff.lint]

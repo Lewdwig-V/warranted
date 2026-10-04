@@ -145,3 +145,4 @@ published to PyPI.
 | --- | --- | --- |
 | `LocalChatCompletions` | Adapter for a local OpenAI-compatible endpoint, such as Ollama | [local endpoint](model-adapters.md#local-openai-compatible-endpoint) |
 | `OpenRouterChatCompletions` | Adapter for OpenRouter with a pinned runtime | [OpenRouter](model-adapters.md#openrouter) |
+| `LiteLLMChatCompletions` | Adapter for hosted models through litellm: OpenAI-compatible APIs and the Anthropic API | [litellm](model-adapters.md#litellm) |

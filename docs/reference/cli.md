@@ -45,7 +45,7 @@ allowances cannot run.
 
 ```toml
 model = "qwen3:8b"
-provider = "ollama"          # the only provider the task layer supports so far
+provider = "ollama"          # or "litellm" for hosted models; see below
 max_steps = 12
 
 [adapter]
@@ -60,13 +60,40 @@ model = 40
 tool = 80
 ```
 
-`run` builds a [`LocalChatCompletions`](model-adapters.md) adapter from this file
-and starts a new run with a fresh ID. The run records the adapter's configuration
-and service identity, and every model request in the run cites that record.
+With `provider = "ollama"`, `run` builds a
+[`LocalChatCompletions`](model-adapters.md) adapter from this file and starts a
+new run with a fresh ID. The run records the adapter's configuration and service
+identity, and every model request in the run cites that record.
 
 `resume` uses the run's recorded task, budgets, and step limit. From `--config`
 it takes only the model connection, and it refuses a model whose name or adapter
 configuration differs from the run's record.
+
+For a hosted model, use `provider = "litellm"` and a litellm model string. The
+CLI builds a [`LiteLLMChatCompletions`](model-adapters.md#litellm) adapter:
+
+```toml
+model = "anthropic/claude-opus-5-5"
+provider = "litellm"
+max_steps = 12
+
+[adapter]
+api_key_file = "runs/.secrets/anthropic"   # required; readable only by its owner
+max_tokens = 4096                          # required
+timeout_seconds = 300                      # required
+# api_base = "https://router.huggingface.co/v1"   # optional, for openai/<model>
+
+[adapter.parameters]         # optional; extra completion arguments, pinned
+temperature = 0
+```
+
+The adapter fields are `api_key_file`, `max_tokens`, `timeout_seconds`,
+`api_base`, and `parameters`. `parameters` accepts only sampling and model
+settings ([the allowlist](model-adapters.md#litellm)). The key file is read by
+the host and refused if it is missing, empty, or readable by group or others. A
+relative path is resolved from the current directory. The run pins the model,
+the litellm, `openai`, and `httpx` versions, and every field except the key file, so `resume` accepts a rotated key but refuses
+any other change.
 
 `provider = "openrouter"` is refused for now. The OpenRouter adapter checks each
 request against a pinned runtime that only the M5 harness records.
