@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 2026-10-02. Milestones are ordered, not dated. M0–M4 are complete within
+Updated 2026-10-09. Milestones are ordered, not dated. M0–M4 are complete within
 the scopes stated below. The current priority is turning Warranted into a usable
 harness with ReSchema as its first consumer: a stable API and CLI (M7), then
 ReSchema rebuilt on top of them (M8). M5's remaining comparison, M6, and M3a are
@@ -17,6 +17,7 @@ deferred until M8 lands.
 | M7 | Stable harness API and CLI | Next |
 | M8 | ReSchema rebuilt on Warranted | Planned, after M7 |
 | M9 | General-purpose neurosymbolic harness: five use cases | Proposed |
+| M10 | Evaluation integrity and verifier hardening | Proposed |
 | M6 | Dream-RSI replay-based scheduling | Deferred |
 | M3a | Optional Jev classifier and judge | Deferred |
 
@@ -256,6 +257,48 @@ use case confirms it:
   ARC-AGI-3.
 - [ ] Later: improving the agent itself, building on M6.
 
+## M10 — Evaluation integrity and verifier hardening
+
+Proposed; not started; nothing here is measured. Six domain-independent
+extensions from the [neurosymbolic harness survey](research/2026-10-09-neurosymbolic-agent-harnesses.md#six-extensions-that-build-on-warranteds-own-plans),
+which found that a sound checker still gives a misleading pass when the statement
+does not match intent, when the verifier's environment has a loophole, or when a
+result is reported without its budget. Each enters the
+[enforcement audit](reference/enforcement.md) as Not built until its negative case
+is tested, and each that adds worker-visible formal machinery or proof cost is
+subject to the [A–E decision rule](experiments/evaluation-design.md). Domain
+content arrives as task inputs, checker jobs, or worker images. Ideas the survey
+declined are in [rejected ideas](rejected-ideas.md).
+
+The first three need only existing seams and make M5's remaining comparison
+honest; the last three build on M9 items and wait for them.
+
+- [ ] Contract-adequacy probes: a task pins known-disappointing candidates as
+  private inputs; when a revision changes its required checks, the host runs them
+  through the same checkers and records any acceptance as an unresolved gap on
+  that revision. Negative case first: such a revision is never reported as clean.
+  Generalises the boolean-version regression case in M5.
+- [ ] Integrity canaries, adapting [ImpossibleBench](https://arxiv.org/abs/2510.20270):
+  tasks whose required checks contradict each other, in their own split outside
+  training, development, and held-out statistics. Any acceptance is an integrity
+  failure; rejected attempts are reported as a propensity measure.
+- [ ] Budget-indexed campaign reports: outcomes stated against recorded spend, and
+  a rate refused when its budget is missing. Test first that campaign reports keep
+  rejected runs and cost totals.
+- [ ] Verifier diversity within the N6 `kernel` trust basis: an optional second
+  kernel (nanoda, through Comparator), with every kernel, its version, and the
+  axiom policy recorded on the receipt. Kernel disagreement never maps to
+  `PASSED`.
+- [ ] Trust basis and verifier pins (toolchain, library commit, axiom policy)
+  recorded as claim assumptions, so a pin change makes dependent memory facts,
+  chain steps (N8), and consolidation candidates (N11) stale through existing
+  machinery. A step that requires `kernel` is never satisfied by an `example` fact.
+- [ ] Owner-approved formalisation, after N5: a proposed per-task target passes a
+  fidelity job in a domain checker image (round-trip equivalence, multiple
+  translations, the adequacy probes above) before an owner revision pins it.
+  Disagreement is recorded as a gap. Only after a measured run shows Lean targets
+  beat executable checks for the task family.
+
 ## M5 — Generality and the knowledge experiment
 
 **Delivered:**
@@ -334,6 +377,7 @@ Before measured M5 trials: choose provider/model versions and a total spending
 cap; pin equal capabilities, scheduling, per-attempt limits, and task-success
 predicates across A–E; set useful-improvement thresholds on development runs and
 freeze them; define task lineages for the held-out split. Before M6: define the
-policy objective, support rule, and lineage split.
+policy objective, support rule, and lineage split. For M10: whether kernel
+disagreement is `INFRASTRUCTURE_FAILURE` or `REJECTED`.
 
 Earlier milestone checklists and plans remain in Git history.

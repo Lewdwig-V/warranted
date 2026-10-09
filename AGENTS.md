@@ -7,8 +7,9 @@ Read [README.md](README.md), [docs/design.md](docs/design.md), and
 [docs/reference/](docs/reference), task fixtures in [docs/fixtures/](docs/fixtures),
 and experiments in [docs/experiments/](docs/experiments). Use
 [the evaluation design](docs/experiments/evaluation-design.md) when changing an
-evaluator, task fixture, or experiment. Keep implementation status honest: planned
-machinery is not an existing guarantee.
+evaluator, task fixture, or experiment. Check [rejected ideas](docs/rejected-ideas.md)
+before proposing a design; reopen an entry only with new evidence. Keep
+implementation status honest: planned machinery is not an existing guarantee.
 
 Warranted is becoming a usable harness. Document components for the engineer who
 runs them: what they do, how to call them, what they guarantee, and their limits.
