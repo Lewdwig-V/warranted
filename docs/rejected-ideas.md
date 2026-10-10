@@ -180,7 +180,7 @@ Reopen if: never for the pinned identity; a provider switch is a new run.
 
 ### Public-set scores as capability evidence
 
-Rejected as evidence. AVO, VISTA, and GPT-6 Astra each report about 100% on the
-published ARC-AGI-3 games, with gains of two to seven times from the harness
-alone. Warranted's ARC-AGI-3 use case already requires private or held-out tasks
+Rejected as evidence. AVO and VISTA each report 100 on the published
+ARC-AGI-3 games, and GPT-6 Astra's 99.9% best Semi-Private result was not a
+controlled comparison with its Standard-harness score. Warranted's ARC-AGI-3 use case already requires private or held-out tasks
 for capability claims; these results are evidence about harness design only.

@@ -285,9 +285,11 @@ declined are in [rejected ideas](rejected-ideas.md).
 
 The first five need only existing seams and make M5's remaining comparison
 and M8's live campaigns honest; the last three build on M9 items and wait for
-them. The second survey found that, on ARC-AGI-3, harness choices alone moved
-the same model's score by two to seven times, so the adapter and its settings
-are part of what a result means.
+them. The second survey found large ARC-AGI-3 score changes attributed to the
+harness. The controlled ones, VISTA's ablation and OpenAI's reasoning-retention
+comparison, hold the model fixed; AVO's and GPT-6 Astra's results also change
+other settings and are descriptive only. Either way, the adapter and its
+settings are part of what a result means.
 
 - [ ] Contract-adequacy probes: a task pins known-disappointing candidates as
   private inputs; when a revision changes its required checks, the host runs them
