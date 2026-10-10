@@ -148,3 +148,39 @@ yet. Revisit when such a consumer exists.
 [AlphaEvolve hardening guide](https://docs.cloud.google.com/gemini/enterprise/docs/alphaevolve/developer-guide/reward-hacking-prevention)
 techniques are useful, but domains apply them inside their own checker jobs.
 Revisit if two domains need the same mechanism.
+
+## From the ARC-AGI-3 harness survey (2026-10-10)
+
+Source: [ARC-AGI-3 harness lessons](research/2026-10-10-arc-agi-3-harness-lessons.md).
+The accepted recommendations are in [M9](roadmap.md#m9--general-purpose-neurosymbolic-harness-five-use-cases),
+[M10](roadmap.md#m10--evaluation-integrity-and-verifier-hardening), and
+[M6](roadmap.md#m6--dream-rsi-adaptation-for-search-improvement). A VISTA-style
+mandatory tool suite for the worker is already declined above, under a custom
+agent loop or mandatory model-facing tools.
+
+### Tool-call translation, or a forced tool call as the structured-output carrier
+
+Rejected. The worker protocol is one strict `{"command": string}` reply, and a
+tool call in a reply is an infrastructure failure
+([model adapters](reference/model-adapters.md)). ARC Prize's DeepSeek adapter
+forces a `submit_action` tool to obtain structured output, but current Claude
+models reject forced tool use, and translating tool calls between providers
+would add a second call shape that M7 declined.
+
+Reopen if: a model needed for a measured campaign offers no other way to return
+structured output, and the change keeps a single call shape.
+
+### A retrying or fallback-routing provider proxy
+
+Rejected. Retrying a model call, or routing it to another provider on failure,
+breaks invariant 5 (no blind retry) and the pinned model identity a run resumes
+under. Each attempt stays one call to one pinned model.
+
+Reopen if: never for the pinned identity; a provider switch is a new run.
+
+### Public-set scores as capability evidence
+
+Rejected as evidence. AVO, VISTA, and GPT-6 Astra each report about 100% on the
+published ARC-AGI-3 games, with gains of two to seven times from the harness
+alone. Warranted's ARC-AGI-3 use case already requires private or held-out tasks
+for capability claims; these results are evidence about harness design only.

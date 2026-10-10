@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 2026-10-09. Milestones are ordered, not dated. M0–M4 are complete within
+Updated 2026-10-10. Milestones are ordered, not dated. M0–M4 are complete within
 the scopes stated below. The current priority is turning Warranted into a usable
 harness with ReSchema as its first consumer: a stable API and CLI (M7), then
 ReSchema rebuilt on top of them (M8). M5's remaining comparison, M6, and M3a are
@@ -242,7 +242,16 @@ yet general and proposes, in order, with each interface provisional until a seco
 use case confirms it:
 
 - [ ] A strategy layer that tries several candidates per run, and OpenRouter
-  models in the task layer, on an ARC-AGI-1/2 fixture.
+  models in the task layer, on an ARC-AGI-1/2 fixture. Shape it after
+  [NVIDIA AVO](research/2026-10-10-arc-agi-3-harness-lessons.md#3-build-the-n3-strategy-layer-in-avos-shape-with-the-host-holding-the-gate):
+  each child is seeded from the best accepted lineage member rather than the
+  previous episode, and the host commits it only when it passes the checks and
+  does not regress the objective. Stagnation is detected on the host from
+  no-improvement counts and duplicate-guard hits, never by a model. Failed
+  children are recorded with their parent, and elites are re-checked on fresh
+  host draws before promotion. Keep the stagnation trigger switchable so its
+  contribution can be measured; multi-candidate results are their own
+  reported condition.
 - [ ] Trust bases on verdicts, and solver-checked `unsat` claims, on an SMT
   puzzle fixture.
 - [ ] Per-task Lean targets, a pinned Mathlib, a named axiom policy, and
@@ -252,7 +261,10 @@ use case confirms it:
 - [ ] Chains that promote accepted results with recorded lineage: Minkowski
   baselines and Lean lemma libraries.
 - [ ] Memory usefulness reports, then checked offline consolidation into a slow
-  memory tier, starting with Lean lemmas.
+  memory tier, starting with Lean lemmas. Report usefulness per component, as
+  [VISTA](research/2026-10-10-arc-agi-3-harness-lessons.md#5-take-vistas-discipline-not-its-eyes)
+  does, and keep its split between durable rules and per-task scratch notes:
+  a note reaches the durable tier only after it is verified across tasks.
 - [ ] Host sessions for stateful environments, after a reviewed design, on
   ARC-AGI-3.
 - [ ] Later: improving the agent itself, building on M6.
@@ -261,7 +273,8 @@ use case confirms it:
 
 Proposed; not started; nothing here is measured. Six domain-independent
 extensions from the [neurosymbolic harness survey](research/2026-10-09-neurosymbolic-agent-harnesses.md#six-extensions-that-build-on-warranteds-own-plans),
-which found that a sound checker still gives a misleading pass when the statement
+and two from the [ARC-AGI-3 harness survey](research/2026-10-10-arc-agi-3-harness-lessons.md).
+The first survey found that a sound checker still gives a misleading pass when the statement
 does not match intent, when the verifier's environment has a loophole, or when a
 result is reported without its budget. Each enters the
 [enforcement audit](reference/enforcement.md) as Not built until its negative case
@@ -270,8 +283,11 @@ subject to the [A–E decision rule](experiments/evaluation-design.md). Domain
 content arrives as task inputs, checker jobs, or worker images. Ideas the survey
 declined are in [rejected ideas](rejected-ideas.md).
 
-The first three need only existing seams and make M5's remaining comparison
-honest; the last three build on M9 items and wait for them.
+The first five need only existing seams and make M5's remaining comparison
+and M8's live campaigns honest; the last three build on M9 items and wait for
+them. The second survey found that, on ARC-AGI-3, harness choices alone moved
+the same model's score by two to seven times, so the adapter and its settings
+are part of what a result means.
 
 - [ ] Contract-adequacy probes: a task pins known-disappointing candidates as
   private inputs; when a revision changes its required checks, the host runs them
@@ -285,6 +301,22 @@ honest; the last three build on M9 items and wait for them.
 - [ ] Budget-indexed campaign reports: outcomes stated against recorded spend, and
   a rate refused when its budget is missing. Test first that campaign reports keep
   rejected runs and cost totals.
+- [ ] Raw provider responses as evidence: the litellm child also returns the
+  provider's raw response, which the host stores as an artifact before parsing,
+  so normalisation can no longer drop fields silently
+  ([limits](reference/model-adapters.md); adapted from ARC Prize's
+  [OpenAI provider adapter](research/2026-10-10-arc-agi-3-harness-lessons.md#1-close-the-adapters-evidence-gap-first)).
+  Settings the selected model cannot honour are refused at configuration time,
+  before an attempt is reserved. No per-API connector or second call shape.
+  Negative case first: a run whose raw response is missing is not reported
+  as complete evidence.
+- [ ] Reasoning retention as a pinned run condition: whether the model's
+  reasoning state is replayed between turns is recorded in the model identity,
+  so resuming with a different setting is refused, and campaign reports state
+  it and never pool the two conditions. Warranted does not replay reasoning
+  today; enabling it is a separate, measured A/B on the same tasks and budgets
+  ([rationale](research/2026-10-10-arc-agi-3-harness-lessons.md#2-treat-reasoning-retention-as-a-measured-condition-not-a-default)).
+  Lands before M8's live campaigns, so ReSchema's new metric epoch includes it.
 - [ ] Verifier diversity within the N6 `kernel` trust basis: an optional second
   kernel (nanoda, through Comparator), with every kernel, its version, and the
   axiom policy recorded on the receipt. Kernel disagreement never maps to
@@ -347,7 +379,11 @@ Deferred until M8; not started. The plan adapts [Dream-RSI](https://arxiv.org/ht
 evolve only the scheduling policy using replayed discovery trees, with the model,
 checkers, contracts, and budgets frozen, and compares it with the fixed policy on
 untouched live tasks. It depends on M5. M1's ledger already records the identities
-replay would need; nothing replays them yet. See the
+replay would need; nothing replays them yet. It is also data-gated: the only live
+trajectories so far are ReSchema's three small-model campaigns.
+[VISTA](research/2026-10-10-arc-agi-3-harness-lessons.md#5-take-vistas-discipline-not-its-eyes)
+suggests what to measure when it starts: report the gain by component and count
+steps to an accepted result, not only success. See the
 [design](design.md#dream-rsi-exploration-and-replay) for the requirements we expect
 to carry forward.
 
@@ -377,7 +413,8 @@ Before measured M5 trials: choose provider/model versions and a total spending
 cap; pin equal capabilities, scheduling, per-attempt limits, and task-success
 predicates across A–E; set useful-improvement thresholds on development runs and
 freeze them; define task lineages for the held-out split. Before M6: define the
-policy objective, support rule, and lineage split. For M10: whether kernel
+policy objective, support rule, and lineage split, and how many live
+trajectories are enough to start. For M10: whether kernel
 disagreement is `INFRASTRUCTURE_FAILURE` or `REJECTED`.
 
 Earlier milestone checklists and plans remain in Git history.
