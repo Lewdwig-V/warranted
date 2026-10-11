@@ -99,7 +99,14 @@ def load_run_config(
     path: str,
 ) -> tuple[RunConfig, LocalChatCompletions | LiteLLMChatCompletions]:
     data = tomllib.loads(Path(path).read_text())
-    known = {"model", "provider", "max_steps", "budgets", "adapter"}
+    known = {
+        "model",
+        "provider",
+        "max_steps",
+        "budgets",
+        "adapter",
+        "container_timeout_seconds",
+    }
     if not data.keys() <= known or "model" not in data:
         raise UsageError(f"run configuration needs model, and only {sorted(known)}")
     provider = data.get("provider", "ollama")
@@ -126,7 +133,12 @@ def load_run_config(
         model = LocalChatCompletions(base_url, data["model"], **adapter)
     else:
         raise UsageError(f"unknown provider: {provider}")
-    config = RunConfig(data["model"], data.get("max_steps", 4), data.get("budgets", {}))
+    config = RunConfig(
+        data["model"],
+        data.get("max_steps", 4),
+        data.get("budgets", {}),
+        data.get("container_timeout_seconds", 120),
+    )
     return config, model
 
 

@@ -7,6 +7,16 @@ versioning and deprecation policy. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `RunConfig.container_timeout_seconds` (30 to 3600, default 120) sets the
+  lifetime of each episode's worker container, which bounds the whole episode.
+  Before, task-layer runs always used 120 seconds, so slow local models lost
+  the container after about a dozen steps and the run ended as an
+  infrastructure failure. The run configuration TOML accepts it as a top-level
+  key, the run record includes it, and `resume` and campaign runs use the
+  recorded value.
+
 ## [0.3.0] - 2026-10-10
 
 ### Added

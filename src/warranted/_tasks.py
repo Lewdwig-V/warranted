@@ -701,12 +701,21 @@ class RunConfig:
     model: str
     max_steps: int = 4
     budgets: Mapping[str, int] = field(default_factory=dict)
+    # Lifetime of each episode's worker container: the whole episode, not a step.
+    container_timeout_seconds: int = 120
 
     def __post_init__(self):
         if type(self.model) is not str or not self.model.strip():
             raise ValueError("run configuration needs a model identity")
         if type(self.max_steps) is not int or not 1 <= self.max_steps <= 100:
             raise ValueError("max_steps must be an integer from 1 to 100")
+        if (
+            type(self.container_timeout_seconds) is not int
+            or not 30 <= self.container_timeout_seconds <= 3600
+        ):
+            raise ValueError(
+                "container_timeout_seconds must be an integer from 30 to 3600"
+            )
         budgets = dict(self.budgets)
         if (
             {"check", "submissions"} & budgets.keys()
@@ -725,6 +734,7 @@ class RunConfig:
                 "model": self.model,
                 "max_steps": self.max_steps,
                 "budgets": dict(self.budgets),
+                "container_timeout_seconds": self.container_timeout_seconds,
             }
         )
 
@@ -2046,6 +2056,7 @@ class Project:
             model_pin=run.model_pin,
             environment=self.environment_id,
             max_steps=run.config.max_steps,
+            container_timeout_seconds=run.config.container_timeout_seconds,
             continues=self._episode_id(run, index - 1) if index > 1 else None,
             scope=run.scope,
             files=files,

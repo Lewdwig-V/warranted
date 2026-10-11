@@ -47,6 +47,7 @@ allowances cannot run.
 model = "qwen3:8b"
 provider = "ollama"          # or "litellm" for hosted models; see below
 max_steps = 12
+container_timeout_seconds = 600   # worker container lifetime per episode, 30-3600
 
 [adapter]
 base_url = "http://127.0.0.1:11434/v1"   # the default
@@ -65,7 +66,17 @@ With `provider = "ollama"`, `run` builds a
 new run with a fresh ID. The run records the adapter's configuration and service
 identity, and every model request in the run cites that record.
 
-`resume` uses the run's recorded task, budgets, and step limit. From `--config`
+`container_timeout_seconds` (default 120) bounds the whole lifetime of each
+episode's worker container, not a single step. When it expires, the next tool
+call finds no live workspace and the run ends as an infrastructure failure. Set
+it above `max_steps` times the slowest expected model request plus command time:
+120 s is enough for a few fast steps, but a local model at about 10 s per step
+loses its container after roughly a dozen steps. A longer lifetime only lets an
+idle or stuck container live longer; every request and command keeps its own
+deadline.
+
+`resume` uses the run's recorded task, budgets, step limit, and container
+lifetime. From `--config`
 it takes only the model connection, and it refuses a model whose name or adapter
 configuration differs from the run's record.
 

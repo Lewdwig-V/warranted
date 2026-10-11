@@ -355,6 +355,46 @@ def test_checks_and_run_configuration_are_validated():
         RunConfig(" ")
     with pytest.raises(ValueError, match="max_steps"):
         RunConfig("m", max_steps=0)
+    for seconds in (29, 3601, 60.0, True, "120"):
+        with pytest.raises(ValueError, match="container_timeout_seconds"):
+            RunConfig("m", container_timeout_seconds=seconds)
+    assert RunConfig("m").container_timeout_seconds == 120
+    assert RunConfig("m", container_timeout_seconds=30).container_timeout_seconds == 30
+    assert RunConfig("m", container_timeout_seconds=3600).container_timeout_seconds
+
+
+class HostDiesBetweenEpisodes(Script):
+    """The host dies after the first episode, before the second one starts."""
+
+    def __call__(self, ledger_root, episode):
+        if len(self.episodes) == 1 and not hasattr(self, "died"):
+            self.died = True
+            raise RuntimeError("host killed between episodes")
+        return super().__call__(ledger_root, episode)
+
+
+def test_every_episode_and_resume_use_the_recorded_container_lifetime(tmp_path):
+    script = HostDiesBetweenEpisodes(["wrong-offset", "correct"])
+    proj = Project.create(
+        tmp_path / "project",
+        CSV.CsvDomain(),
+        {"model": 40, "tool": 40, "check": 40},
+        environment=script,
+        environment_id=ENVIRONMENT,
+    )
+    config = RunConfig(CONFIG.model, CONFIG.max_steps, container_timeout_seconds=900)
+    with pytest.raises(RuntimeError, match="host killed"):
+        proj.start(TASK, config, Model())
+    run_id = proj.runs()[0]
+    with Ledger.open(proj.ledger_root) as ledger:
+        spec = next(o for o in ledger.history() if o.origin.kind == "run-spec")
+        recorded = json.loads(ledger.read_artifact(spec.artifacts["config.json"]))
+    assert recorded["container_timeout_seconds"] == 900
+    result = proj.resume(run_id, Model())
+    assert result.outcome is RunOutcome.ACCEPTED
+    # Resume rebuilds the recorded first episode, then starts the second fresh.
+    assert [e.episode_id[-4:] for e in script.episodes] == ["s001", "s001", "s002"]
+    assert {e.container_timeout_seconds for e in script.episodes} == {900}
 
 
 def test_deeply_nested_candidate_is_rejected_with_feedback():
