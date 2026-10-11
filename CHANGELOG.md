@@ -7,6 +7,8 @@ versioning and deprecation policy. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-11
+
 ### Added
 
 - `RunConfig.container_timeout_seconds` (30 to 3600, default 120) sets the
@@ -111,7 +113,8 @@ provisional until ReSchema runs on them (M8).
 - A project opens only with the Warranted build that created it; every upgrade
   needs a new project.
 
-[Unreleased]: https://github.com/Lewdwig-V/warranted/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Lewdwig-V/warranted/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Lewdwig-V/warranted/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Lewdwig-V/warranted/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Lewdwig-V/warranted/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Lewdwig-V/warranted/releases/tag/v0.1.0
