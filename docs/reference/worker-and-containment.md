@@ -140,7 +140,7 @@ constructs every runtime argument without forwarding its environment.
 | Namespaces | Private pid, ipc, uts, cgroup |
 | Filesystem | Read-only root; `/work` and `/tmp` are 8 MiB `noexec,nosuid,nodev` tmpfs; no host directory or runtime socket mounted |
 | Resources | 128 MiB memory (no extra swap), 1 CPU, 32 processes |
-| Lifetime | `container_timeout_seconds` (120 s default; live-model episodes compute a longer value, see [contexts](contexts.md#treatment-runner)) |
+| Lifetime | `container_timeout_seconds`, for the whole episode rather than each step (120 s default). Task-layer runs set it per run with `RunConfig.container_timeout_seconds` or the [run configuration](cli.md#run-configuration), and every episode of the run, including continuations after a rejection and episodes started on `resume`, uses the recorded value. The M5 live-model episodes compute a longer value, see [contexts](contexts.md#treatment-runner) |
 | Each Podman call | 20 s deadline (`PODMAN_COMMAND_TIMEOUT_SECONDS`), 2 MiB combined stdout+stderr |
 | Capture transport | 4 MiB for the encoded candidate and workspace |
 

@@ -1,6 +1,6 @@
 [project]
 name = "warranted"
-version = "0.3.0"
+version = "0.4.0"
 description = "Durable, checkable knowledge for long-horizon agent work."
 readme = "README.md"
 license = "Apache-2.0"

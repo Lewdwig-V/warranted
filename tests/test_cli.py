@@ -170,6 +170,20 @@ def test_openrouter_is_refused_until_the_task_layer_supports_it(tmp_path, capsys
     assert "openrouter" in capsys.readouterr().err
 
 
+def test_run_configuration_sets_the_container_lifetime(tmp_path, capsys):
+    from warranted._cli import load_run_config
+
+    config = tmp_path / "run.toml"
+    config.write_text('model = "m"\ncontainer_timeout_seconds = 900\n')
+    assert load_run_config(str(config))[0].container_timeout_seconds == 900
+    config.write_text('model = "m"\n')
+    assert load_run_config(str(config))[0].container_timeout_seconds == 120
+    project = init(tmp_path, capsys)
+    config.write_text('model = "m"\ncontainer_timeout_seconds = 10\n')
+    assert main(["run", str(project), str(TASK), "--config", str(config)]) == 2
+    assert "container_timeout_seconds" in capsys.readouterr().err
+
+
 def test_export_includes_public_records_and_no_private_bytes(
     tmp_path, capsys, scripted, model
 ):

@@ -56,7 +56,7 @@ published to PyPI.
 | Name | What it is | Reference |
 | --- | --- | --- |
 | `Project` | One ledger and its single writer: create, start, resume, status, export, revise, memory, campaigns | [CLI](cli.md), [run lifecycle](../proposals/m7-harness-api.md#run-lifecycle) |
-| `RunConfig` | The model identity, step limit, and per-run budget caps | [run configuration](cli.md#run-configuration) |
+| `RunConfig` | The model identity, step limit, per-run budget caps, and worker container lifetime | [run configuration](cli.md#run-configuration) |
 | `RunResult` | A run's ID, outcome, and submissions after `start` or `resume` | [run lifecycle](../proposals/m7-harness-api.md#run-lifecycle) |
 | `RunOutcome` | Accepted, rejected, incomplete, unknown, unsupported, or infrastructure failure | [status](cli.md#status) |
 | `RunStatus` | What the ledger records about a run, read without running anything | [status](cli.md#status) |
