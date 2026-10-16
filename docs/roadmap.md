@@ -1,10 +1,10 @@
 # Roadmap
 
-Updated 2026-10-10. Milestones are ordered, not dated. M0–M4 are complete within
+Updated 2026-10-16. Milestones are ordered, not dated. M0–M4 are complete within
 the scopes stated below. The current priority is turning Warranted into a usable
-harness with ReSchema as its first consumer: a stable API and CLI (M7), then
-ReSchema rebuilt on top of them (M8). M5's remaining comparison, M6, and M3a are
-deferred until M8 lands.
+harness with ReSchema as its first consumer: a stable API and CLI (M7), with
+ReSchema being rebuilt on top of them (M8) in parallel. M5's remaining
+comparison, M6, and M3a are deferred until M8 lands.
 
 | Milestone | Result | Status |
 | --- | --- | --- |
@@ -14,8 +14,8 @@ deferred until M8 lands.
 | M3 | Bounded worker and trustworthy operation recovery | Complete: scripted model |
 | M4 | Independently checked Lean obligations | Complete: fixed proof proposals |
 | M5 | Second task family and A–E knowledge-workflow comparison | Fixtures complete; comparison deferred |
-| M7 | Stable harness API and CLI | Next |
-| M8 | ReSchema rebuilt on Warranted | Planned, after M7 |
+| M7 | Stable harness API and CLI | In progress |
+| M8 | ReSchema rebuilt on Warranted | In progress: live campaign remaining |
 | M9 | General-purpose neurosymbolic harness: five use cases | Proposed |
 | M10 | Evaluation integrity and verifier hardening | Proposed |
 | M6 | Dream-RSI replay-based scheduling | Deferred |
@@ -179,8 +179,8 @@ domain project supplies only domain knowledge. Specifically:
   versioning, and a deprecation policy for the public API; reference docs
   generated from or tested against it. The [changelog](../CHANGELOG.md),
   [policy, and API reference](reference/api.md) exist, and tests and CI check
-  them against the code. `v0.1.0` and `v0.2.0` are tagged, and CI checked each
-  tag against the package version.
+  them against the code. `v0.1.0` through `v0.4.0` are tagged, and CI checked
+  each tag against the package version.
 
 **Completion evidence:** both existing fixtures run through the public API and
 CLI with their current guarantees and tests intact. A minimal reverse-engineering
@@ -205,22 +205,37 @@ reverse-engineering task: corpus generation, ground-truth recording,
 canonicalisation, the replay and differential-fuzz checkers, disassembly facts,
 and task presentation.
 
-- [ ] ReSchema pins a tagged Warranted release as a uv git dependency; publish to
-  PyPI once the API reaches 1.0.
-- [ ] Replace ReSchema's task ledger, counters, audit seeds, and journal with the
+Status (2026-10-16): ReSchema's slices S1–S7 have merged, following its
+[M8 proposal](https://github.com/Lewdwig-V/reschema/blob/main/docs/proposals/m8-rebuild-on-warranted.md).
+S8, the live campaign, is in progress: the campaign CLI and run configs exist,
+and the first local smoke run exposed the fixed worker-container lifetime that
+v0.4.0 made a run setting. Interface misfits found during the port are collected
+in [#78](https://github.com/Lewdwig-V/warranted/issues/78) for settlement before
+1.0.
+
+- [x] ReSchema pins a tagged Warranted release as a uv git dependency (`v0.4.0`);
+  publish to PyPI once the API reaches 1.0.
+- [x] Replace ReSchema's task ledger, counters, audit seeds, and journal with the
   Warranted ledger and accounting.
-- [ ] Re-express the program and function gates as Warranted checkers, with hidden
+- [x] Re-express the program and function gates as Warranted checkers, with hidden
   inputs and fuzz seeds held as private checker data.
-- [ ] Run compile, emulation, and native jobs through Warranted's container
-  boundary in place of ReSchema's own Podman driver.
-- [ ] Replace the family deduction cache with Warranted scoped claims.
-- [ ] Replace the five MCP tools and the external agent runner with Warranted's
-  shell-and-files worker: task files in the workspace, an `experiment` command
-  inside a ReSchema worker image, and the submission convention. Probes are then
-  charged as shell commands rather than counted separately.
-- [ ] Once host-mediated operations exist, move `experiment` onto them to make
-  probe results authoritative evidence and restore per-probe accounting.
-- [ ] Port ReSchema's live-agent campaigns to Warranted campaigns.
+- [x] Run compile, emulation, and native jobs through Warranted's container
+  boundary in place of ReSchema's own Podman driver. Every job on candidate
+  code runs through `run_job`, and ReSchema's `podrun` driver is gone. Two exceptions
+  remain, neither of which runs candidate code: the `experiment` operations
+  record the original binary on the host, as the old tool did, and the trusted
+  corpus build still invokes the pinned toolchain image through Podman
+  directly.
+- [x] Replace the family deduction cache with Warranted scoped claims.
+- [x] Replace the five MCP tools and the external agent runner with Warranted's
+  shell-and-files worker: task files in the workspace, `experiment` and
+  `submit` helpers inside a ReSchema worker image, and the submission convention.
+- [x] Once host-mediated operations exist, move `experiment` onto them to make
+  probe results authoritative evidence and restore per-probe accounting. Done
+  directly, as `experiment` and `experiment_function` operations charged in
+  `probe` units.
+- [ ] Port ReSchema's live-agent campaigns to Warranted campaigns. The campaign
+  CLI and run configs exist; a live campaign has not yet completed.
 
 **Completion evidence:** ReSchema's existing gate regression tests pass against
 the Warranted-backed implementation, with the same accept and reject decisions on
